@@ -1,14 +1,17 @@
-import Sidebar from '@/components/Sidebar'
-import FloatingActionButton from '@/components/FloatingActionButton'
+import type { Metadata } from 'next'
+import './globals.css'
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export const metadata: Metadata = {
+  title: 'Controle de Gastos',
+  description: 'Seu sistema de finanças pessoais',
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 min-w-0">
+    <html lang="pt-BR">
+      <body className="bg-gray-50 text-gray-900 antialiased">
         {children}
-      </div>
-      <FloatingActionButton />
-    </div>
+      </body>
+    </html>
   )
 }
