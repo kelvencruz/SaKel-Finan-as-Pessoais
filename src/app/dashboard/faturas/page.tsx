@@ -36,45 +36,49 @@ interface InvoiceTransaction {
   amount: number
   date: string
   status: string
-  category?: { name: string; icon: string } | { name: string; icon: string }[] | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  category?: any
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  open: 'Aberta',
-  closed: 'Fechada',
-  paid: 'Paga',
+  open:      'Aberta',
+  closed:    'Fechada',
+  paid:      'Paga',
   cancelled: 'Cancelada',
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  open: 'bg-blue-100 text-blue-700',
-  closed: 'bg-yellow-100 text-yellow-700',
-  paid: 'bg-green-100 text-green-700',
+  open:      'bg-blue-100 text-blue-700',
+  closed:    'bg-yellow-100 text-yellow-700',
+  paid:      'bg-green-100 text-green-700',
   cancelled: 'bg-gray-100 text-gray-500',
 }
 
 const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 
+const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
 export default function FaturasPage() {
   const supabase = createClient()
-  const [cards, setCards] = useState<CreditCard[]>([])
-  const [accounts, setAccounts] = useState<Account[]>([])
-  const [selectedCard, setSelectedCard] = useState<CreditCard | null>(null)
-  const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
-  const [invoiceTransactions, setInvoiceTransactions] = useState<InvoiceTransaction[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadingTx, setLoadingTx] = useState(false)
-  const [paying, setPaying] = useState(false)
-  const [payAccountId, setPayAccountId] = useState('')
-  const [showPayModal, setShowPayModal] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  // Mês/ano atual
+  const [cards,               setCards]               = useState<CreditCard[]>([])
+  const [accounts,            setAccounts]            = useState<Account[]>([])
+  const [selectedCard,        setSelectedCard]        = useState<CreditCard | null>(null)
+  const [invoices,            setInvoices]            = useState<Invoice[]>([])
+  const [selectedInvoice,     setSelectedInvoice]     = useState<Invoice | null>(null)
+  const [invoiceTransactions, setInvoiceTransactions] = useState<InvoiceTransaction[]>([])
+  const [loading,             setLoading]             = useState(true)
+  const [loadingTx,           setLoadingTx]           = useState(false)
+  const [paying,              setPaying]              = useState(false)
+  const [payAccountId,        setPayAccountId]        = useState('')
+  const [showPayModal,        setShowPayModal]        = useState(false)
+  const [error,               setError]               = useState<string | null>(null)
+
   const now = new Date()
   const [viewMonth, setViewMonth] = useState(now.getMonth() + 1)
-  const [viewYear, setViewYear] = useState(now.getFullYear())
+  const [viewYear,  setViewYear]  = useState(now.getFullYear())
 
+  // ── carregamento inicial ────────────────────────────────────────────────────
   async function loadCards() {
     const [{ data: cardsData }, { data: accData }] = await Promise.all([
       supabase.from('credit_cards').select('*').eq('is_active', true).order('name'),
@@ -82,18 +86,18 @@ export default function FaturasPage() {
     ])
     setCards(cardsData ?? [])
     setAccounts(accData ?? [])
-    if (cardsData && cardsData.length > 0) {
-      setSelectedCard(cardsData[0])
-    }
+    if (cardsData && cardsData.length > 0) setSelectedCard(cardsData[0])
     setLoading(false)
   }
 
+  // Busca só faturas com lançamentos (total_amount > 0) para o histórico
   async function loadInvoices(cardId: string) {
     const { data } = await supabase
       .from('credit_card_invoices')
       .select('*')
       .eq('credit_card_id', cardId)
-      .order('year', { ascending: false })
+      .gt('total_amount', 0)          // ← só faturas com valor
+      .order('year',  { ascending: false })
       .order('month', { ascending: false })
     setInvoices(data ?? [])
     setSelectedInvoice(null)
@@ -111,78 +115,49 @@ export default function FaturasPage() {
     setLoadingTx(false)
   }
 
-  async function createOrGetInvoice() {
-    if (!selectedCard) return
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    // Calcula due_date
-    const dueDate = new Date(viewYear, viewMonth - 1 + (selectedCard.due_day < selectedCard.closing_day ? 1 : 0), selectedCard.due_day)
-    const dueDateStr = dueDate.toISOString().split('T')[0]
-
-    // Tenta inserir — se já existe, retorna o existente
-    const { data: existing } = await supabase
+  // ── navegação de mês — só BUSCA, nunca cria ─────────────────────────────────
+  async function loadCurrentMonthInvoice(cardId: string, month: number, year: number) {
+    const { data } = await supabase
       .from('credit_card_invoices')
       .select('*')
-      .eq('credit_card_id', selectedCard.id)
-      .eq('month', viewMonth)
-      .eq('year', viewYear)
+      .eq('credit_card_id', cardId)
+      .eq('month', month)
+      .eq('year',  year)
       .single()
 
-    if (existing) {
-      setSelectedInvoice(existing)
-      loadInvoiceTransactions(existing.id)
-      return
-    }
-
-    const { data: created, error } = await supabase
-      .from('credit_card_invoices')
-      .insert({
-        credit_card_id: selectedCard.id,
-        user_id: user.id,
-        month: viewMonth,
-        year: viewYear,
-        total_amount: 0,
-        status: 'open',
-        due_date: dueDateStr,
-      })
-      .select()
-      .single()
-
-    if (!error && created) {
-      setSelectedInvoice(created)
+    // se não existe ou é zerada, limpa a seleção — não cria
+    if (!data || Number(data.total_amount) === 0) {
+      setSelectedInvoice(null)
       setInvoiceTransactions([])
-      await loadInvoices(selectedCard.id)
+    } else {
+      setSelectedInvoice(data)
+      loadInvoiceTransactions(data.id)
     }
   }
 
+  // ── pagar fatura ────────────────────────────────────────────────────────────
   async function handlePayInvoice() {
     if (!selectedInvoice || !payAccountId) { setError('Selecione a conta para pagamento.'); return }
     setPaying(true)
     setError(null)
 
-    const { error } = await supabase
+    const { error: err } = await supabase
       .from('credit_card_invoices')
-      .update({
-        status: 'paid',
-        paid_at: new Date().toISOString(),
-        paid_account_id: payAccountId,
-      })
+      .update({ status: 'paid', paid_at: new Date().toISOString(), paid_account_id: payAccountId })
       .eq('id', selectedInvoice.id)
 
-    if (error) { setError(error.message); setPaying(false); return }
+    if (err) { setError(err.message); setPaying(false); return }
 
-    // Registra saída na conta
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       await supabase.from('transactions').insert({
-        user_id: user.id,
-        account_id: payAccountId,
-        type: 'expense',
-        amount: selectedInvoice.total_amount,
+        user_id:     user.id,
+        account_id:  payAccountId,
+        type:        'expense',
+        amount:      selectedInvoice.total_amount,
         description: `Pagamento fatura ${selectedCard?.name} ${MONTHS[selectedInvoice.month - 1]}/${selectedInvoice.year}`,
-        date: new Date().toISOString().split('T')[0],
-        status: 'paid',
+        date:        new Date().toISOString().split('T')[0],
+        status:      'paid',
       })
     }
 
@@ -192,16 +167,21 @@ export default function FaturasPage() {
     setPaying(false)
   }
 
+  // ── effects ─────────────────────────────────────────────────────────────────
   useEffect(() => { loadCards() }, [])
 
   useEffect(() => {
-    if (selectedCard) loadInvoices(selectedCard.id)
+    if (selectedCard) {
+      loadInvoices(selectedCard.id)
+      loadCurrentMonthInvoice(selectedCard.id, viewMonth, viewYear)
+    }
   }, [selectedCard])
 
-  const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  useEffect(() => {
+    if (selectedCard) loadCurrentMonthInvoice(selectedCard.id, viewMonth, viewYear)
+  }, [viewMonth, viewYear])
 
-  const currentInvoice = invoices.find(i => i.month === viewMonth && i.year === viewYear)
-
+  // ── helpers de navegação ────────────────────────────────────────────────────
   function prevMonth() {
     if (viewMonth === 1) { setViewMonth(12); setViewYear(y => y - 1) }
     else setViewMonth(m => m - 1)
@@ -211,9 +191,12 @@ export default function FaturasPage() {
     else setViewMonth(m => m + 1)
   }
 
+  const currentInvoice = selectedInvoice?.month === viewMonth && selectedInvoice?.year === viewYear
+    ? selectedInvoice
+    : null
+
   return (
     <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto">
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <a href="/dashboard" className="text-sm text-gray-400 hover:text-gray-600">← Dashboard</a>
@@ -232,15 +215,18 @@ export default function FaturasPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Coluna esquerda — seletor de cartão + navegação de mês */}
+
+          {/* Esquerda */}
           <div className="space-y-4">
-            {/* Cartões */}
+            {/* Seletor de cartão */}
             <div className="bg-white border border-gray-100 rounded-xl p-4">
               <p className="text-xs text-gray-400 mb-3 uppercase tracking-wide">Cartão</p>
               <div className="space-y-2">
                 {cards.map(card => (
                   <button key={card.id} onClick={() => setSelectedCard(card)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${selectedCard?.id === card.id ? 'bg-indigo-50 border border-indigo-200' : 'hover:bg-gray-50 border border-transparent'}`}>
+                    className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${
+                      selectedCard?.id === card.id ? 'bg-indigo-50 border border-indigo-200' : 'hover:bg-gray-50 border border-transparent'
+                    }`}>
                     <div className="w-8 h-6 rounded flex items-center justify-center text-white text-xs flex-shrink-0"
                       style={{ backgroundColor: card.color }}>💳</div>
                     <div>
@@ -262,14 +248,19 @@ export default function FaturasPage() {
               </div>
             </div>
 
-            {/* Histórico de faturas */}
+            {/* Histórico — só faturas com valor */}
             {invoices.length > 0 && (
               <div className="bg-white border border-gray-100 rounded-xl p-4">
                 <p className="text-xs text-gray-400 mb-3 uppercase tracking-wide">Histórico</p>
                 <div className="space-y-1">
                   {invoices.slice(0, 6).map(inv => (
                     <button key={inv.id}
-                      onClick={() => { setViewMonth(inv.month); setViewYear(inv.year); setSelectedInvoice(inv); loadInvoiceTransactions(inv.id) }}
+                      onClick={() => {
+                        setViewMonth(inv.month)
+                        setViewYear(inv.year)
+                        setSelectedInvoice(inv)
+                        loadInvoiceTransactions(inv.id)
+                      }}
                       className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-gray-50 transition-colors text-left">
                       <span className="text-xs text-gray-600">{MONTHS[inv.month - 1]}/{inv.year}</span>
                       <div className="flex items-center gap-2">
@@ -283,7 +274,7 @@ export default function FaturasPage() {
             )}
           </div>
 
-          {/* Coluna direita — fatura do mês */}
+          {/* Direita */}
           <div className="lg:col-span-2 space-y-4">
             {/* Card da fatura */}
             <div className="rounded-xl p-5 text-white" style={{ backgroundColor: selectedCard?.color ?? '#6366f1' }}>
@@ -294,7 +285,7 @@ export default function FaturasPage() {
                 </div>
                 {currentInvoice && (
                   <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                    currentInvoice.status === 'paid' ? 'bg-green-400/30 text-green-100' :
+                    currentInvoice.status === 'paid'   ? 'bg-green-400/30 text-green-100' :
                     currentInvoice.status === 'closed' ? 'bg-yellow-400/30 text-yellow-100' :
                     'bg-white/20 text-white'
                   }`}>
@@ -314,27 +305,27 @@ export default function FaturasPage() {
             </div>
 
             {/* Ações */}
-<div className="flex gap-3">
-  {currentInvoice && (
-    <>
-      <button onClick={() => { setSelectedInvoice(currentInvoice); loadInvoiceTransactions(currentInvoice.id) }}
-        className="flex-1 border border-gray-200 text-gray-700 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">
-        Ver lançamentos
-      </button>
-      {currentInvoice.status !== 'paid' && currentInvoice.status !== 'cancelled' && Number(currentInvoice.total_amount) > 0 && (
-        <button onClick={() => { setShowPayModal(true); setError(null) }}
-          className="flex-1 bg-green-600 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-green-700 transition-colors">
-          Pagar fatura
-        </button>
-      )}
-    </>
-  )}
-  {!currentInvoice && (
-    <p className="text-sm text-gray-400">Nenhuma despesa neste mês ainda.</p>
-  )}
-</div>
+            <div className="flex gap-3">
+              {currentInvoice ? (
+                <>
+                  <button
+                    onClick={() => { setSelectedInvoice(currentInvoice); loadInvoiceTransactions(currentInvoice.id) }}
+                    className="flex-1 border border-gray-200 text-gray-700 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">
+                    Ver lançamentos
+                  </button>
+                  {currentInvoice.status !== 'paid' && currentInvoice.status !== 'cancelled' && Number(currentInvoice.total_amount) > 0 && (
+                    <button onClick={() => { setShowPayModal(true); setError(null) }}
+                      className="flex-1 bg-green-600 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-green-700 transition-colors">
+                      Pagar fatura
+                    </button>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-gray-400 py-2">Nenhuma despesa registrada neste mês.</p>
+              )}
+            </div>
 
-            {/* Lançamentos da fatura */}
+            {/* Lançamentos */}
             {selectedInvoice && (
               <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
                 <div className="px-5 py-3 border-b border-gray-50">
@@ -347,9 +338,6 @@ export default function FaturasPage() {
                 ) : invoiceTransactions.length === 0 ? (
                   <div className="p-8 text-center">
                     <p className="text-gray-400 text-sm">Nenhum lançamento nesta fatura.</p>
-                    <p className="text-gray-400 text-xs mt-1">
-                      Ao registrar uma despesa, selecione este cartão para vincular aqui.
-                    </p>
                   </div>
                 ) : (
                   <div>
@@ -357,11 +345,13 @@ export default function FaturasPage() {
                       <div key={tx.id}
                         className={`flex items-center gap-4 px-5 py-3 ${i < invoiceTransactions.length - 1 ? 'border-b border-gray-50' : ''}`}>
                         <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-sm flex-shrink-0">
-                          {(tx as any).category?.icon ?? '💸'}
+                          {tx.category?.icon ?? '💸'}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-800 truncate">{tx.description}</p>
-                          <p className="text-xs text-gray-400">{tx.date}{(tx as any).category?.name ? ` · ${(tx as any).category.name}` : ''}</p>
+                          <p className="text-xs text-gray-400">
+                            {tx.date}{tx.category?.name ? ` · ${tx.category.name}` : ''}
+                          </p>
                         </div>
                         <p className="text-sm font-semibold text-red-500 flex-shrink-0">
                           -{fmt(Number(tx.amount))}
@@ -382,7 +372,7 @@ export default function FaturasPage() {
         </div>
       )}
 
-      {/* Modal pagar fatura */}
+      {/* Modal pagar */}
       {showPayModal && selectedInvoice && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
@@ -391,7 +381,6 @@ export default function FaturasPage() {
               {selectedCard?.name} · {MONTHS[selectedInvoice.month - 1]}/{selectedInvoice.year} ·{' '}
               <span className="font-semibold text-gray-700">{fmt(Number(selectedInvoice.total_amount))}</span>
             </p>
-
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Débitar da conta</label>
@@ -403,7 +392,6 @@ export default function FaturasPage() {
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
             </div>
-
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowPayModal(false)}
                 className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm hover:bg-gray-50 transition-colors">
