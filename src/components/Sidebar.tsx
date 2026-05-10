@@ -8,6 +8,8 @@ const navItems = [
   { href: '/dashboard/transacoes', label: 'Transações',   icon: '⇅',  emoji: '💸' },
   { href: '/dashboard/contas',     label: 'Contas',       icon: '◫',  emoji: '🏦' },
   { href: '/dashboard/categorias', label: 'Categorias',   icon: '◈',  emoji: '🏷️' },
+  { href: '/dashboard/cartoes',    label: 'Cartões',      icon: '◻',  emoji: '💳' },
+  { href: '/dashboard/faturas',    label: 'Faturas',      icon: '◻',  emoji: '📄' },
   { href: '/dashboard/importar',   label: 'Importar CSV', icon: '↓',  emoji: '📥' },
 ]
 
