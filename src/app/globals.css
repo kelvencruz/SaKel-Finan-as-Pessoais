@@ -1,0 +1,128 @@
+/* ── Fonte: DM Sans — DEVE vir ANTES dos @tailwind ─────── */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Variáveis globais ───────────────────────────────────── */
+:root {
+  --font-main: 'DM Sans', system-ui, sans-serif;
+
+  --color-bg:        #f5f6fa;
+  --color-surface:   #ffffff;
+  --color-border:    #eaecf0;
+  --color-border-md: #d0d5dd;
+
+  --color-text-primary:   #101828;
+  --color-text-secondary: #475467;
+  --color-text-muted:     #98a2b3;
+
+  --color-brand:       #4f46e5;
+  --color-brand-light: #eef2ff;
+  --color-brand-dark:  #3730a3;
+
+  --color-success: #12b76a;
+  --color-danger:  #f04438;
+  --color-warning: #f79009;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  --shadow-xs: 0 1px 2px rgba(16,24,40,.05);
+  --shadow-sm: 0 1px 3px rgba(16,24,40,.10), 0 1px 2px rgba(16,24,40,.06);
+  --shadow-md: 0 4px 8px -2px rgba(16,24,40,.10), 0 2px 4px -2px rgba(16,24,40,.06);
+}
+
+/* ── Reset base ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  font-family: var(--font-main);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-main);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ── Scrollbar refinada ─────────────────────────────────── */
+::-webkit-scrollbar       { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d0d5dd; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #98a2b3; }
+
+/* ── Seleção de texto ───────────────────────────────────── */
+::selection {
+  background: var(--color-brand-light);
+  color: var(--color-brand-dark);
+}
+
+/* ── Animações globais ──────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position:  200% 0; }
+}
+
+/* ── Classes utilitárias de animação ────────────────────── */
+.animate-fade-up  { animation: fadeUp  .25s ease both; }
+.animate-fade-in  { animation: fadeIn  .2s  ease both; }
+.animate-scale-in { animation: scaleIn .2s  ease both; }
+
+/* Skeleton shimmer */
+.skeleton {
+  background: linear-gradient(90deg, #f0f2f5 25%, #e4e7ec 50%, #f0f2f5 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Card padrão ────────────────────────────────────────── */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+
+/* ── Input padrão ───────────────────────────────────────── */
+input, select, textarea {
+  font-family: var(--font-main);
+}
+
+/* ── Transições suaves globais ──────────────────────────── */
+a, button {
+  transition: color .15s ease, background-color .15s ease,
+              border-color .15s ease, box-shadow .15s ease,
+              opacity .15s ease, transform .15s ease;
+}
+
+/* ── Focus ring acessível ───────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
