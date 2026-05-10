@@ -314,27 +314,25 @@ export default function FaturasPage() {
             </div>
 
             {/* Ações */}
-            <div className="flex gap-3">
-              {!currentInvoice ? (
-                <button onClick={createOrGetInvoice}
-                  className="flex-1 bg-indigo-600 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-indigo-700 transition-colors">
-                  Abrir fatura deste mês
-                </button>
-              ) : (
-                <>
-                  <button onClick={() => { setSelectedInvoice(currentInvoice); loadInvoiceTransactions(currentInvoice.id) }}
-                    className="flex-1 border border-gray-200 text-gray-700 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">
-                    Ver lançamentos
-                  </button>
-                  {currentInvoice.status !== 'paid' && currentInvoice.status !== 'cancelled' && Number(currentInvoice.total_amount) > 0 && (
-                    <button onClick={() => { setShowPayModal(true); setError(null) }}
-                      className="flex-1 bg-green-600 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-green-700 transition-colors">
-                      Pagar fatura
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
+<div className="flex gap-3">
+  {currentInvoice && (
+    <>
+      <button onClick={() => { setSelectedInvoice(currentInvoice); loadInvoiceTransactions(currentInvoice.id) }}
+        className="flex-1 border border-gray-200 text-gray-700 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">
+        Ver lançamentos
+      </button>
+      {currentInvoice.status !== 'paid' && currentInvoice.status !== 'cancelled' && Number(currentInvoice.total_amount) > 0 && (
+        <button onClick={() => { setShowPayModal(true); setError(null) }}
+          className="flex-1 bg-green-600 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-green-700 transition-colors">
+          Pagar fatura
+        </button>
+      )}
+    </>
+  )}
+  {!currentInvoice && (
+    <p className="text-sm text-gray-400">Nenhuma despesa neste mês ainda.</p>
+  )}
+</div>
 
             {/* Lançamentos da fatura */}
             {selectedInvoice && (
