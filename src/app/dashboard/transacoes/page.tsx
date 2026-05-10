@@ -277,15 +277,7 @@ export default function TransacoesPage() {
       invoice_id:             invoiceId,
     }
 
-    // Se usa cartão, account_id pode ser null — precisamos de um placeholder
-    // account_id é NOT NULL no schema, então usamos a primeira conta como placeholder
-    if (form.use_credit_card && !accountId) {
-      const firstAcc = accounts[0]
-      if (!firstAcc) { setError('Cadastre uma conta primeiro.'); setSaving(false); return }
-      payload.account_id = firstAcc.id
-    }
-
-    if (editingId) {
+  if (editingId) {
       const { error: err } = await supabase.from('transactions').update(payload).eq('id', editingId)
       if (err) { setError(err.message); setSaving(false); return }
       // Atualiza total da fatura
