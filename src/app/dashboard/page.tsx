@@ -34,60 +34,59 @@ function InvoiceBadge({ days }: { days: number }) {
   return <span className="text-[10px] font-medium bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{days}d</span>
 }
 
-function EmptyDashboard({ email, onOpenModal }: { email: string; onOpenModal: () => void }) {
+function EmptyDashboard({ email }: { email: string }) {
   return (
     <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto">
-      {/* Header */}
       <div className="flex items-center justify-between mb-10">
         <div>
           <h1 className="text-xl font-semibold">Dashboard</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Bem-vindo ao SaKel Finanças</p>
+          <p className="text-sm text-gray-400 mt-0.5">Bem-vindo ao SaKel Financas</p>
         </div>
         <span className="text-sm text-gray-400 hidden sm:block">{email}</span>
       </div>
 
-      {/* Hero vazio */}
       <div className="bg-white border border-dashed border-gray-200 rounded-2xl p-10 text-center mb-6">
-        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl"
-          style={{ background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)' }}>
+        <div
+          className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl"
+          style={{ background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)' }}
+        >
           🏦
         </div>
         <h2 className="text-lg font-semibold text-gray-800 mb-2">Crie sua primeira conta</h2>
         <p className="text-sm text-gray-400 max-w-sm mx-auto mb-6">
-          Para começar a controlar suas finanças, cadastre uma conta bancária, carteira ou poupança.
+          Para comecar a controlar suas financas, cadastre uma conta bancaria, carteira ou poupanca.
         </p>
-        
+        <a
           href="/dashboard/contas"
           className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700"
         >
-          {'🏦 Criar minha primeira conta'}
+          Criar minha primeira conta
         </a>
       </div>
 
-      {/* Próximos passos */}
-      <p className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-3">O que você pode fazer</p>
+      <p className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-3">O que voce pode fazer</p>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         {[
           {
             emoji: '🏦',
             title: 'Adicionar contas',
-            desc: 'Cadastre banco, carteira ou poupança com saldo inicial.',
+            desc: 'Cadastre banco, carteira ou poupanca com saldo inicial.',
             href: '/dashboard/contas',
           },
           {
             emoji: '💳',
-            title: 'Cadastrar cartões',
-            desc: 'Vincule seus cartões de crédito e acompanhe faturas.',
+            title: 'Cadastrar cartoes',
+            desc: 'Vincule seus cartoes de credito e acompanhe faturas.',
             href: '/dashboard/cartoes',
           },
           {
             emoji: '🏷️',
             title: 'Ver categorias',
-            desc: '14 categorias padrão já foram criadas para você.',
+            desc: '14 categorias padrao ja foram criadas para voce.',
             href: '/dashboard/categorias',
           },
         ].map(item => (
-          
+          <a
             key={item.href}
             href={item.href}
             className="bg-white border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 rounded-xl p-4 transition-colors group"
@@ -99,13 +98,12 @@ function EmptyDashboard({ email, onOpenModal }: { email: string; onOpenModal: ()
         ))}
       </div>
 
-      {/* Dica */}
       <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-5 py-4 flex items-start gap-3">
         <span className="text-xl shrink-0">💡</span>
         <div>
-          <p className="text-sm font-medium text-indigo-700 mb-0.5">Dica rápida</p>
+          <p className="text-sm font-medium text-indigo-700 mb-0.5">Dica rapida</p>
           <p className="text-xs text-indigo-500">
-            Após criar uma conta, use o botão <strong>+</strong> no canto inferior direito para registrar receitas e despesas de qualquer página.
+            Apos criar uma conta, use o botao + no canto inferior direito para registrar receitas e despesas de qualquer pagina.
           </p>
         </div>
       </div>
@@ -168,7 +166,7 @@ export default function DashboardPage() {
 
       setInvoicesDue(((dueInv ?? []) as { id: string; total_amount: number; due_date: string; credit_card_id: string }[]).map(inv => ({
         id:             inv.id,
-        card_name:      cardMap[inv.credit_card_id]?.name ?? 'Cartão',
+        card_name:      cardMap[inv.credit_card_id]?.name ?? 'Cartao',
         card_color:     cardMap[inv.credit_card_id]?.color ?? '#6366f1',
         due_date:       inv.due_date,
         total_amount:   Number(inv.total_amount),
@@ -230,7 +228,7 @@ export default function DashboardPage() {
   }
 
   if (!hasAccounts) {
-    return <EmptyDashboard email={email} onOpenModal={() => {}} />
+    return <EmptyDashboard email={email} />
   }
 
   return (
@@ -243,17 +241,16 @@ export default function DashboardPage() {
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-400 hidden sm:block">{email}</span>
           <a href="/dashboard/transacoes" className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
-            + Nova Transação
+            + Nova Transacao
           </a>
         </div>
       </div>
 
-      {/* Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <div className="bg-white border border-gray-100 rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">Saldo em Contas</p>
           <p className={`text-lg font-bold ${saldoContas >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>{fmt(saldoContas)}</p>
-          <p className="text-[10px] text-gray-400 mt-1">Excluindo cartões</p>
+          <p className="text-[10px] text-gray-400 mt-1">Excluindo cartoes</p>
         </div>
         <div className="bg-white border border-gray-100 rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">Faturas Abertas</p>
@@ -261,30 +258,28 @@ export default function DashboardPage() {
           <p className="text-[10px] text-gray-400 mt-1">Total a pagar</p>
         </div>
         <div className="bg-white border border-gray-100 rounded-xl p-4">
-          <p className="text-xs text-gray-400 mb-1">Receitas do Mês</p>
+          <p className="text-xs text-gray-400 mb-1">Receitas do Mes</p>
           <p className="text-lg font-bold text-green-600">{fmt(recMes)}</p>
         </div>
         <div className="bg-white border border-gray-100 rounded-xl p-4">
-          <p className="text-xs text-gray-400 mb-1">Despesas do Mês</p>
+          <p className="text-xs text-gray-400 mb-1">Despesas do Mes</p>
           <p className="text-lg font-bold text-red-500">{fmt(despMes)}</p>
         </div>
       </div>
 
-      {/* Patrimônio líquido */}
       <div className={`rounded-xl px-5 py-4 mb-6 flex items-center justify-between border ${saldoLiquido >= 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
         <div>
-          <p className="text-xs font-medium text-gray-600">Patrimônio líquido estimado</p>
-          <p className="text-xs text-gray-400 mt-0.5">Saldo em contas − faturas em aberto</p>
+          <p className="text-xs font-medium text-gray-600">Patrimonio liquido estimado</p>
+          <p className="text-xs text-gray-400 mt-0.5">Saldo em contas menos faturas em aberto</p>
         </div>
         <p className={`text-2xl font-bold ${saldoLiquido >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmt(saldoLiquido)}</p>
       </div>
 
-      {/* Faturas a vencer */}
       {invoicesDue.length > 0 && (
         <div className="bg-white border border-gray-100 rounded-xl p-5 mb-6">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-medium text-gray-700">⚠️ Faturas próximas do vencimento</p>
-            <a href="/dashboard/faturas" className="text-xs text-indigo-500 hover:underline">Ver todas →</a>
+            <p className="text-sm font-medium text-gray-700">Faturas proximas do vencimento</p>
+            <a href="/dashboard/faturas" className="text-xs text-indigo-500 hover:underline">Ver todas</a>
           </div>
           <div className="space-y-2">
             {invoicesDue.map(inv => (
@@ -306,10 +301,9 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-6">
         <div className="lg:col-span-3 bg-white border border-gray-100 rounded-xl p-5">
-          <p className="text-sm font-medium text-gray-700 mb-4">Receitas × Despesas (6 meses)</p>
+          <p className="text-sm font-medium text-gray-700 mb-4">Receitas x Despesas (6 meses)</p>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={monthBars} barSize={12} barGap={3}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -326,7 +320,7 @@ export default function DashboardPage() {
           {catSlices.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-44 text-gray-300">
               <span className="text-4xl mb-2">📂</span>
-              <p className="text-xs">Sem dados este mês</p>
+              <p className="text-xs">Sem dados este mes</p>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
@@ -342,12 +336,11 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Atalhos */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Transações', href: '/dashboard/transacoes', emoji: '📋' },
+          { label: 'Transacoes', href: '/dashboard/transacoes', emoji: '📋' },
           { label: 'Contas',     href: '/dashboard/contas',     emoji: '🏦' },
-          { label: 'Cartões',    href: '/dashboard/cartoes',    emoji: '💳' },
+          { label: 'Cartoes',    href: '/dashboard/cartoes',    emoji: '💳' },
           { label: 'Faturas',    href: '/dashboard/faturas',    emoji: '📄' },
         ].map(link => (
           <a key={link.href} href={link.href} className="bg-white border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 rounded-xl px-4 py-3 text-sm text-gray-600 hover:text-indigo-700 font-medium transition-colors flex items-center gap-2">
