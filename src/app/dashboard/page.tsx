@@ -130,6 +130,41 @@ function EmptyDashboard({ email }: { email: string }) {
   )
 }
 
+function InvestimentoCard({ valor }: { valor: number }) {
+  const [visivel, setVisivel] = useState(() => {
+    try { return localStorage.getItem('sakel-inv-visivel') !== 'false' } catch { return true }
+  })
+
+  function toggle() {
+    const next = !visivel
+    setVisivel(next)
+    try { localStorage.setItem('sakel-inv-visivel', String(next)) } catch {}
+  }
+
+  return (
+    <div className="rounded-xl px-5 py-4 mb-6 flex items-center justify-between border bg-indigo-50 border-indigo-100">
+      <div>
+        <p className="text-xs font-medium text-gray-600">📈 Patrimônio investido</p>
+        <p className="text-xs text-gray-400 mt-0.5">Não incluso no saldo operacional</p>
+      </div>
+      <div className="text-right">
+        <div className="flex items-center gap-2 justify-end mb-1">
+          <p className="text-2xl font-bold text-indigo-700">
+            {visivel ? fmt(valor) : '••••••'}
+          </p>
+          <button
+            onClick={toggle}
+            title={visivel ? 'Ocultar valor' : 'Mostrar valor'}
+            className="text-indigo-400 hover:text-indigo-600 transition-colors text-sm"
+          >
+            {visivel ? '👁️' : '🙈'}
+          </button>
+        </div>
+        <a href="/dashboard/investimentos" className="text-xs text-indigo-500 hover:underline">Ver investimentos →</a>
+      </div>
+    </div>
+  )
+}
 export default function DashboardPage() {
   const supabase = createClient()
   const [email,               setEmail]               = useState('')
@@ -364,16 +399,7 @@ export default function DashboardPage() {
 
       {/* Patrimônio investido */}
       {patrimonioInvestido > 0 && (
-        <div className="rounded-xl px-5 py-4 mb-6 flex items-center justify-between border bg-indigo-50 border-indigo-100">
-          <div>
-            <p className="text-xs font-medium text-gray-600">📈 Patrimônio investido</p>
-            <p className="text-xs text-gray-400 mt-0.5">Não incluso no saldo operacional</p>
-          </div>
-          <div className="text-right">
-            <p className="text-2xl font-bold text-indigo-700">{fmt(patrimonioInvestido)}</p>
-            <a href="/dashboard/investimentos" className="text-xs text-indigo-500 hover:underline">Ver investimentos →</a>
-          </div>
-        </div>
+        <InvestimentoCard valor={patrimonioInvestido} />
       )}
 
       {/* Saldo Previsto */}
