@@ -167,13 +167,13 @@ a, button {
   background-color: #2a2d3a !important;
   color: var(--color-text-primary) !important;
   border-color: var(--color-border-md) !important;
-  /* ── Logo adaptável ao tema ─────────────────────────────── */
+ /* ── Logo adaptável ao tema ─────────────────────────────── */
 .sakel-logo {
   mix-blend-mode: multiply;
 }
 
 [data-theme="dark"] .sakel-logo {
   mix-blend-mode: normal;
-  filter: brightness(0) invert(1);
+  filter: brightness(0) invert(1) opacity(0.9);
 }
 }
