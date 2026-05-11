@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 type TxType = 'income' | 'expense' | 'transfer'
+type Frequency = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
 interface Account    { id: string; name: string; color: string; current_balance: number }
 interface Category   { id: string; name: string; type: string; icon: string }
@@ -17,24 +18,52 @@ const TYPE_LABELS: Record<TxType, string> = {
   transfer: '⇄ Transferência',
 }
 
+const FREQ_LABELS: Record<Frequency, string> = {
+  daily:   'Diária',
+  weekly:  'Semanal',
+  monthly: 'Mensal',
+  yearly:  'Anual',
+}
+
 const emptyForm = {
-  type: 'expense' as TxType,
-  description: '',
-  amount: '',
-  date: new Date().toISOString().split('T')[0],
-  account_id: '',
+  type:                   'expense' as TxType,
+  description:            '',
+  amount:                 '',
+  date:                   new Date().toISOString().split('T')[0],
+  account_id:             '',
   destination_account_id: '',
-  category_id: '',
-  notes: '',
-  status: 'paid',
-  use_credit_card: false,
-  credit_card_id: '',
+  category_id:            '',
+  notes:                  '',
+  status:                 'paid',
+  use_credit_card:        false,
+  credit_card_id:         '',
+  // recorrência
+  is_recurring:           false,
+  recurrence_frequency:   'monthly' as Frequency,
+  recurrence_end_date:    '',
+  // parcelamento
+  is_installment:         false,
+  installment_count:      2,
+  installment_first_date: new Date().toISOString().split('T')[0],
 }
 
 interface Props {
   open: boolean
   onClose: () => void
   onSaved?: () => void
+}
+
+// ─── Toggle visual ────────────────────────────────────────────────────────
+function Toggle({ active, onChange }: { active: boolean; onChange: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      className={`relative w-10 h-5 rounded-full transition-colors ${active ? 'bg-indigo-500' : 'bg-gray-200'}`}
+    >
+      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${active ? 'translate-x-5' : 'translate-x-0.5'}`} />
+    </button>
+  )
 }
 
 export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
@@ -53,13 +82,11 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-
       const [{ data: acc }, { data: cat }, { data: cards }] = await Promise.all([
         supabase.from('accounts').select('id, name, color, current_balance').eq('user_id', user.id).order('name'),
         supabase.from('categories').select('id, name, type, icon').eq('user_id', user.id).order('name'),
         supabase.from('credit_cards').select('id, name, color, closing_day, due_day').eq('user_id', user.id).eq('is_active', true).order('name'),
       ])
-
       const accList = (acc ?? []) as Account[]
       setAccounts(accList)
       setCategories((cat ?? []) as Category[])
@@ -77,47 +104,56 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     }
   }, [open])
 
+  // ─── valor da parcela calculado ──────────────────────────────────────
+  const amount = parseFloat(String(form.amount).replace(',', '.')) || 0
+  const valorParcela = form.is_installment && form.installment_count > 1
+    ? amount / form.installment_count
+    : amount
+
   async function getOrCreateInvoice(cardId: string, date: string, userId: string): Promise<string | null> {
-    const d = new Date(date + 'T12:00:00')
+    const d    = new Date(date + 'T12:00:00')
     const card = creditCards.find(c => c.id === cardId)
     if (!card) return null
-
     let month = d.getMonth() + 1
     let year  = d.getFullYear()
     if (d.getDate() > card.closing_day) {
       month = month === 12 ? 1 : month + 1
-      year  = month === 1 ? year + 1 : year
+      year  = month === 1  ? year + 1 : year
     }
-
     const { data: existing } = await supabase
-      .from('credit_card_invoices')
-      .select('id')
-      .eq('credit_card_id', cardId)
-      .eq('month', month)
-      .eq('year', year)
-      .single()
-
+      .from('credit_card_invoices').select('id')
+      .eq('credit_card_id', cardId).eq('month', month).eq('year', year).single()
     if (existing) return existing.id
 
     const dueMonth = month === 12 ? 1 : month + 1
     const dueYear  = month === 12 ? year + 1 : year
     const dueDate  = `${dueYear}-${String(dueMonth).padStart(2,'0')}-${String(card.due_day).padStart(2,'0')}`
-
     const { data: created } = await supabase
       .from('credit_card_invoices')
       .insert({ credit_card_id: cardId, user_id: userId, month, year, total_amount: 0, status: 'open', due_date: dueDate })
-      .select('id')
-      .single()
-
+      .select('id').single()
     return created?.id ?? null
+  }
+
+  // ─── datas das parcelas ───────────────────────────────────────────────
+  function getInstallmentDates(): string[] {
+    const dates: string[] = []
+    const base = new Date(form.installment_first_date + 'T12:00:00')
+    for (let i = 0; i < form.installment_count; i++) {
+      const d = new Date(base)
+      d.setMonth(d.getMonth() + i)
+      dates.push(d.toISOString().split('T')[0])
+    }
+    return dates
   }
 
   async function handleSave() {
     setError(null)
-    const amount = parseFloat(String(form.amount).replace(',', '.'))
-    if (!form.description.trim())     { setError('Descrição é obrigatória.'); return }
-    if (isNaN(amount) || amount <= 0) { setError('Valor deve ser maior que zero.'); return }
-
+    if (!form.description.trim())      { setError('Descrição é obrigatória.'); return }
+    if (isNaN(amount) || amount <= 0)  { setError('Valor deve ser maior que zero.'); return }
+    if (form.is_recurring && form.is_installment) {
+      setError('Uma transação não pode ser recorrente e parcelada ao mesmo tempo.'); return
+    }
     if (form.use_credit_card && form.type === 'expense') {
       if (!form.credit_card_id) { setError('Selecione um cartão.'); return }
     } else {
@@ -130,6 +166,111 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setError('Não autenticado.'); setSaving(false); return }
 
+    // ─── RECORRENTE ───────────────────────────────────────────────────
+    if (form.is_recurring) {
+      const recPayload = {
+        user_id:     user.id,
+        type:        form.type,
+        description: form.description.trim(),
+        amount,
+        frequency:   form.recurrence_frequency,
+        next_date:   form.date,
+        start_date:  form.date,
+        end_date:    form.recurrence_end_date || null,
+        account_id:  form.account_id || null,
+        category_id: form.category_id || null,
+        notes:       form.notes?.trim() || null,
+      }
+      const { error: recErr } = await supabase.from('recurrences').insert(recPayload)
+      if (recErr) { setError(recErr.message); setSaving(false); return }
+
+      // Também cria a transação do dia de hoje
+      const txPayload = {
+        user_id:     user.id,
+        type:        form.type,
+        description: form.description.trim(),
+        amount,
+        date:        form.date,
+        account_id:  form.account_id || null,
+        category_id: form.category_id || null,
+        notes:       form.notes?.trim() || null,
+        status:      form.status,
+        is_recurring: true,
+      }
+      await supabase.from('transactions').insert(txPayload)
+
+      setSaving(false); onSaved?.(); onClose(); return
+    }
+
+    // ─── PARCELADO ────────────────────────────────────────────────────
+    if (form.is_installment) {
+      const dates = getInstallmentDates()
+      // Cria um grupo de parcelamento
+      const { data: group, error: groupErr } = await supabase
+        .from('installment_groups')
+        .insert({
+          user_id:      user.id,
+          description:  form.description.trim(),
+          total_amount: amount,
+          count:        form.installment_count,
+          category_id:  form.category_id || null,
+          account_id:   form.account_id || null,
+          notes:        form.notes?.trim() || null,
+        })
+        .select('id').single()
+
+      if (groupErr || !group) { setError(groupErr?.message ?? 'Erro ao criar parcelamento.'); setSaving(false); return }
+
+      // Cria cada parcela como transação + installment
+      for (let i = 0; i < dates.length; i++) {
+        let invoiceId: string | null = null
+        let accountId = form.account_id || null
+
+        if (form.use_credit_card && form.type === 'expense') {
+          invoiceId = await getOrCreateInvoice(form.credit_card_id, dates[i], user.id)
+          accountId = null
+        }
+
+        const txPayload = {
+          user_id:         user.id,
+          type:            form.type,
+          description:     `${form.description.trim()} (${i + 1}/${form.installment_count})`,
+          amount:          parseFloat(valorParcela.toFixed(2)),
+          date:            dates[i],
+          account_id:      accountId,
+          category_id:     form.category_id || null,
+          notes:           form.notes?.trim() || null,
+          status:          i === 0 ? form.status : 'pending',
+          credit_card_id:  form.use_credit_card ? form.credit_card_id : null,
+          invoice_id:      invoiceId,
+          is_installment:  true,
+          installment_group_id: group.id,
+          installment_index:    i + 1,
+        }
+        const { data: tx } = await supabase.from('transactions').insert(txPayload).select('id').single()
+
+        // Registra na tabela de parcelas também
+        await supabase.from('installments').insert({
+          user_id:              user.id,
+          transaction_id:       tx?.id ?? null,
+          installment_group_id: group.id,
+          amount:               parseFloat(valorParcela.toFixed(2)),
+          due_date:             dates[i],
+          status:               i === 0 ? (form.status === 'paid' ? 'paid' : 'pending') : 'pending',
+          installment_index:    i + 1,
+        })
+
+        if (invoiceId) {
+          const { data } = await supabase.from('transactions').select('amount').eq('invoice_id', invoiceId)
+          const total = (data ?? []).reduce((s: number, t: any) => s + Number(t.amount), 0)
+          await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
+        }
+      }
+
+      setSaving(false); onSaved?.(); onClose(); return
+    }
+
+    // ─── TRANSAÇÃO NORMAL ─────────────────────────────────────────────
     let invoiceId: string | null = null
     let accountId = form.account_id || null
 
@@ -162,9 +303,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
     }
 
-    setSaving(false)
-    onSaved?.()
-    onClose()
+    setSaving(false); onSaved?.(); onClose()
   }
 
   const catsFiltradas = categories.filter(c =>
@@ -232,7 +371,9 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
           {/* Valor + Data */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm text-gray-600 mb-1">Valor (R$)</label>
+              <label className="block text-sm text-gray-600 mb-1">
+                {form.is_installment ? 'Valor total (R$)' : 'Valor (R$)'}
+              </label>
               <input
                 type="text"
                 inputMode="decimal"
@@ -243,11 +384,18 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
               />
             </div>
             <div>
-              <label className="block text-sm text-gray-600 mb-1">Data</label>
+              <label className="block text-sm text-gray-600 mb-1">
+                {form.is_installment ? 'Data 1ª parcela' : 'Data'}
+              </label>
               <input
                 type="date"
-                value={form.date}
-                onChange={e => setForm({ ...form, date: e.target.value })}
+                value={form.is_installment ? form.installment_first_date : form.date}
+                onChange={e => setForm({
+                  ...form,
+                  ...(form.is_installment
+                    ? { installment_first_date: e.target.value }
+                    : { date: e.target.value })
+                })}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
@@ -330,6 +478,136 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
             </div>
           )}
 
+          {/* ─── Toggle Recorrente ──────────────────────────────────────── */}
+          {form.type !== 'transfer' && (
+            <div className="border border-gray-100 rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">🔁</span>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Recorrente</p>
+                    <p className="text-[11px] text-gray-400">Repete automaticamente</p>
+                  </div>
+                </div>
+                <Toggle
+                  active={form.is_recurring}
+                  onChange={() => setForm({ ...form, is_recurring: !form.is_recurring, is_installment: false })}
+                />
+              </div>
+
+              {form.is_recurring && (
+                <div className="px-4 pb-4 space-y-3 bg-indigo-50 border-t border-indigo-100">
+                  <div className="pt-3">
+                    <label className="block text-xs text-gray-500 mb-1">Frequência</label>
+                    <div className="grid grid-cols-4 gap-1">
+                      {(['daily','weekly','monthly','yearly'] as Frequency[]).map(f => (
+                        <button
+                          key={f}
+                          onClick={() => setForm({ ...form, recurrence_frequency: f })}
+                          className={`py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                            form.recurrence_frequency === f
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'
+                          }`}
+                        >
+                          {FREQ_LABELS[f]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">
+                      Data de encerramento <span className="text-gray-400">(opcional)</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={form.recurrence_end_date}
+                      onChange={e => setForm({ ...form, recurrence_end_date: e.target.value })}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <p className="text-[11px] text-indigo-500">
+                    A partir de {form.date ? new Date(form.date + 'T12:00:00').toLocaleDateString('pt-BR') : '—'},
+                    repete {FREQ_LABELS[form.recurrence_frequency].toLowerCase()}
+                    {form.recurrence_end_date ? ` até ${new Date(form.recurrence_end_date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ' sem data de encerramento'}.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── Toggle Parcelado ───────────────────────────────────────── */}
+          {form.type === 'expense' && (
+            <div className="border border-gray-100 rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">📅</span>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Parcelado</p>
+                    <p className="text-[11px] text-gray-400">Divide em várias parcelas</p>
+                  </div>
+                </div>
+                <Toggle
+                  active={form.is_installment}
+                  onChange={() => setForm({ ...form, is_installment: !form.is_installment, is_recurring: false })}
+                />
+              </div>
+
+              {form.is_installment && (
+                <div className="px-4 pb-4 space-y-3 bg-orange-50 border-t border-orange-100">
+                  <div className="pt-3">
+                    <label className="block text-xs text-gray-500 mb-1">Número de parcelas</label>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setForm({ ...form, installment_count: Math.max(2, form.installment_count - 1) })}
+                        className="w-8 h-8 rounded-lg border border-gray-200 bg-white text-gray-600 font-bold hover:bg-gray-50 flex items-center justify-center text-lg"
+                      >−</button>
+                      <span className="text-sm font-bold text-gray-800 w-6 text-center">{form.installment_count}x</span>
+                      <button
+                        onClick={() => setForm({ ...form, installment_count: Math.min(48, form.installment_count + 1) })}
+                        className="w-8 h-8 rounded-lg border border-gray-200 bg-white text-gray-600 font-bold hover:bg-gray-50 flex items-center justify-center text-lg"
+                      >+</button>
+                      <div className="flex gap-1 ml-auto">
+                        {[2,3,6,12,24].map(n => (
+                          <button
+                            key={n}
+                            onClick={() => setForm({ ...form, installment_count: n })}
+                            className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                              form.installment_count === n
+                                ? 'bg-orange-500 text-white'
+                                : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'
+                            }`}
+                          >{n}x</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {amount > 0 && (
+                    <div className="bg-white rounded-lg px-3 py-2.5 border border-orange-100">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-gray-500">Valor por parcela</span>
+                        <span className="text-sm font-bold text-orange-600">{fmt(valorParcela)}</span>
+                      </div>
+                      <div className="flex justify-between items-center mt-1">
+                        <span className="text-xs text-gray-400">Total</span>
+                        <span className="text-xs text-gray-400">{form.installment_count}x de {fmt(valorParcela)} = {fmt(amount)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-orange-500">
+                    {form.installment_count} parcelas mensais a partir de{' '}
+                    {form.installment_first_date
+                      ? new Date(form.installment_first_date + 'T12:00:00').toLocaleDateString('pt-BR')
+                      : '—'}.
+                    A 1ª fica com status <strong>{form.status === 'paid' ? 'Pago' : 'Pendente'}</strong>, as demais como Pendente.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Observação */}
           <div>
             <label className="block text-sm text-gray-600 mb-1">
@@ -364,7 +642,10 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
               'bg-indigo-600 hover:bg-indigo-700'
             }`}
           >
-            {saving ? 'Salvando...' : 'Salvar'}
+            {saving ? 'Salvando…' :
+              form.is_installment ? `Salvar ${form.installment_count}x parcelas` :
+              form.is_recurring   ? 'Salvar recorrência' :
+              'Salvar'}
           </button>
         </div>
       </div>
