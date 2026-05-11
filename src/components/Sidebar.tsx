@@ -8,6 +8,7 @@ import ThemeToggle from './ThemeToggle'
 const navItems = [
   { href: '/dashboard',               label: 'Dashboard',     emoji: '📊' },
   { href: '/dashboard/transacoes',    label: 'Transacoes',    emoji: '💸' },
+  { href: '/dashboard/recorrencias', label: 'Recorrencias', emoji: '🔁' },
   { href: '/dashboard/contas',        label: 'Contas',        emoji: '🏦' },
   { href: '/dashboard/cartoes',       label: 'Cartoes',       emoji: '💳' },
   { href: '/dashboard/faturas',       label: 'Faturas',       emoji: '📄' },
