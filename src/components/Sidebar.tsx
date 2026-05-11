@@ -8,7 +8,7 @@ import ThemeToggle from './ThemeToggle'
 const navItems = [
   { href: '/dashboard',               label: 'Dashboard',     emoji: '📊' },
   { href: '/dashboard/transacoes',    label: 'Transacoes',    emoji: '💸' },
-  { href: '/dashboard/recorrencias', label: 'Recorrencias', emoji: '🔁' },
+  { href: '/dashboard/recorrencias',  label: 'Recorrencias',  emoji: '🔁' },
   { href: '/dashboard/contas',        label: 'Contas',        emoji: '🏦' },
   { href: '/dashboard/cartoes',       label: 'Cartoes',       emoji: '💳' },
   { href: '/dashboard/faturas',       label: 'Faturas',       emoji: '📄' },
@@ -33,23 +33,16 @@ export default function Sidebar() {
       style={{ background: 'var(--color-surface)', borderRight: '1px solid var(--color-border)', fontFamily: 'var(--font-main)' }}
     >
       {/* Logo */}
-      <div className="px-5 py-5 mb-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
-        <div className="flex items-center gap-2.5">
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold shrink-0"
-            style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}
-          >
-            S
-          </div>
-          <div>
-            <p className="text-sm font-bold" style={{ color: 'var(--color-text-primary)', letterSpacing: '-.01em' }}>SaKel</p>
-            <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Financas Pessoais</p>
-          </div>
-        </div>
+      <div className="px-5 py-4" style={{ borderBottom: '1px solid var(--color-border)' }}>
+        <img
+          src="/sakel-logo.png"
+          alt="SaKel Finanças"
+          className="h-10 w-auto"
+        />
       </div>
 
       {/* Nav label */}
-      <p className="px-5 mb-1.5 text-[10px] font-semibold tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
+      <p className="px-5 mt-4 mb-1.5 text-[10px] font-semibold tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
         Menu
       </p>
 
