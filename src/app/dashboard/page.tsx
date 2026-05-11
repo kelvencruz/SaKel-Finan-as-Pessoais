@@ -14,19 +14,11 @@ interface InvoiceDue {
   due_date: string; total_amount: number; days_until_due: number
 }
 
-interface Recurrence {
-  id: string
-  type: 'income' | 'expense'
-  amount: number
-  next_date: string
-  end_date: string | null
-}
-
-interface Installment {
-  id: string
-  amount: number
-  due_date: string
-  status: 'pending' | 'paid'
+interface ProjecaoItem {
+  label: string
+  value: number
+  color: string
+  sign: string
 }
 
 const SLICE_COLORS = ['#6366f1','#f97316','#22c55e','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6']
@@ -49,42 +41,12 @@ function InvoiceBadge({ days }: { days: number }) {
   return <span className="text-[10px] font-medium bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{days}d</span>
 }
 
-function SaldoPrevisto({
-  saldoAtual, recorrencias, parcelas, faturasAbertas,
-}: {
-  saldoAtual: number
-  recorrencias: Recurrence[]
-  parcelas: Installment[]
-  faturasAbertas: number
+function SaldoPrevisto({ itens, saldoPrevisto, recCount, instCount }: {
+  itens: ProjecaoItem[]
+  saldoPrevisto: number
+  recCount: number
+  instCount: number
 }) {
-  const hoje = new Date(); hoje.setHours(0,0,0,0)
-  const horizonte = new Date(hoje)
-  horizonte.setDate(horizonte.getDate() + 30)
-  const horizonteStr = horizonte.toISOString().split('T')[0]
-
-  const recEntradas = recorrencias.filter(r =>
-    r.type === 'income' && r.next_date <= horizonteStr &&
-    (r.end_date === null || r.end_date >= hoje.toISOString().split('T')[0])
-  )
-  const recSaidas = recorrencias.filter(r =>
-    r.type === 'expense' && r.next_date <= horizonteStr &&
-    (r.end_date === null || r.end_date >= hoje.toISOString().split('T')[0])
-  )
-  const parcelasPendentes = parcelas.filter(p => p.status === 'pending' && p.due_date <= horizonteStr)
-
-  const totalRecEntradas = recEntradas.reduce((s, r) => s + r.amount, 0)
-  const totalRecSaidas   = recSaidas.reduce((s, r) => s + r.amount, 0)
-  const totalParcelas    = parcelasPendentes.reduce((s, p) => s + p.amount, 0)
-  const saldoPrevisto    = saldoAtual + totalRecEntradas - totalRecSaidas - totalParcelas - faturasAbertas
-
-  const itens = [
-    { label: 'Saldo atual em contas',      value: saldoAtual,       color: 'text-indigo-600', sign: '' },
-    { label: 'Receitas recorrentes (30d)', value: totalRecEntradas,  color: 'text-green-600',  sign: '+' },
-    { label: 'Despesas recorrentes (30d)', value: totalRecSaidas,    color: 'text-red-500',    sign: '−' },
-    { label: 'Parcelas pendentes (30d)',   value: totalParcelas,     color: 'text-orange-500', sign: '−' },
-    { label: 'Faturas em aberto',          value: faturasAbertas,    color: 'text-purple-600', sign: '−' },
-  ]
-
   return (
     <div className="bg-white border border-gray-100 rounded-xl p-5 mb-6">
       <div className="flex items-center justify-between mb-4">
@@ -109,7 +71,7 @@ function SaldoPrevisto({
         <div>
           <p className="text-xs font-semibold text-gray-700">Saldo projetado</p>
           <p className="text-[10px] text-gray-400 mt-0.5">
-            {recEntradas.length + recSaidas.length} recorrência(s) · {parcelasPendentes.length} parcela(s)
+            {recCount} recorrência(s) · {instCount} parcela(s) pendente(s)
           </p>
         </div>
         <p className={`text-xl font-bold ${saldoPrevisto >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmt(saldoPrevisto)}</p>
@@ -181,8 +143,12 @@ export default function DashboardPage() {
   const [invoicesDue,         setInvoicesDue]         = useState<InvoiceDue[]>([])
   const [loading,             setLoading]             = useState(true)
   const [hasAccounts,         setHasAccounts]         = useState(true)
-  const [recorrencias,        setRecorrencias]        = useState<Recurrence[]>([])
-  const [parcelas,            setParcelas]            = useState<Installment[]>([])
+
+  // saldo previsto
+  const [projecaoItens,    setProjecaoItens]    = useState<ProjecaoItem[]>([])
+  const [saldoPrevisto,    setSaldoPrevisto]    = useState(0)
+  const [recCount,         setRecCount]         = useState(0)
+  const [instCount,        setInstCount]        = useState(0)
 
   useEffect(() => {
     async function load() {
@@ -195,11 +161,14 @@ export default function DashboardPage() {
       const month     = now.getMonth()
       const inicioMes = `${year}-${String(month + 1).padStart(2, '0')}-01`
       const fimMes    = new Date(year, month + 1, 0).toISOString().split('T')[0]
+      const hoje      = now.toISOString().split('T')[0]
+      const limit30   = new Date(now); limit30.setDate(limit30.getDate() + 30)
+      const horizon30 = limit30.toISOString().split('T')[0]
 
+      // Contas
       const { data: acc } = await supabase
         .from('accounts').select('current_balance')
         .eq('user_id', user.id).eq('is_active', true).neq('type', 'credit')
-
       const accList = (acc ?? []) as { current_balance: number }[]
 
       if (accList.length === 0) {
@@ -219,25 +188,21 @@ export default function DashboardPage() {
       const faturas = ((openInv ?? []) as { total_amount: number }[]).reduce((s, i) => s + Number(i.total_amount), 0)
       setTotalFaturas(faturas)
 
-      // Investimentos — separado do saldo operacional
+      // Investimentos
       const { data: invData } = await supabase
         .from('investments').select('current_amount')
         .eq('user_id', user.id).eq('is_active', true)
-      const totalInv = ((invData ?? []) as { current_amount: number }[])
-        .reduce((s, i) => s + Number(i.current_amount), 0)
+      const totalInv = ((invData ?? []) as { current_amount: number }[]).reduce((s, i) => s + Number(i.current_amount), 0)
       setPatrimonioInvestido(totalInv)
 
-      // Faturas próximas do vencimento
-      const limit30 = new Date(now); limit30.setDate(limit30.getDate() + 30)
+      // Faturas próximas
       const { data: dueInv } = await supabase
         .from('credit_card_invoices')
         .select('id, total_amount, status, due_date, credit_card_id')
         .eq('user_id', user.id).in('status', ['open','overdue'])
-        .lte('due_date', limit30.toISOString().split('T')[0]).order('due_date')
-
+        .lte('due_date', horizon30).order('due_date')
       const { data: cards } = await supabase.from('credit_cards').select('id, name, color').eq('user_id', user.id)
       const cardMap = Object.fromEntries(((cards ?? []) as { id: string; name: string; color: string }[]).map(c => [c.id, c]))
-
       setInvoicesDue(((dueInv ?? []) as { id: string; total_amount: number; due_date: string; credit_card_id: string }[]).map(inv => ({
         id:             inv.id,
         card_name:      cardMap[inv.credit_card_id]?.name ?? 'Cartao',
@@ -286,18 +251,49 @@ export default function DashboardPage() {
       })
       setCatSlices(Object.entries(catMap2).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 7))
 
-      // Recorrências
-      const horizon30 = limit30.toISOString().split('T')[0]
+      // ── SALDO PREVISTO ────────────────────────────────────────
+      // Recorrências: transações com is_recurring=true e status pending nos próximos 30 dias
       const { data: recData } = await supabase
-        .from('recurrences').select('id, type, amount, next_date, end_date')
-        .eq('user_id', user.id).lte('next_date', horizon30)
-      setRecorrencias(((recData ?? []) as Recurrence[]))
+        .from('transactions')
+        .select('type, amount, date')
+        .eq('user_id', user.id)
+        .eq('is_recurring', true)
+        .in('status', ['pending', 'overdue'])
+        .gte('date', hoje)
+        .lte('date', horizon30)
+        .in('type', ['income', 'expense'])
 
-      // Parcelas pendentes
+      const recArr = (recData ?? []) as { type: string; amount: number; date: string }[]
+      const recEntradas = recArr.filter(r => r.type === 'income').reduce((s, r) => s + Number(r.amount), 0)
+      const recSaidas   = recArr.filter(r => r.type === 'expense').reduce((s, r) => s + Number(r.amount), 0)
+      setRecCount(recArr.length)
+
+      // Parcelas: transações parceladas com status pending nos próximos 30 dias
       const { data: instData } = await supabase
-        .from('installments').select('id, amount, due_date, status')
-        .eq('user_id', user.id).eq('status', 'pending').lte('due_date', horizon30)
-      setParcelas(((instData ?? []) as Installment[]))
+        .from('transactions')
+        .select('type, amount, date')
+        .eq('user_id', user.id)
+        .not('installment_total', 'is', null)
+        .eq('status', 'pending')
+        .gte('date', hoje)
+        .lte('date', horizon30)
+        .in('type', ['income', 'expense'])
+
+      const instArr = (instData ?? []) as { type: string; amount: number }[]
+      const totalParcelas = instArr.filter(i => i.type === 'expense').reduce((s, i) => s + Number(i.amount), 0)
+      const parcelaReceitas = instArr.filter(i => i.type === 'income').reduce((s, i) => s + Number(i.amount), 0)
+      setInstCount(instArr.length)
+
+      const previsto = saldo + recEntradas + parcelaReceitas - recSaidas - totalParcelas - faturas
+
+      setProjecaoItens([
+        { label: 'Saldo atual em contas',       value: saldo,           color: 'text-indigo-600', sign: '' },
+        { label: 'Receitas recorrentes (30d)',   value: recEntradas,     color: 'text-green-600',  sign: '+' },
+        { label: 'Despesas recorrentes (30d)',   value: recSaidas,       color: 'text-red-500',    sign: '−' },
+        { label: 'Parcelas pendentes (30d)',     value: totalParcelas,   color: 'text-orange-500', sign: '−' },
+        { label: 'Faturas em aberto',            value: faturas,         color: 'text-purple-600', sign: '−' },
+      ])
+      setSaldoPrevisto(previsto)
 
       setLoading(false)
     }
@@ -335,7 +331,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* KPIs operacionais */}
+      {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <div className="bg-white border border-gray-100 rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">Saldo em Contas</p>
@@ -357,7 +353,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Patrimônio líquido operacional */}
+      {/* Saldo disponível */}
       <div className={`rounded-xl px-5 py-4 mb-4 flex items-center justify-between border ${saldoLiquido >= 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
         <div>
           <p className="text-xs font-medium text-gray-600">💰 Saldo disponível</p>
@@ -366,7 +362,7 @@ export default function DashboardPage() {
         <p className={`text-2xl font-bold ${saldoLiquido >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmt(saldoLiquido)}</p>
       </div>
 
-      {/* Patrimônio investido — SEPARADO do saldo operacional */}
+      {/* Patrimônio investido */}
       {patrimonioInvestido > 0 && (
         <div className="rounded-xl px-5 py-4 mb-6 flex items-center justify-between border bg-indigo-50 border-indigo-100">
           <div>
@@ -382,10 +378,10 @@ export default function DashboardPage() {
 
       {/* Saldo Previsto */}
       <SaldoPrevisto
-        saldoAtual={saldoContas}
-        recorrencias={recorrencias}
-        parcelas={parcelas}
-        faturasAbertas={totalFaturas}
+        itens={projecaoItens}
+        saldoPrevisto={saldoPrevisto}
+        recCount={recCount}
+        instCount={instCount}
       />
 
       {/* Faturas próximas */}
