@@ -33,13 +33,13 @@ export default function Sidebar() {
       style={{ background: 'var(--color-surface)', borderRight: '1px solid var(--color-border)', fontFamily: 'var(--font-main)' }}
     >
       {/* Logo */}
-      <div className="px-5 py-4" style={{ borderBottom: '1px solid var(--color-border)' }}>
-        <img
-          src="/sakel-logo.png"
-          alt="SaKel Finanças"
-          className="h-14 w-auto"
-        />
-      </div>
+<div className="px-4 py-4" style={{ borderBottom: '1px solid var(--color-border)' }}>
+  <img
+    src="/sakel-logo.png"
+    alt="SaKel Finanças"
+    className="h-16 w-auto sakel-logo"
+  />
+</div>
 
       {/* Nav label */}
       <p className="px-5 mt-4 mb-1.5 text-[10px] font-semibold tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
