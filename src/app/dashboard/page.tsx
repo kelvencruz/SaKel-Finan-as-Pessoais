@@ -6,6 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from 'recharts'
+import UserMenu from '@/components/UserMenu'
 
 interface MonthBar  { mes: string; receitas: number; despesas: number }
 interface CatSlice  { name: string; value: number }
@@ -13,12 +14,8 @@ interface InvoiceDue {
   id: string; card_name: string; card_color: string
   due_date: string; total_amount: number; days_until_due: number
 }
-
 interface ProjecaoItem {
-  label: string
-  value: number
-  color: string
-  sign: string
+  label: string; value: number; color: string; sign: string
 }
 
 const SLICE_COLORS = ['#6366f1','#f97316','#22c55e','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6']
@@ -41,11 +38,9 @@ function InvoiceBadge({ days }: { days: number }) {
   return <span className="text-[10px] font-medium bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{days}d</span>
 }
 
+// ─── Saldo Previsto ────────────────────────────────────────────────────────
 function SaldoPrevisto({ itens, saldoPrevisto, recCount, instCount }: {
-  itens: ProjecaoItem[]
-  saldoPrevisto: number
-  recCount: number
-  instCount: number
+  itens: ProjecaoItem[]; saldoPrevisto: number; recCount: number; instCount: number
 }) {
   return (
     <div className="bg-white border border-gray-100 rounded-xl p-5 mb-6">
@@ -57,7 +52,7 @@ function SaldoPrevisto({ itens, saldoPrevisto, recCount, instCount }: {
         <span className="text-[10px] font-medium bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full">30 dias</span>
       </div>
       <div className="space-y-2 mb-4">
-        {itens.map((item) => (
+        {itens.map(item => (
           <div key={item.label} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
             <p className="text-xs text-gray-500">{item.label}</p>
             <p className={`text-xs font-semibold ${item.color}`}>
@@ -80,67 +75,16 @@ function SaldoPrevisto({ itens, saldoPrevisto, recCount, instCount }: {
   )
 }
 
-function EmptyDashboard({ email }: { email: string }) {
-  return (
-    <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-10">
-        <div>
-          <h1 className="text-xl font-semibold">Dashboard</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Bem-vindo ao SaKel Financas</p>
-        </div>
-        <span className="text-sm text-gray-400 hidden sm:block">{email}</span>
-      </div>
-      <div className="bg-white border border-dashed border-gray-200 rounded-2xl p-10 text-center mb-6">
-        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl"
-          style={{ background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)' }}>🏦</div>
-        <h2 className="text-lg font-semibold text-gray-800 mb-2">Crie sua primeira conta</h2>
-        <p className="text-sm text-gray-400 max-w-sm mx-auto mb-6">
-          Para comecar a controlar suas financas, cadastre uma conta bancaria, carteira ou poupanca.
-        </p>
-        <a href="/dashboard/contas"
-          className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700">
-          Criar minha primeira conta
-        </a>
-      </div>
-      <p className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-3">O que voce pode fazer</p>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-        {[
-          { emoji: '🏦', title: 'Adicionar contas',  desc: 'Cadastre banco, carteira ou poupanca com saldo inicial.', href: '/dashboard/contas' },
-          { emoji: '💳', title: 'Cadastrar cartoes', desc: 'Vincule seus cartoes de credito e acompanhe faturas.',     href: '/dashboard/cartoes' },
-          { emoji: '🏷️', title: 'Ver categorias',   desc: '14 categorias padrao ja foram criadas para voce.',         href: '/dashboard/categorias' },
-        ].map(item => (
-          <a key={item.href} href={item.href}
-            className="bg-white border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 rounded-xl p-4 transition-colors group">
-            <span className="text-2xl mb-2 block">{item.emoji}</span>
-            <p className="text-sm font-medium text-gray-700 group-hover:text-indigo-700 mb-1">{item.title}</p>
-            <p className="text-xs text-gray-400">{item.desc}</p>
-          </a>
-        ))}
-      </div>
-      <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-5 py-4 flex items-start gap-3">
-        <span className="text-xl shrink-0">💡</span>
-        <div>
-          <p className="text-sm font-medium text-indigo-700 mb-0.5">Dica rapida</p>
-          <p className="text-xs text-indigo-500">
-            Apos criar uma conta, use o botao + no canto superior direito para registrar receitas e despesas.
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-}
-
+// ─── Card de Investimentos (com localStorage) ──────────────────────────────
 function InvestimentoCard({ valor }: { valor: number }) {
   const [visivel, setVisivel] = useState(() => {
     try { return localStorage.getItem('sakel-inv-visivel') !== 'false' } catch { return true }
   })
-
   function toggle() {
     const next = !visivel
     setVisivel(next)
     try { localStorage.setItem('sakel-inv-visivel', String(next)) } catch {}
   }
-
   return (
     <div className="rounded-xl px-5 py-4 mb-6 flex items-center justify-between border bg-indigo-50 border-indigo-100">
       <div>
@@ -165,8 +109,72 @@ function InvestimentoCard({ valor }: { valor: number }) {
     </div>
   )
 }
+
+// ─── Empty state ───────────────────────────────────────────────────────────
+function EmptyDashboard({ email }: { email: string }) {
+  return (
+    <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto">
+      <div className="flex items-center justify-between mb-10">
+        <div>
+          <h1 className="text-xl font-semibold">Dashboard</h1>
+          <p className="text-sm text-gray-400 mt-0.5">Bem-vindo ao SaKel Finanças</p>
+        </div>
+        <UserMenu />
+      </div>
+
+      <div className="bg-white border border-dashed border-gray-200 rounded-2xl p-10 text-center mb-6">
+        <div
+          className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl"
+          style={{ background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)' }}
+        >🏦</div>
+        <h2 className="text-lg font-semibold text-gray-800 mb-2">Crie sua primeira conta</h2>
+        <p className="text-sm text-gray-400 max-w-sm mx-auto mb-6">
+          Para começar a controlar suas finanças, cadastre uma conta bancária, carteira ou poupança.
+        </p>
+        <a
+          href="/dashboard/contas"
+          className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700"
+        >
+          Criar minha primeira conta
+        </a>
+      </div>
+
+      <p className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-3">O que você pode fazer</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+        {[
+          { emoji: '🏦', title: 'Adicionar contas',  desc: 'Cadastre banco, carteira ou poupança com saldo inicial.', href: '/dashboard/contas' },
+          { emoji: '💳', title: 'Cadastrar cartões', desc: 'Vincule seus cartões de crédito e acompanhe faturas.',     href: '/dashboard/cartoes' },
+          { emoji: '🏷️', title: 'Ver categorias',   desc: '14 categorias padrão já foram criadas para você.',         href: '/dashboard/categorias' },
+        ].map(item => (
+          <a
+            key={item.href} href={item.href}
+            className="bg-white border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 rounded-xl p-4 transition-colors group"
+          >
+            <span className="text-2xl mb-2 block">{item.emoji}</span>
+            <p className="text-sm font-medium text-gray-700 group-hover:text-indigo-700 mb-1">{item.title}</p>
+            <p className="text-xs text-gray-400">{item.desc}</p>
+          </a>
+        ))}
+      </div>
+
+      {/* Dica rápida — mantida do antigo */}
+      <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-5 py-4 flex items-start gap-3">
+        <span className="text-xl shrink-0">💡</span>
+        <div>
+          <p className="text-sm font-medium text-indigo-700 mb-0.5">Dica rápida</p>
+          <p className="text-xs text-indigo-500">
+            Após criar uma conta, use o botão + no canto inferior direito para registrar receitas e despesas de qualquer página.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Dashboard principal ───────────────────────────────────────────────────
 export default function DashboardPage() {
   const supabase = createClient()
+
   const [email,               setEmail]               = useState('')
   const [saldoContas,         setSaldoContas]         = useState(0)
   const [totalFaturas,        setTotalFaturas]        = useState(0)
@@ -178,12 +186,10 @@ export default function DashboardPage() {
   const [invoicesDue,         setInvoicesDue]         = useState<InvoiceDue[]>([])
   const [loading,             setLoading]             = useState(true)
   const [hasAccounts,         setHasAccounts]         = useState(true)
-
-  // saldo previsto
-  const [projecaoItens,    setProjecaoItens]    = useState<ProjecaoItem[]>([])
-  const [saldoPrevisto,    setSaldoPrevisto]    = useState(0)
-  const [recCount,         setRecCount]         = useState(0)
-  const [instCount,        setInstCount]        = useState(0)
+  const [projecaoItens,       setProjecaoItens]       = useState<ProjecaoItem[]>([])
+  const [saldoPrevisto,       setSaldoPrevisto]       = useState(0)
+  const [recCount,            setRecCount]            = useState(0)
+  const [instCount,           setInstCount]           = useState(0)
 
   useEffect(() => {
     async function load() {
@@ -206,11 +212,7 @@ export default function DashboardPage() {
         .eq('user_id', user.id).eq('is_active', true).neq('type', 'credit')
       const accList = (acc ?? []) as { current_balance: number }[]
 
-      if (accList.length === 0) {
-        setHasAccounts(false)
-        setLoading(false)
-        return
-      }
+      if (accList.length === 0) { setHasAccounts(false); setLoading(false); return }
 
       setHasAccounts(true)
       const saldo = accList.reduce((s, a) => s + Number(a.current_balance), 0)
@@ -227,10 +229,9 @@ export default function DashboardPage() {
       const { data: invData } = await supabase
         .from('investments').select('current_amount')
         .eq('user_id', user.id).eq('is_active', true)
-      const totalInv = ((invData ?? []) as { current_amount: number }[]).reduce((s, i) => s + Number(i.current_amount), 0)
-      setPatrimonioInvestido(totalInv)
+      setPatrimonioInvestido(((invData ?? []) as { current_amount: number }[]).reduce((s, i) => s + Number(i.current_amount), 0))
 
-      // Faturas próximas
+      // Faturas próximas do vencimento (30d)
       const { data: dueInv } = await supabase
         .from('credit_card_invoices')
         .select('id, total_amount, status, due_date, credit_card_id')
@@ -240,7 +241,7 @@ export default function DashboardPage() {
       const cardMap = Object.fromEntries(((cards ?? []) as { id: string; name: string; color: string }[]).map(c => [c.id, c]))
       setInvoicesDue(((dueInv ?? []) as { id: string; total_amount: number; due_date: string; credit_card_id: string }[]).map(inv => ({
         id:             inv.id,
-        card_name:      cardMap[inv.credit_card_id]?.name ?? 'Cartao',
+        card_name:      cardMap[inv.credit_card_id]?.name  ?? 'Cartão',
         card_color:     cardMap[inv.credit_card_id]?.color ?? '#6366f1',
         due_date:       inv.due_date,
         total_amount:   Number(inv.total_amount),
@@ -286,49 +287,38 @@ export default function DashboardPage() {
       })
       setCatSlices(Object.entries(catMap2).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 7))
 
-      // ── SALDO PREVISTO ────────────────────────────────────────
-      // Recorrências: transações com is_recurring=true e status pending nos próximos 30 dias
+      // Saldo Previsto — recorrências pendentes nos próximos 30d
       const { data: recData } = await supabase
-        .from('transactions')
-        .select('type, amount, date')
-        .eq('user_id', user.id)
-        .eq('is_recurring', true)
-        .in('status', ['pending', 'overdue'])
-        .gte('date', hoje)
-        .lte('date', horizon30)
-        .in('type', ['income', 'expense'])
-
-      const recArr = (recData ?? []) as { type: string; amount: number; date: string }[]
+        .from('transactions').select('type, amount, date')
+        .eq('user_id', user.id).eq('is_recurring', true)
+        .in('status', ['pending','overdue'])
+        .gte('date', hoje).lte('date', horizon30)
+        .in('type', ['income','expense'])
+      const recArr = (recData ?? []) as { type: string; amount: number }[]
       const recEntradas = recArr.filter(r => r.type === 'income').reduce((s, r) => s + Number(r.amount), 0)
       const recSaidas   = recArr.filter(r => r.type === 'expense').reduce((s, r) => s + Number(r.amount), 0)
       setRecCount(recArr.length)
 
-      // Parcelas: transações parceladas com status pending nos próximos 30 dias
+      // Saldo Previsto — parcelas pendentes nos próximos 30d
       const { data: instData } = await supabase
-        .from('transactions')
-        .select('type, amount, date')
-        .eq('user_id', user.id)
-        .not('installment_total', 'is', null)
+        .from('transactions').select('type, amount')
+        .eq('user_id', user.id).not('installment_total', 'is', null)
         .eq('status', 'pending')
-        .gte('date', hoje)
-        .lte('date', horizon30)
-        .in('type', ['income', 'expense'])
-
+        .gte('date', hoje).lte('date', horizon30)
+        .in('type', ['income','expense'])
       const instArr = (instData ?? []) as { type: string; amount: number }[]
-      const totalParcelas = instArr.filter(i => i.type === 'expense').reduce((s, i) => s + Number(i.amount), 0)
+      const totalParcelas   = instArr.filter(i => i.type === 'expense').reduce((s, i) => s + Number(i.amount), 0)
       const parcelaReceitas = instArr.filter(i => i.type === 'income').reduce((s, i) => s + Number(i.amount), 0)
       setInstCount(instArr.length)
 
-      const previsto = saldo + recEntradas + parcelaReceitas - recSaidas - totalParcelas - faturas
-
       setProjecaoItens([
-        { label: 'Saldo atual em contas',       value: saldo,           color: 'text-indigo-600', sign: '' },
-        { label: 'Receitas recorrentes (30d)',   value: recEntradas,     color: 'text-green-600',  sign: '+' },
-        { label: 'Despesas recorrentes (30d)',   value: recSaidas,       color: 'text-red-500',    sign: '−' },
-        { label: 'Parcelas pendentes (30d)',     value: totalParcelas,   color: 'text-orange-500', sign: '−' },
-        { label: 'Faturas em aberto',            value: faturas,         color: 'text-purple-600', sign: '−' },
+        { label: 'Saldo atual em contas',      value: saldo,         color: 'text-indigo-600', sign: ''  },
+        { label: 'Receitas recorrentes (30d)', value: recEntradas,   color: 'text-green-600',  sign: '+' },
+        { label: 'Despesas recorrentes (30d)', value: recSaidas,     color: 'text-red-500',    sign: '−' },
+        { label: 'Parcelas pendentes (30d)',   value: totalParcelas, color: 'text-orange-500', sign: '−' },
+        { label: 'Faturas em aberto',          value: faturas,       color: 'text-purple-600', sign: '−' },
       ])
-      setSaldoPrevisto(previsto)
+      setSaldoPrevisto(saldo + recEntradas + parcelaReceitas - recSaidas - totalParcelas - faturas)
 
       setLoading(false)
     }
@@ -352,21 +342,25 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto">
+
+      {/* ── Header: título + UserMenu ── */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold">Dashboard</h1>
           <p className="text-sm text-gray-400 mt-0.5">{MONTH_NAMES[now.getMonth()]} de {now.getFullYear()}</p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-400 hidden sm:block">{email}</span>
-          <a href="/dashboard/transacoes"
-            className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
-            + Nova Transacao
+          <a
+            href="/dashboard/transacoes"
+            className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+          >
+            + Nova Transação
           </a>
+          <UserMenu />
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* ── KPIs ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <div className="bg-white border border-gray-100 rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">Saldo em Contas</p>
@@ -388,21 +382,19 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Saldo disponível */}
+      {/* ── Saldo disponível (patrimônio líquido) ── */}
       <div className={`rounded-xl px-5 py-4 mb-4 flex items-center justify-between border ${saldoLiquido >= 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
         <div>
-          <p className="text-xs font-medium text-gray-600">💰 Saldo disponível</p>
+          <p className="text-xs font-medium text-gray-600">💰 Patrimônio líquido estimado</p>
           <p className="text-xs text-gray-400 mt-0.5">Saldo em contas menos faturas em aberto</p>
         </div>
         <p className={`text-2xl font-bold ${saldoLiquido >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmt(saldoLiquido)}</p>
       </div>
 
-      {/* Patrimônio investido */}
-      {patrimonioInvestido > 0 && (
-        <InvestimentoCard valor={patrimonioInvestido} />
-      )}
+      {/* ── Patrimônio investido (com localStorage) ── */}
+      {patrimonioInvestido > 0 && <InvestimentoCard valor={patrimonioInvestido} />}
 
-      {/* Saldo Previsto */}
+      {/* ── Saldo Previsto 30 dias ── */}
       <SaldoPrevisto
         itens={projecaoItens}
         saldoPrevisto={saldoPrevisto}
@@ -410,7 +402,7 @@ export default function DashboardPage() {
         instCount={instCount}
       />
 
-      {/* Faturas próximas */}
+      {/* ── Faturas próximas do vencimento ── */}
       {invoicesDue.length > 0 && (
         <div className="bg-white border border-gray-100 rounded-xl p-5 mb-6">
           <div className="flex items-center justify-between mb-3">
@@ -438,7 +430,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Gráficos */}
+      {/* ── Gráficos ── */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-6">
         <div className="lg:col-span-3 bg-white border border-gray-100 rounded-xl p-5">
           <p className="text-sm font-medium text-gray-700 mb-4">Receitas × Despesas (6 meses)</p>
@@ -474,7 +466,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Links rápidos */}
+      {/* ── Links rápidos ── */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
           { label: 'Transações',    href: '/dashboard/transacoes',    emoji: '📋' },
