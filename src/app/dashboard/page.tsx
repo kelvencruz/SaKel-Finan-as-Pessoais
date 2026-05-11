@@ -14,22 +14,20 @@ interface InvoiceDue {
   due_date: string; total_amount: number; days_until_due: number
 }
 
-// ─── Novos tipos para Saldo Previsto ───────────────────────────────────────
 interface Recurrence {
   id: string
   type: 'income' | 'expense'
   amount: number
-  next_date: string        // próxima execução (ISO date)
+  next_date: string
   end_date: string | null
 }
 
 interface Installment {
   id: string
-  amount: number           // valor da parcela
-  due_date: string         // data de vencimento da parcela
+  amount: number
+  due_date: string
   status: 'pending' | 'paid'
 }
-// ──────────────────────────────────────────────────────────────────────────
 
 const SLICE_COLORS = ['#6366f1','#f97316','#22c55e','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6']
 const MONTH_NAMES  = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -51,12 +49,8 @@ function InvoiceBadge({ days }: { days: number }) {
   return <span className="text-[10px] font-medium bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{days}d</span>
 }
 
-// ─── Bloco de Saldo Previsto ───────────────────────────────────────────────
 function SaldoPrevisto({
-  saldoAtual,
-  recorrencias,
-  parcelas,
-  faturasAbertas,
+  saldoAtual, recorrencias, parcelas, faturasAbertas,
 }: {
   saldoAtual: number
   recorrencias: Recurrence[]
@@ -64,41 +58,31 @@ function SaldoPrevisto({
   faturasAbertas: number
 }) {
   const hoje = new Date(); hoje.setHours(0,0,0,0)
-
-  // Horizonte: 30 dias à frente
   const horizonte = new Date(hoje)
   horizonte.setDate(horizonte.getDate() + 30)
   const horizonteStr = horizonte.toISOString().split('T')[0]
 
-  // Recorrências que vencem nos próximos 30 dias (e não terminaram)
   const recEntradas = recorrencias.filter(r =>
-    r.type === 'income' &&
-    r.next_date <= horizonteStr &&
+    r.type === 'income' && r.next_date <= horizonteStr &&
     (r.end_date === null || r.end_date >= hoje.toISOString().split('T')[0])
   )
   const recSaidas = recorrencias.filter(r =>
-    r.type === 'expense' &&
-    r.next_date <= horizonteStr &&
+    r.type === 'expense' && r.next_date <= horizonteStr &&
     (r.end_date === null || r.end_date >= hoje.toISOString().split('T')[0])
   )
+  const parcelasPendentes = parcelas.filter(p => p.status === 'pending' && p.due_date <= horizonteStr)
 
-  // Parcelas pendentes nos próximos 30 dias
-  const parcelasPendentes = parcelas.filter(p =>
-    p.status === 'pending' && p.due_date <= horizonteStr
-  )
-
-  const totalRecEntradas   = recEntradas.reduce((s, r) => s + r.amount, 0)
-  const totalRecSaidas     = recSaidas.reduce((s, r) => s + r.amount, 0)
-  const totalParcelas      = parcelasPendentes.reduce((s, p) => s + p.amount, 0)
-
-  const saldoPrevisto = saldoAtual + totalRecEntradas - totalRecSaidas - totalParcelas - faturasAbertas
+  const totalRecEntradas = recEntradas.reduce((s, r) => s + r.amount, 0)
+  const totalRecSaidas   = recSaidas.reduce((s, r) => s + r.amount, 0)
+  const totalParcelas    = parcelasPendentes.reduce((s, p) => s + p.amount, 0)
+  const saldoPrevisto    = saldoAtual + totalRecEntradas - totalRecSaidas - totalParcelas - faturasAbertas
 
   const itens = [
-    { label: 'Saldo atual em contas',     value: saldoAtual,        color: 'text-indigo-600',  sign: '' },
-    { label: 'Receitas recorrentes (30d)', value: totalRecEntradas,  color: 'text-green-600',   sign: '+' },
-    { label: 'Despesas recorrentes (30d)', value: totalRecSaidas,    color: 'text-red-500',     sign: '−' },
-    { label: 'Parcelas pendentes (30d)',   value: totalParcelas,     color: 'text-orange-500',  sign: '−' },
-    { label: 'Faturas em aberto',          value: faturasAbertas,    color: 'text-purple-600',  sign: '−' },
+    { label: 'Saldo atual em contas',      value: saldoAtual,       color: 'text-indigo-600', sign: '' },
+    { label: 'Receitas recorrentes (30d)', value: totalRecEntradas,  color: 'text-green-600',  sign: '+' },
+    { label: 'Despesas recorrentes (30d)', value: totalRecSaidas,    color: 'text-red-500',    sign: '−' },
+    { label: 'Parcelas pendentes (30d)',   value: totalParcelas,     color: 'text-orange-500', sign: '−' },
+    { label: 'Faturas em aberto',          value: faturasAbertas,    color: 'text-purple-600', sign: '−' },
   ]
 
   return (
@@ -110,7 +94,6 @@ function SaldoPrevisto({
         </div>
         <span className="text-[10px] font-medium bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full">30 dias</span>
       </div>
-
       <div className="space-y-2 mb-4">
         {itens.map((item) => (
           <div key={item.label} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
@@ -122,7 +105,6 @@ function SaldoPrevisto({
           </div>
         ))}
       </div>
-
       <div className={`rounded-lg px-4 py-3 flex items-center justify-between ${saldoPrevisto >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
         <div>
           <p className="text-xs font-semibold text-gray-700">Saldo projetado</p>
@@ -130,14 +112,11 @@ function SaldoPrevisto({
             {recEntradas.length + recSaidas.length} recorrência(s) · {parcelasPendentes.length} parcela(s)
           </p>
         </div>
-        <p className={`text-xl font-bold ${saldoPrevisto >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-          {fmt(saldoPrevisto)}
-        </p>
+        <p className={`text-xl font-bold ${saldoPrevisto >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmt(saldoPrevisto)}</p>
       </div>
     </div>
   )
 }
-// ──────────────────────────────────────────────────────────────────────────
 
 function EmptyDashboard({ email }: { email: string }) {
   return (
@@ -149,47 +128,39 @@ function EmptyDashboard({ email }: { email: string }) {
         </div>
         <span className="text-sm text-gray-400 hidden sm:block">{email}</span>
       </div>
-
       <div className="bg-white border border-dashed border-gray-200 rounded-2xl p-10 text-center mb-6">
-        <div
-          className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl"
-          style={{ background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)' }}
-        >
-          🏦
-        </div>
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl"
+          style={{ background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)' }}>🏦</div>
         <h2 className="text-lg font-semibold text-gray-800 mb-2">Crie sua primeira conta</h2>
         <p className="text-sm text-gray-400 max-w-sm mx-auto mb-6">
           Para comecar a controlar suas financas, cadastre uma conta bancaria, carteira ou poupanca.
         </p>
-        <a
-          href="/dashboard/contas"
-          className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700"
-        >
+        <a href="/dashboard/contas"
+          className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700">
           Criar minha primeira conta
         </a>
       </div>
-
       <p className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-3">O que voce pode fazer</p>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         {[
-          { emoji: '🏦', title: 'Adicionar contas', desc: 'Cadastre banco, carteira ou poupanca com saldo inicial.', href: '/dashboard/contas' },
-          { emoji: '💳', title: 'Cadastrar cartoes', desc: 'Vincule seus cartoes de credito e acompanhe faturas.', href: '/dashboard/cartoes' },
-          { emoji: '🏷️', title: 'Ver categorias', desc: '14 categorias padrao ja foram criadas para voce.', href: '/dashboard/categorias' },
+          { emoji: '🏦', title: 'Adicionar contas',  desc: 'Cadastre banco, carteira ou poupanca com saldo inicial.', href: '/dashboard/contas' },
+          { emoji: '💳', title: 'Cadastrar cartoes', desc: 'Vincule seus cartoes de credito e acompanhe faturas.',     href: '/dashboard/cartoes' },
+          { emoji: '🏷️', title: 'Ver categorias',   desc: '14 categorias padrao ja foram criadas para voce.',         href: '/dashboard/categorias' },
         ].map(item => (
-          <a key={item.href} href={item.href} className="bg-white border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 rounded-xl p-4 transition-colors group">
+          <a key={item.href} href={item.href}
+            className="bg-white border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 rounded-xl p-4 transition-colors group">
             <span className="text-2xl mb-2 block">{item.emoji}</span>
             <p className="text-sm font-medium text-gray-700 group-hover:text-indigo-700 mb-1">{item.title}</p>
             <p className="text-xs text-gray-400">{item.desc}</p>
           </a>
         ))}
       </div>
-
       <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-5 py-4 flex items-start gap-3">
         <span className="text-xl shrink-0">💡</span>
         <div>
           <p className="text-sm font-medium text-indigo-700 mb-0.5">Dica rapida</p>
           <p className="text-xs text-indigo-500">
-            Apos criar uma conta, use o botao + no canto inferior direito para registrar receitas e despesas de qualquer pagina.
+            Apos criar uma conta, use o botao + no canto superior direito para registrar receitas e despesas.
           </p>
         </div>
       </div>
@@ -199,21 +170,19 @@ function EmptyDashboard({ email }: { email: string }) {
 
 export default function DashboardPage() {
   const supabase = createClient()
-  const [email,          setEmail]          = useState('')
-  const [saldoContas,    setSaldoContas]    = useState(0)
-  const [totalFaturas,   setTotalFaturas]   = useState(0)
-  const [recMes,         setRecMes]         = useState(0)
-  const [despMes,        setDespMes]        = useState(0)
-  const [monthBars,      setMonthBars]      = useState<MonthBar[]>([])
-  const [catSlices,      setCatSlices]      = useState<CatSlice[]>([])
-  const [invoicesDue,    setInvoicesDue]    = useState<InvoiceDue[]>([])
-  const [loading,        setLoading]        = useState(true)
-  const [hasAccounts,    setHasAccounts]    = useState(true)
-
-  // ─── Novos estados para Saldo Previsto ──────────────────────────────────
-  const [recorrencias,   setRecorrencias]   = useState<Recurrence[]>([])
-  const [parcelas,       setParcelas]       = useState<Installment[]>([])
-  // ────────────────────────────────────────────────────────────────────────
+  const [email,               setEmail]               = useState('')
+  const [saldoContas,         setSaldoContas]         = useState(0)
+  const [totalFaturas,        setTotalFaturas]        = useState(0)
+  const [patrimonioInvestido, setPatrimonioInvestido] = useState(0)
+  const [recMes,              setRecMes]              = useState(0)
+  const [despMes,             setDespMes]             = useState(0)
+  const [monthBars,           setMonthBars]           = useState<MonthBar[]>([])
+  const [catSlices,           setCatSlices]           = useState<CatSlice[]>([])
+  const [invoicesDue,         setInvoicesDue]         = useState<InvoiceDue[]>([])
+  const [loading,             setLoading]             = useState(true)
+  const [hasAccounts,         setHasAccounts]         = useState(true)
+  const [recorrencias,        setRecorrencias]        = useState<Recurrence[]>([])
+  const [parcelas,            setParcelas]            = useState<Installment[]>([])
 
   useEffect(() => {
     async function load() {
@@ -228,7 +197,8 @@ export default function DashboardPage() {
       const fimMes    = new Date(year, month + 1, 0).toISOString().split('T')[0]
 
       const { data: acc } = await supabase
-        .from('accounts').select('current_balance').eq('user_id', user.id).eq('is_active', true).neq('type', 'credit')
+        .from('accounts').select('current_balance')
+        .eq('user_id', user.id).eq('is_active', true).neq('type', 'credit')
 
       const accList = (acc ?? []) as { current_balance: number }[]
 
@@ -242,11 +212,22 @@ export default function DashboardPage() {
       const saldo = accList.reduce((s, a) => s + Number(a.current_balance), 0)
       setSaldoContas(saldo)
 
+      // Faturas abertas
       const { data: openInv } = await supabase
-        .from('credit_card_invoices').select('total_amount').eq('user_id', user.id).in('status', ['open','overdue'])
+        .from('credit_card_invoices').select('total_amount')
+        .eq('user_id', user.id).in('status', ['open','overdue'])
       const faturas = ((openInv ?? []) as { total_amount: number }[]).reduce((s, i) => s + Number(i.total_amount), 0)
       setTotalFaturas(faturas)
 
+      // Investimentos — separado do saldo operacional
+      const { data: invData } = await supabase
+        .from('investments').select('current_amount')
+        .eq('user_id', user.id).eq('is_active', true)
+      const totalInv = ((invData ?? []) as { current_amount: number }[])
+        .reduce((s, i) => s + Number(i.current_amount), 0)
+      setPatrimonioInvestido(totalInv)
+
+      // Faturas próximas do vencimento
       const limit30 = new Date(now); limit30.setDate(limit30.getDate() + 30)
       const { data: dueInv } = await supabase
         .from('credit_card_invoices')
@@ -266,6 +247,7 @@ export default function DashboardPage() {
         days_until_due: daysUntil(inv.due_date),
       })))
 
+      // Receitas e despesas do mês
       const { data: txMes } = await supabase
         .from('transactions').select('type, amount').eq('user_id', user.id)
         .gte('date', inicioMes).lte('date', fimMes).in('type', ['income','expense'])
@@ -273,6 +255,7 @@ export default function DashboardPage() {
       setRecMes( txArr.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0))
       setDespMes(txArr.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0))
 
+      // Gráfico 6 meses
       const meses = Array.from({ length: 6 }, (_, i) => {
         const d = new Date(year, month - (5 - i), 1)
         return { key: d.toISOString().slice(0, 7), label: MONTH_NAMES[d.getMonth()] + '/' + String(d.getFullYear()).slice(2) }
@@ -290,6 +273,7 @@ export default function DashboardPage() {
         }
       }))
 
+      // Pizza categorias
       const { data: txCat } = await supabase
         .from('transactions').select('amount, category_id').eq('user_id', user.id)
         .eq('type', 'expense').gte('date', inicioMes).lte('date', fimMes)
@@ -302,28 +286,18 @@ export default function DashboardPage() {
       })
       setCatSlices(Object.entries(catMap2).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 7))
 
-      // ─── Carregar recorrências ─────────────────────────────────────────
-      // Supõe tabela `recurrences` com colunas:
-      //   id, user_id, type ('income'|'expense'), amount, next_date, end_date
+      // Recorrências
       const horizon30 = limit30.toISOString().split('T')[0]
       const { data: recData } = await supabase
-        .from('recurrences')
-        .select('id, type, amount, next_date, end_date')
-        .eq('user_id', user.id)
-        .lte('next_date', horizon30)
+        .from('recurrences').select('id, type, amount, next_date, end_date')
+        .eq('user_id', user.id).lte('next_date', horizon30)
       setRecorrencias(((recData ?? []) as Recurrence[]))
 
-      // ─── Carregar parcelas pendentes ───────────────────────────────────
-      // Supõe tabela `installments` com colunas:
-      //   id, user_id, amount, due_date, status ('pending'|'paid')
+      // Parcelas pendentes
       const { data: instData } = await supabase
-        .from('installments')
-        .select('id, amount, due_date, status')
-        .eq('user_id', user.id)
-        .eq('status', 'pending')
-        .lte('due_date', horizon30)
+        .from('installments').select('id, amount, due_date, status')
+        .eq('user_id', user.id).eq('status', 'pending').lte('due_date', horizon30)
       setParcelas(((instData ?? []) as Installment[]))
-      // ──────────────────────────────────────────────────────────────────
 
       setLoading(false)
     }
@@ -343,9 +317,7 @@ export default function DashboardPage() {
     )
   }
 
-  if (!hasAccounts) {
-    return <EmptyDashboard email={email} />
-  }
+  if (!hasAccounts) return <EmptyDashboard email={email} />
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto">
@@ -356,17 +328,19 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-400 hidden sm:block">{email}</span>
-          <a href="/dashboard/transacoes" className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+          <a href="/dashboard/transacoes"
+            className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
             + Nova Transacao
           </a>
         </div>
       </div>
 
+      {/* KPIs operacionais */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <div className="bg-white border border-gray-100 rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">Saldo em Contas</p>
           <p className={`text-lg font-bold ${saldoContas >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>{fmt(saldoContas)}</p>
-          <p className="text-[10px] text-gray-400 mt-1">Excluindo cartoes</p>
+          <p className="text-[10px] text-gray-400 mt-1">Excluindo cartões</p>
         </div>
         <div className="bg-white border border-gray-100 rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">Faturas Abertas</p>
@@ -374,43 +348,59 @@ export default function DashboardPage() {
           <p className="text-[10px] text-gray-400 mt-1">Total a pagar</p>
         </div>
         <div className="bg-white border border-gray-100 rounded-xl p-4">
-          <p className="text-xs text-gray-400 mb-1">Receitas do Mes</p>
+          <p className="text-xs text-gray-400 mb-1">Receitas do Mês</p>
           <p className="text-lg font-bold text-green-600">{fmt(recMes)}</p>
         </div>
         <div className="bg-white border border-gray-100 rounded-xl p-4">
-          <p className="text-xs text-gray-400 mb-1">Despesas do Mes</p>
+          <p className="text-xs text-gray-400 mb-1">Despesas do Mês</p>
           <p className="text-lg font-bold text-red-500">{fmt(despMes)}</p>
         </div>
       </div>
 
-      <div className={`rounded-xl px-5 py-4 mb-6 flex items-center justify-between border ${saldoLiquido >= 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
+      {/* Patrimônio líquido operacional */}
+      <div className={`rounded-xl px-5 py-4 mb-4 flex items-center justify-between border ${saldoLiquido >= 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
         <div>
-          <p className="text-xs font-medium text-gray-600">Patrimonio liquido estimado</p>
+          <p className="text-xs font-medium text-gray-600">💰 Saldo disponível</p>
           <p className="text-xs text-gray-400 mt-0.5">Saldo em contas menos faturas em aberto</p>
         </div>
         <p className={`text-2xl font-bold ${saldoLiquido >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmt(saldoLiquido)}</p>
       </div>
 
-      {/* ─── Saldo Previsto ─────────────────────────────────────────────── */}
+      {/* Patrimônio investido — SEPARADO do saldo operacional */}
+      {patrimonioInvestido > 0 && (
+        <div className="rounded-xl px-5 py-4 mb-6 flex items-center justify-between border bg-indigo-50 border-indigo-100">
+          <div>
+            <p className="text-xs font-medium text-gray-600">📈 Patrimônio investido</p>
+            <p className="text-xs text-gray-400 mt-0.5">Não incluso no saldo operacional</p>
+          </div>
+          <div className="text-right">
+            <p className="text-2xl font-bold text-indigo-700">{fmt(patrimonioInvestido)}</p>
+            <a href="/dashboard/investimentos" className="text-xs text-indigo-500 hover:underline">Ver investimentos →</a>
+          </div>
+        </div>
+      )}
+
+      {/* Saldo Previsto */}
       <SaldoPrevisto
         saldoAtual={saldoContas}
         recorrencias={recorrencias}
         parcelas={parcelas}
         faturasAbertas={totalFaturas}
       />
-      {/* ────────────────────────────────────────────────────────────────── */}
 
+      {/* Faturas próximas */}
       {invoicesDue.length > 0 && (
         <div className="bg-white border border-gray-100 rounded-xl p-5 mb-6">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-medium text-gray-700">Faturas proximas do vencimento</p>
+            <p className="text-sm font-medium text-gray-700">Faturas próximas do vencimento</p>
             <a href="/dashboard/faturas" className="text-xs text-indigo-500 hover:underline">Ver todas</a>
           </div>
           <div className="space-y-2">
             {invoicesDue.map(inv => (
               <div key={inv.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs shrink-0" style={{ backgroundColor: inv.card_color }}>💳</div>
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs shrink-0"
+                    style={{ backgroundColor: inv.card_color }}>💳</div>
                   <div>
                     <p className="text-sm font-medium text-gray-800">{inv.card_name}</p>
                     <p className="text-xs text-gray-400">Vence {new Date(inv.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
@@ -426,9 +416,10 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-6">
         <div className="lg:col-span-3 bg-white border border-gray-100 rounded-xl p-5">
-          <p className="text-sm font-medium text-gray-700 mb-4">Receitas x Despesas (6 meses)</p>
+          <p className="text-sm font-medium text-gray-700 mb-4">Receitas × Despesas (6 meses)</p>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={monthBars} barSize={12} barGap={3}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -445,7 +436,7 @@ export default function DashboardPage() {
           {catSlices.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-44 text-gray-300">
               <span className="text-4xl mb-2">📂</span>
-              <p className="text-xs">Sem dados este mes</p>
+              <p className="text-xs">Sem dados este mês</p>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
@@ -461,14 +452,17 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* Links rápidos */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
-          { label: 'Transacoes', href: '/dashboard/transacoes', emoji: '📋' },
-          { label: 'Contas',     href: '/dashboard/contas',     emoji: '🏦' },
-          { label: 'Cartoes',    href: '/dashboard/cartoes',    emoji: '💳' },
-          { label: 'Faturas',    href: '/dashboard/faturas',    emoji: '📄' },
+          { label: 'Transações',    href: '/dashboard/transacoes',    emoji: '📋' },
+          { label: 'Contas',        href: '/dashboard/contas',        emoji: '🏦' },
+          { label: 'Cartões',       href: '/dashboard/cartoes',       emoji: '💳' },
+          { label: 'Faturas',       href: '/dashboard/faturas',       emoji: '📄' },
+          { label: 'Investimentos', href: '/dashboard/investimentos', emoji: '📈' },
         ].map(link => (
-          <a key={link.href} href={link.href} className="bg-white border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 rounded-xl px-4 py-3 text-sm text-gray-600 hover:text-indigo-700 font-medium transition-colors flex items-center gap-2">
+          <a key={link.href} href={link.href}
+            className="bg-white border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 rounded-xl px-4 py-3 text-sm text-gray-600 hover:text-indigo-700 font-medium transition-colors flex items-center gap-2">
             <span>{link.emoji}</span> {link.label}
           </a>
         ))}
