@@ -37,7 +37,7 @@ export default function Sidebar() {
         <img
           src="/sakel-logo.png"
           alt="SaKel Finanças"
-          className="h-10 w-auto"
+          className="h-14 w-auto"
         />
       </div>
 
