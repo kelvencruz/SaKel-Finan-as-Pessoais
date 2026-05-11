@@ -2,8 +2,17 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'SaKel Financas',
-  description: 'Seu sistema de financas pessoais',
+  title: 'SaKel Finanças',
+  description: 'Controle financeiro inteligente e elegante. Organize receitas, despesas, cartões e faturas em um só lugar.',
+  icons: {
+    icon: '/sakel-logo.png',
+    apple: '/sakel-logo.png',
+  },
+  openGraph: {
+    title: 'SaKel Finanças',
+    description: 'Controle financeiro inteligente e elegante.',
+    siteName: 'SaKel Finanças',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
