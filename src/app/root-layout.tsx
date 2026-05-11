@@ -1,0 +1,32 @@
+import type { Metadata } from 'next'
+import './globals.css'
+
+export const metadata: Metadata = {
+  title: 'SaKel Financas',
+  description: 'Seu sistema de financas pessoais',
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="pt-BR" suppressHydrationWarning>
+      <head>
+        {/* Script inline: aplica tema ANTES do render para evitar flash */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function() {
+            try {
+              var saved = localStorage.getItem('sakel-theme');
+              if (saved === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+              } else if (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+              }
+            } catch(e) {}
+          })();
+        `}} />
+      </head>
+      <body className="antialiased">
+        {children}
+      </body>
+    </html>
+  )
+}

@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import ThemeToggle from './ThemeToggle'
 
 const navItems = [
   { href: '/dashboard',               label: 'Dashboard',     emoji: '📊' },
@@ -27,8 +28,8 @@ export default function Sidebar() {
 
   const SidebarContent = () => (
     <aside
-      className="flex flex-col w-56 h-full bg-white"
-      style={{ borderRight: '1px solid var(--color-border)', fontFamily: 'var(--font-main)' }}
+      className="flex flex-col w-56 h-full"
+      style={{ background: 'var(--color-surface)', borderRight: '1px solid var(--color-border)', fontFamily: 'var(--font-main)' }}
     >
       {/* Logo */}
       <div className="px-5 py-5 mb-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
@@ -83,8 +84,9 @@ export default function Sidebar() {
       {/* Divider */}
       <div className="mx-4 my-3" style={{ borderTop: '1px solid var(--color-border)' }} />
 
-      {/* Logout */}
-      <div className="px-2 pb-4">
+      {/* Theme toggle + Logout */}
+      <div className="px-2 pb-4 space-y-0.5">
+        <ThemeToggle />
         <button
           onClick={handleLogout}
           className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:bg-red-50 hover:text-red-500"
@@ -99,15 +101,16 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* ── Desktop: sidebar fixa ── */}
+      {/* Desktop: sidebar fixa */}
       <div className="hidden md:flex w-56 min-h-screen shrink-0">
         <SidebarContent />
       </div>
 
-      {/* ── Mobile: botao hamburguer ── */}
+      {/* Mobile: botao hamburguer */}
       <button
         onClick={() => setOpen(true)}
-        className="md:hidden fixed top-4 left-4 z-50 w-9 h-9 flex items-center justify-center rounded-lg bg-white shadow border border-gray-100"
+        className="md:hidden fixed top-4 left-4 z-50 w-9 h-9 flex items-center justify-center rounded-lg shadow border"
+        style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
         aria-label="Abrir menu"
       >
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -117,7 +120,7 @@ export default function Sidebar() {
         </svg>
       </button>
 
-      {/* ── Mobile: overlay ── */}
+      {/* Mobile: overlay */}
       {open && (
         <div
           className="md:hidden fixed inset-0 z-40 bg-black/40"
@@ -125,7 +128,7 @@ export default function Sidebar() {
         />
       )}
 
-      {/* ── Mobile: drawer ── */}
+      {/* Mobile: drawer */}
       <div
         className={`md:hidden fixed top-0 left-0 z-50 h-full transition-transform duration-300 ${open ? 'translate-x-0' : '-translate-x-full'}`}
       >
