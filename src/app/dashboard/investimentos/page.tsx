@@ -8,21 +8,27 @@ interface Investment {
   user_id: string
   name: string
   type: string
-  objective: string | null
+  goal_id: string | null
   institution: string | null
   initial_amount: number
   current_amount: number
-  profitability: number | null
-  liquidity: string | null
+  profitability: string | null
+  liquidity_type: string | null
+  liquidity_date: string | null
   start_date: string | null
   is_active: boolean
   notes: string | null
   created_at: string
 }
 
+interface Goal {
+  id: string
+  name: string
+  icon: string
+  color: string
+}
+
 const TYPES = ['Renda Fixa','Renda Variável','Tesouro','CDB','LCI/LCA','ETF','Ações','FII','Cripto','Outro']
-const OBJECTIVES = ['Reserva de emergência','Aposentadoria','Viagem','Casa','Carro','Educação','Outro']
-const LIQUIDITY = ['Diária','30 dias','60 dias','90 dias','180 dias','1 ano','Sem liquidez']
 
 const TYPE_COLORS: Record<string, string> = {
   'Renda Fixa':    '#22c55e',
@@ -37,68 +43,76 @@ const TYPE_COLORS: Record<string, string> = {
   'Outro':         '#6b7280',
 }
 
-const OBJECTIVE_EMOJI: Record<string, string> = {
-  'Reserva de emergência': '🛡️',
-  'Aposentadoria':         '🏖️',
-  'Viagem':                '✈️',
-  'Casa':                  '🏠',
-  'Carro':                 '🚗',
-  'Educação':              '📚',
-  'Outro':                 '🎯',
+const LIQUIDITY_LABELS: Record<string, string> = {
+  daily:      'Liquidez diária',
+  fixed_date: 'Data de vencimento',
+  none:       'Sem liquidez',
 }
+
+const GOAL_ICONS = ['🎯','🛡️','🏖️','✈️','🏠','🚗','📚','💍','👶','🏥','💼','🌍']
 
 const emptyForm = {
   name: '',
   type: 'Renda Fixa',
-  objective: '',
+  goal_id: '',
   institution: '',
   initial_amount: '',
   current_amount: '',
   profitability: '',
-  liquidity: 'Diária',
+  liquidity_type: 'daily',
+  liquidity_date: '',
   start_date: new Date().toISOString().split('T')[0],
   notes: '',
 }
+
+const emptyGoalForm = { name: '', icon: '🎯', color: '#6366f1' }
 
 type Toast = { message: string; type: 'success' | 'error' }
 
 export default function InvestimentosPage() {
   const supabase = createClient()
   const [investments, setInvestments] = useState<Investment[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showModal, setShowModal] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState(emptyForm)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [toast, setToast] = useState<Toast | null>(null)
-  const [filterType, setFilterType] = useState('')
-  const [showInactive, setShowInactive] = useState(false)
+  const [goals,       setGoals]       = useState<Goal[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [showModal,   setShowModal]   = useState(false)
+  const [editingId,   setEditingId]   = useState<string | null>(null)
+  const [form,        setForm]        = useState(emptyForm)
+  const [saving,      setSaving]      = useState(false)
+  const [error,       setError]       = useState<string | null>(null)
+  const [deletingId,  setDeletingId]  = useState<string | null>(null)
+  const [toast,       setToast]       = useState<Toast | null>(null)
+  const [filterType,  setFilterType]  = useState('')
+  const [showInactive,setShowInactive]= useState(false)
+
+  // inline goal creation
+  const [showNewGoal,  setShowNewGoal]  = useState(false)
+  const [goalForm,     setGoalForm]     = useState(emptyGoalForm)
+  const [savingGoal,   setSavingGoal]   = useState(false)
 
   function showToast(message: string, type: Toast['type'] = 'success') {
     setToast({ message, type })
     setTimeout(() => setToast(null), 3000)
   }
 
-  async function loadInvestments() {
+  async function loadAll() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { window.location.href = '/auth/login'; return }
-    const { data } = await supabase
-      .from('investments')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-    setInvestments(data ?? [])
+    const [{ data: inv }, { data: gls }] = await Promise.all([
+      supabase.from('investments').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+      supabase.from('investment_goals').select('*').eq('user_id', user.id).order('name'),
+    ])
+    setInvestments((inv ?? []) as Investment[])
+    setGoals((gls ?? []) as Goal[])
     setLoading(false)
   }
 
-  useEffect(() => { loadInvestments() }, [])
+  useEffect(() => { loadAll() }, [])
 
   function openCreate() {
     setForm(emptyForm)
     setEditingId(null)
     setError(null)
+    setShowNewGoal(false)
     setShowModal(true)
   }
 
@@ -106,27 +120,51 @@ export default function InvestimentosPage() {
     setForm({
       name:           inv.name,
       type:           inv.type,
-      objective:      inv.objective ?? '',
+      goal_id:        inv.goal_id ?? '',
       institution:    inv.institution ?? '',
       initial_amount: String(inv.initial_amount),
       current_amount: String(inv.current_amount),
-      profitability:  inv.profitability != null ? String(inv.profitability) : '',
-      liquidity:      inv.liquidity ?? 'Diária',
+      profitability:  inv.profitability ?? '',
+      liquidity_type: inv.liquidity_type ?? 'daily',
+      liquidity_date: inv.liquidity_date ?? '',
       start_date:     inv.start_date ?? new Date().toISOString().split('T')[0],
       notes:          inv.notes ?? '',
     })
     setEditingId(inv.id)
     setError(null)
+    setShowNewGoal(false)
     setShowModal(true)
+  }
+
+  async function handleSaveGoal() {
+    if (!goalForm.name.trim()) return
+    setSavingGoal(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setSavingGoal(false); return }
+    const { data, error: err } = await supabase
+      .from('investment_goals')
+      .insert({ user_id: user.id, name: goalForm.name.trim(), icon: goalForm.icon, color: goalForm.color })
+      .select('*').single()
+    if (!err && data) {
+      const newGoal = data as Goal
+      setGoals(prev => [...prev, newGoal].sort((a, b) => a.name.localeCompare(b.name)))
+      setForm(f => ({ ...f, goal_id: newGoal.id }))
+      setShowNewGoal(false)
+      setGoalForm(emptyGoalForm)
+    }
+    setSavingGoal(false)
   }
 
   async function handleSave() {
     if (!form.name.trim()) { setError('Nome é obrigatório.'); return }
-    if (!form.current_amount || parseFloat(form.current_amount) < 0) { setError('Valor atual inválido.'); return }
+    const current = parseFloat(form.current_amount)
+    if (isNaN(current) || current < 0) { setError('Valor atual inválido.'); return }
+    if (form.liquidity_type === 'fixed_date' && !form.liquidity_date) {
+      setError('Informe a data de vencimento.'); return
+    }
 
     setSaving(true)
     setError(null)
-
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setError('Não autenticado.'); setSaving(false); return }
 
@@ -134,12 +172,13 @@ export default function InvestimentosPage() {
       user_id:        user.id,
       name:           form.name.trim(),
       type:           form.type,
-      objective:      form.objective || null,
+      goal_id:        form.goal_id || null,
       institution:    form.institution.trim() || null,
       initial_amount: parseFloat(form.initial_amount || '0'),
-      current_amount: parseFloat(form.current_amount || '0'),
-      profitability:  form.profitability ? parseFloat(form.profitability) : null,
-      liquidity:      form.liquidity || null,
+      current_amount: current,
+      profitability:  form.profitability.trim() || null,
+      liquidity_type: form.liquidity_type || null,
+      liquidity_date: form.liquidity_type === 'fixed_date' ? form.liquidity_date : null,
       start_date:     form.start_date || null,
       notes:          form.notes.trim() || null,
     }
@@ -154,14 +193,14 @@ export default function InvestimentosPage() {
       showToast('Investimento cadastrado!')
     }
 
-    await loadInvestments()
+    await loadAll()
     setShowModal(false)
     setSaving(false)
   }
 
   async function handleToggleActive(inv: Investment) {
     await supabase.from('investments').update({ is_active: !inv.is_active }).eq('id', inv.id)
-    await loadInvestments()
+    await loadAll()
   }
 
   async function handleDelete(id: string) {
@@ -169,20 +208,18 @@ export default function InvestimentosPage() {
     setDeletingId(id)
     await supabase.from('investments').delete().eq('id', id)
     showToast('Investimento excluído.')
-    await loadInvestments()
+    await loadAll()
     setDeletingId(null)
   }
 
-  const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  const fmt    = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   const fmtPct = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(2)}%`
 
-  const filtered = useMemo(() => {
-    return investments.filter(inv => {
-      if (!showInactive && !inv.is_active) return false
-      if (filterType && inv.type !== filterType) return false
-      return true
-    })
-  }, [investments, filterType, showInactive])
+  const filtered = useMemo(() => investments.filter(inv => {
+    if (!showInactive && !inv.is_active) return false
+    if (filterType && inv.type !== filterType) return false
+    return true
+  }), [investments, filterType, showInactive])
 
   const activeInvestments = investments.filter(i => i.is_active)
   const totalInvested     = activeInvestments.reduce((s, i) => s + Number(i.current_amount), 0)
@@ -190,23 +227,25 @@ export default function InvestimentosPage() {
   const totalGain         = totalInvested - totalInitial
   const gainPct           = totalInitial > 0 ? (totalGain / totalInitial) * 100 : 0
 
-  // Distribuição por tipo
   const byType = useMemo(() => {
     const map: Record<string, number> = {}
-    activeInvestments.forEach(i => {
-      map[i.type] = (map[i.type] ?? 0) + Number(i.current_amount)
-    })
+    activeInvestments.forEach(i => { map[i.type] = (map[i.type] ?? 0) + Number(i.current_amount) })
     return Object.entries(map).sort((a, b) => b[1] - a[1])
   }, [investments])
 
-  // Objetivos com progresso
-  const byObjective = useMemo(() => {
-    const map: Record<string, number> = {}
+  const byGoal = useMemo(() => {
+    const map: Record<string, { amount: number; goal: Goal }> = {}
     activeInvestments.forEach(i => {
-      if (i.objective) map[i.objective] = (map[i.objective] ?? 0) + Number(i.current_amount)
+      if (!i.goal_id) return
+      const g = goals.find(g => g.id === i.goal_id)
+      if (!g) return
+      if (!map[i.goal_id]) map[i.goal_id] = { amount: 0, goal: g }
+      map[i.goal_id].amount += Number(i.current_amount)
     })
-    return Object.entries(map)
-  }, [investments])
+    return Object.values(map).sort((a, b) => b.amount - a.amount)
+  }, [investments, goals])
+
+  const goalMap = Object.fromEntries(goals.map(g => [g.id, g]))
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto">
@@ -251,10 +290,9 @@ export default function InvestimentosPage() {
         </div>
       </div>
 
-      {/* Distribuição + Objetivos */}
+      {/* Distribuição */}
       {activeInvestments.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-          {/* Por tipo */}
           <div className="bg-white border border-gray-100 rounded-xl p-4">
             <p className="text-sm font-medium text-gray-700 mb-3">Por tipo</p>
             <div className="space-y-2">
@@ -276,21 +314,21 @@ export default function InvestimentosPage() {
             </div>
           </div>
 
-          {/* Por objetivo */}
-          {byObjective.length > 0 && (
+          {byGoal.length > 0 && (
             <div className="bg-white border border-gray-100 rounded-xl p-4">
               <p className="text-sm font-medium text-gray-700 mb-3">Por objetivo</p>
               <div className="space-y-2">
-                {byObjective.map(([obj, amount]) => {
+                {byGoal.map(({ goal, amount }) => {
                   const pct = totalInvested > 0 ? (amount / totalInvested) * 100 : 0
                   return (
-                    <div key={obj}>
+                    <div key={goal.id}>
                       <div className="flex justify-between text-xs mb-1">
-                        <span className="text-gray-600 font-medium">{OBJECTIVE_EMOJI[obj]} {obj}</span>
+                        <span className="text-gray-600 font-medium">{goal.icon} {goal.name}</span>
                         <span className="text-gray-500">{pct.toFixed(0)}%</span>
                       </div>
                       <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-indigo-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                        <div className="h-full rounded-full transition-all"
+                          style={{ width: `${pct}%`, backgroundColor: goal.color }} />
                       </div>
                     </div>
                   )
@@ -337,6 +375,7 @@ export default function InvestimentosPage() {
           {filtered.map(inv => {
             const gain    = Number(inv.current_amount) - Number(inv.initial_amount)
             const gainPct = Number(inv.initial_amount) > 0 ? (gain / Number(inv.initial_amount)) * 100 : 0
+            const goal    = inv.goal_id ? goalMap[inv.goal_id] : null
             return (
               <div key={inv.id}
                 className={`bg-white border rounded-xl p-4 transition-opacity ${!inv.is_active ? 'opacity-50' : 'border-gray-100'}`}>
@@ -348,9 +387,10 @@ export default function InvestimentosPage() {
                       <p className="text-xs text-gray-400">{inv.type}{inv.institution ? ` · ${inv.institution}` : ''}</p>
                     </div>
                   </div>
-                  {inv.objective && (
-                    <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">
-                      {OBJECTIVE_EMOJI[inv.objective]} {inv.objective}
+                  {goal && (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                      style={{ backgroundColor: goal.color + '20', color: goal.color }}>
+                      {goal.icon} {goal.name}
                     </span>
                   )}
                 </div>
@@ -367,14 +407,17 @@ export default function InvestimentosPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2 mb-3">
-                  {inv.liquidity && (
+                  {inv.liquidity_type && (
                     <span className="text-xs bg-gray-50 text-gray-500 px-2 py-0.5 rounded-full border border-gray-100">
-                      💧 {inv.liquidity}
+                      💧 {LIQUIDITY_LABELS[inv.liquidity_type] ?? inv.liquidity_type}
+                      {inv.liquidity_type === 'fixed_date' && inv.liquidity_date
+                        ? ` · ${new Date(inv.liquidity_date + 'T12:00:00').toLocaleDateString('pt-BR')}`
+                        : ''}
                     </span>
                   )}
-                  {inv.profitability != null && (
+                  {inv.profitability && (
                     <span className="text-xs bg-green-50 text-green-600 px-2 py-0.5 rounded-full border border-green-100">
-                      📊 {inv.profitability}% a.a.
+                      📊 {inv.profitability}
                     </span>
                   )}
                   {inv.start_date && (
@@ -411,6 +454,7 @@ export default function InvestimentosPage() {
             <h2 className="text-lg font-semibold mb-5">{editingId ? 'Editar Investimento' : 'Novo Investimento'}</h2>
 
             <div className="space-y-4">
+              {/* Nome */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Nome</label>
                 <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
@@ -418,6 +462,7 @@ export default function InvestimentosPage() {
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
 
+              {/* Tipo + Instituição */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Tipo</label>
@@ -427,22 +472,69 @@ export default function InvestimentosPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Objetivo</label>
-                  <select value={form.objective} onChange={e => setForm({ ...form, objective: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                    <option value="">Sem objetivo</option>
-                    {OBJECTIVES.map(o => <option key={o} value={o}>{OBJECTIVE_EMOJI[o]} {o}</option>)}
-                  </select>
+                  <label className="block text-sm text-gray-600 mb-1">Instituição</label>
+                  <input type="text" value={form.institution} onChange={e => setForm({ ...form, institution: e.target.value })}
+                    placeholder="Ex: XP, Nubank..."
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
               </div>
 
+              {/* Objetivo — dropdown + criação inline */}
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Instituição <span className="text-gray-400">(opcional)</span></label>
-                <input type="text" value={form.institution} onChange={e => setForm({ ...form, institution: e.target.value })}
-                  placeholder="Ex: XP, Nubank, Rico..."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <label className="block text-sm text-gray-600 mb-1">Objetivo</label>
+                {!showNewGoal ? (
+                  <div className="flex gap-2">
+                    <select value={form.goal_id} onChange={e => setForm({ ...form, goal_id: e.target.value })}
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                      <option value="">Sem objetivo</option>
+                      {goals.map(g => (
+                        <option key={g.id} value={g.id}>{g.icon} {g.name}</option>
+                      ))}
+                    </select>
+                    <button onClick={() => setShowNewGoal(true)}
+                      className="px-3 py-2 rounded-lg border border-dashed border-indigo-300 text-indigo-500 text-xs hover:bg-indigo-50 transition-colors whitespace-nowrap">
+                      + Novo
+                    </button>
+                  </div>
+                ) : (
+                  <div className="border border-indigo-100 rounded-xl p-3 space-y-2 bg-indigo-50/40">
+                    <p className="text-xs font-medium text-indigo-700">Novo objetivo</p>
+                    <input type="text" value={goalForm.name} onChange={e => setGoalForm({ ...goalForm, name: e.target.value })}
+                      placeholder="Nome do objetivo"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <p className="text-xs text-gray-500 mb-1">Ícone</p>
+                        <div className="flex flex-wrap gap-1">
+                          {GOAL_ICONS.map(icon => (
+                            <button key={icon} onClick={() => setGoalForm({ ...goalForm, icon })}
+                              className={`w-7 h-7 rounded-lg text-sm flex items-center justify-center transition-colors ${goalForm.icon === icon ? 'bg-indigo-100 ring-2 ring-indigo-400' : 'hover:bg-gray-100'}`}>
+                              {icon}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Cor</p>
+                        <input type="color" value={goalForm.color} onChange={e => setGoalForm({ ...goalForm, color: e.target.value })}
+                          className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setShowNewGoal(false)}
+                        className="flex-1 border border-gray-200 text-gray-500 rounded-lg py-1.5 text-xs hover:bg-gray-50">
+                        Cancelar
+                      </button>
+                      <button onClick={handleSaveGoal} disabled={savingGoal || !goalForm.name.trim()}
+                        className="flex-1 bg-indigo-600 text-white rounded-lg py-1.5 text-xs font-medium hover:bg-indigo-700 disabled:opacity-50">
+                        {savingGoal ? 'Salvando...' : 'Criar objetivo'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
+              {/* Valores */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Valor inicial (R$)</label>
@@ -458,28 +550,37 @@ export default function InvestimentosPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Rentabilidade a.a. (%)</label>
-                  <input type="number" value={form.profitability} onChange={e => setForm({ ...form, profitability: e.target.value })}
-                    placeholder="Ex: 11.25" step="0.01"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Liquidez</label>
-                  <select value={form.liquidity} onChange={e => setForm({ ...form, liquidity: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                    {LIQUIDITY.map(l => <option key={l} value={l}>{l}</option>)}
-                  </select>
-                </div>
+              {/* Rentabilidade texto livre */}
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Rentabilidade <span className="text-gray-400">(opcional)</span></label>
+                <input type="text" value={form.profitability} onChange={e => setForm({ ...form, profitability: e.target.value })}
+                  placeholder="Ex: 110% CDI, IPCA + 6%, 12% a.a., Variável"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
 
+              {/* Liquidez */}
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Liquidez</label>
+                <select value={form.liquidity_type} onChange={e => setForm({ ...form, liquidity_type: e.target.value, liquidity_date: '' })}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                  <option value="daily">Liquidez diária</option>
+                  <option value="fixed_date">Data de vencimento</option>
+                  <option value="none">Sem liquidez</option>
+                </select>
+                {form.liquidity_type === 'fixed_date' && (
+                  <input type="date" value={form.liquidity_date} onChange={e => setForm({ ...form, liquidity_date: e.target.value })}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 mt-2" />
+                )}
+              </div>
+
+              {/* Data início */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Data de início</label>
                 <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
 
+              {/* Observações */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Observações <span className="text-gray-400">(opcional)</span></label>
                 <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
