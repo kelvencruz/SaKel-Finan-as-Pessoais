@@ -125,13 +125,13 @@ export default function UserMenu() {
             >
               <span>👤</span> Meu perfil
             </a>
-            <a href="/dashboard/preferencias"
+            <a href="/dashboard/settings"
               className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"
               style={{ color: 'var(--color-text-secondary)' }}
               onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--color-brand-light)'}
               onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
             >
-              <span>⚙️</span> Preferencias
+              <span>⚙️</span> Configurações
             </a>
 
             <div style={{ borderTop: '1px solid var(--color-border)', margin: '4px 0' }} />
