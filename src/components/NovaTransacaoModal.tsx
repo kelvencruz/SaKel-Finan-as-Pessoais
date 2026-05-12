@@ -228,12 +228,32 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
 
     // ─── RECORRENTE ───────────────────────────────────────────────────────
     if (form.is_recurring) {
+      // Calcula próxima data de vencimento
+      function calcNextDue(startDate: string, frequency: string): string {
+        const today = new Date(); today.setHours(0, 0, 0, 0)
+        const d = new Date(startDate + 'T12:00:00')
+        while (d < today) {
+          if (frequency === 'daily')   d.setDate(d.getDate() + 1)
+          else if (frequency === 'weekly')  d.setDate(d.getDate() + 7)
+          else if (frequency === 'monthly') d.setMonth(d.getMonth() + 1)
+          else if (frequency === 'yearly')  d.setFullYear(d.getFullYear() + 1)
+        }
+        return d.toISOString().split('T')[0]
+      }
+
       const recPayload = {
-        user_id: user.id, type: form.type, description: form.description.trim(),
-        amount, frequency: form.recurrence_frequency, next_date: form.date,
-        start_date: form.date, end_date: form.recurrence_end_date || null,
-        account_id: form.account_id || null, category_id: form.category_id || null,
-        notes: form.notes?.trim() || null,
+        user_id:        user.id,
+        type:           form.type,
+        description:    form.description.trim(),
+        amount,
+        frequency:      form.recurrence_frequency,
+        next_due_date:  calcNextDue(form.date, form.recurrence_frequency),
+        start_date:     form.date,
+        end_date:       form.recurrence_end_date || null,
+        account_id:     form.use_credit_card ? null : (form.account_id || null),
+        credit_card_id: form.use_credit_card ? form.credit_card_id : null,
+        category_id:    form.category_id || null,
+        is_active:      true,
       }
       const { error: recErr } = await supabase.from('recurrences').insert(recPayload)
       if (recErr) { setError(recErr.message); setSaving(false); return }

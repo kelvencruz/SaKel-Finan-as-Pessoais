@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { awardXP } from '@/lib/gamification'
 
-type TxType = 'income' | 'expense'
+type TxType    = 'income' | 'expense'
 type Frequency = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
-interface RecurringTransaction {
+interface Recorrencia {
   id: string
+  user_id: string
   type: TxType
   description: string
   amount: number
@@ -18,18 +19,19 @@ interface RecurringTransaction {
   frequency: Frequency
   start_date: string
   end_date: string | null
-  next_execution: string
-  active: boolean
-  auto_create: boolean
+  next_due_date: string
+  is_active: boolean
+  created_at: string
+  // joins em memória
+  account_name?: string
   category_name?: string
   category_icon?: string
-  account_name?: string
   credit_card_name?: string
 }
 
 interface Account    { id: string; name: string; current_balance: number }
 interface Category   { id: string; name: string; type: string; icon: string }
-interface CreditCard { id: string; name: string }
+interface CreditCard { id: string; name: string; closing_day: number; due_day: number }
 
 type Toast = { message: string; type: 'success' | 'error' }
 
@@ -37,7 +39,7 @@ const fmt     = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', cu
 const fmtDate = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString('pt-BR')
 
 const FREQ_LABELS: Record<Frequency, string> = {
-  daily:   'Diaria',
+  daily:   'Diária',
   weekly:  'Semanal',
   monthly: 'Mensal',
   yearly:  'Anual',
@@ -50,11 +52,10 @@ const FREQ_ICONS: Record<Frequency, string> = {
   yearly:  '🗓️',
 }
 
-function nextExecutionDate(startDate: string, frequency: Frequency): string {
+function nextDueDate(startDate: string, frequency: Frequency): string {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const d = new Date(startDate + 'T12:00:00')
-
   while (d < today) {
     switch (frequency) {
       case 'daily':   d.setDate(d.getDate() + 1); break
@@ -67,23 +68,22 @@ function nextExecutionDate(startDate: string, frequency: Frequency): string {
 }
 
 const emptyForm = {
-  type: 'expense' as TxType,
-  description: '',
-  amount: '',
-  category_id: '',
-  account_id: '',
-  credit_card_id: '',
+  type:            'expense' as TxType,
+  description:     '',
+  amount:          '',
+  category_id:     '',
+  account_id:      '',
+  credit_card_id:  '',
   use_credit_card: false,
-  frequency: 'monthly' as Frequency,
-  start_date: new Date().toISOString().split('T')[0],
-  end_date: '',
-  auto_create: true,
+  frequency:       'monthly' as Frequency,
+  start_date:      new Date().toISOString().split('T')[0],
+  end_date:        '',
 }
 
 export default function RecorrenciasPage() {
   const supabase = createClient()
 
-  const [recorrencias, setRecorrencias] = useState<RecurringTransaction[]>([])
+  const [recorrencias, setRecorrencias] = useState<Recorrencia[]>([])
   const [accounts,     setAccounts]     = useState<Account[]>([])
   const [categories,   setCategories]   = useState<Category[]>([])
   const [creditCards,  setCreditCards]  = useState<CreditCard[]>([])
@@ -106,19 +106,19 @@ export default function RecorrenciasPage() {
     if (!user) { window.location.href = '/auth/login'; return }
 
     const [{ data: rec }, { data: acc }, { data: cat }, { data: cards }] = await Promise.all([
-      supabase.from('recurring_transactions').select('*').eq('user_id', user.id).order('next_execution'),
+      supabase.from('recurrences').select('*').eq('user_id', user.id).order('next_due_date'),
       supabase.from('accounts').select('id, name, current_balance').eq('user_id', user.id).order('name'),
       supabase.from('categories').select('id, name, type, icon').eq('user_id', user.id).order('name'),
-      supabase.from('credit_cards').select('id, name').eq('user_id', user.id).eq('is_active', true).order('name'),
+      supabase.from('credit_cards').select('id, name, closing_day, due_day').eq('user_id', user.id).eq('is_active', true).order('name'),
     ])
 
     const accList  = (acc   ?? []) as Account[]
     const catList  = (cat   ?? []) as Category[]
     const cardList = (cards ?? []) as CreditCard[]
-    const recList  = (rec   ?? []) as RecurringTransaction[]
+    const recList  = (rec   ?? []) as Recorrencia[]
 
-    const accMap  = Object.fromEntries(accList.map(a  => [a.id, a]))
-    const catMap  = Object.fromEntries(catList.map(c  => [c.id, c]))
+    const accMap  = Object.fromEntries(accList.map(a => [a.id, a]))
+    const catMap  = Object.fromEntries(catList.map(c => [c.id, c]))
     const cardMap = Object.fromEntries(cardList.map(c => [c.id, c]))
 
     setRecorrencias(recList.map(r => ({
@@ -143,7 +143,7 @@ export default function RecorrenciasPage() {
     setShowModal(true)
   }
 
-  function openEdit(r: RecurringTransaction) {
+  function openEdit(r: Recorrencia) {
     setForm({
       type:            r.type,
       description:     r.description,
@@ -155,7 +155,6 @@ export default function RecorrenciasPage() {
       frequency:       r.frequency,
       start_date:      r.start_date,
       end_date:        r.end_date ?? '',
-      auto_create:     r.auto_create,
     })
     setEditingId(r.id)
     setError(null)
@@ -165,51 +164,44 @@ export default function RecorrenciasPage() {
   async function handleSave() {
     setError(null)
     const amount = parseFloat(String(form.amount).replace(',', '.'))
-    if (!form.description.trim())     { setError('Descricao e obrigatoria.'); return }
-    if (isNaN(amount) || amount <= 0) { setError('Valor deve ser maior que zero.'); return }
-    if (!form.use_credit_card && !form.account_id) { setError('Selecione uma conta.'); return }
-    if (form.use_credit_card && !form.credit_card_id) { setError('Selecione um cartao.'); return }
+    if (!form.description.trim())      { setError('Descrição é obrigatória.'); return }
+    if (isNaN(amount) || amount <= 0)  { setError('Valor deve ser maior que zero.'); return }
+    if (!form.use_credit_card && !form.account_id)   { setError('Selecione uma conta.'); return }
+    if (form.use_credit_card  && !form.credit_card_id) { setError('Selecione um cartão.'); return }
 
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setError('Nao autenticado.'); setSaving(false); return }
+    if (!user) { setError('Não autenticado.'); setSaving(false); return }
 
-    const next = nextExecutionDate(form.start_date, form.frequency)
+    const next = nextDueDate(form.start_date, form.frequency)
 
     const payload = {
       type:           form.type,
       description:    form.description.trim(),
       amount,
-      category_id:    form.category_id || null,
-      account_id:     form.use_credit_card ? null : form.account_id || null,
+      category_id:    form.category_id    || null,
+      account_id:     form.use_credit_card ? null : (form.account_id || null),
       credit_card_id: form.use_credit_card ? form.credit_card_id : null,
       frequency:      form.frequency,
       start_date:     form.start_date,
       end_date:       form.end_date || null,
-      next_execution: editingId ? undefined : next,
-      auto_create:    form.auto_create,
-      active:         true,
+      is_active:      true,
     }
 
     if (editingId) {
-      const { error: err } = await supabase.from('recurring_transactions').update(payload).eq('id', editingId)
+      const { error: err } = await supabase
+        .from('recurrences').update(payload).eq('id', editingId)
       if (err) { setError(err.message); setSaving(false); return }
-      showToast('Recorrencia atualizada!')
+      showToast('Recorrência atualizada!')
     } else {
-      const { error: err } = await supabase.from('recurring_transactions').insert({ ...payload, user_id: user.id })
+      const { error: err } = await supabase
+        .from('recurrences').insert({ ...payload, user_id: user.id, next_due_date: next })
       if (err) { setError(err.message); setSaving(false); return }
 
-      // ── Gamificação ──────────────────────────────────────────────
-      // É a primeira recorrência se a lista em memória está vazia
-      const isFirstRecurring = recorrencias.length === 0
-      await awardXP(
-        user.id,
-        'first_recurring',
-        isFirstRecurring ? 'first_recurring' : undefined,
-      ).catch(() => { /* silencioso */ })
-      // ─────────────────────────────────────────────────────────────
+      // Gamificação — silencioso se action não existir ainda
+      await awardXP(user.id, 'transaction_created').catch(() => {})
 
-      showToast('Recorrencia criada!')
+      showToast('Recorrência criada!')
     }
 
     await loadAll()
@@ -217,66 +209,105 @@ export default function RecorrenciasPage() {
     setSaving(false)
   }
 
-  async function toggleActive(r: RecurringTransaction) {
-    await supabase.from('recurring_transactions').update({ active: !r.active }).eq('id', r.id)
+  async function toggleActive(r: Recorrencia) {
+    await supabase.from('recurrences').update({ is_active: !r.is_active }).eq('id', r.id)
     await loadAll()
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Excluir esta recorrencia?')) return
-    await supabase.from('recurring_transactions').delete().eq('id', id)
-    showToast('Recorrencia excluida.')
+    if (!confirm('Excluir esta recorrência?')) return
+    await supabase.from('recurrences').delete().eq('id', id)
+    showToast('Recorrência excluída.')
     await loadAll()
   }
 
-  // Gera a transacao de hoje manualmente
-  async function generateNow(r: RecurringTransaction) {
+  // ─── Gera transação agora + fatura se for cartão ──────────────────────────
+  async function generateNow(r: Recorrencia) {
     setGeneratingId(r.id)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setGeneratingId(null); return }
 
     const today = new Date().toISOString().split('T')[0]
+    let invoiceId: string | null = null
 
+    // Se tiver cartão, cria/busca fatura correta
+    if (r.credit_card_id) {
+      const card = creditCards.find(c => c.id === r.credit_card_id)
+      if (card) {
+        const d = new Date(today + 'T12:00:00')
+        let month = d.getMonth() + 1
+        let year  = d.getFullYear()
+        if (d.getDate() > card.closing_day) {
+          month = month === 12 ? 1 : month + 1
+          year  = month === 1  ? year + 1 : year
+        }
+        const { data: existing } = await supabase
+          .from('credit_card_invoices').select('id')
+          .eq('credit_card_id', r.credit_card_id).eq('month', month).eq('year', year).single()
+
+        if (existing) {
+          invoiceId = existing.id
+        } else {
+          const dueMonth = month === 12 ? 1 : month + 1
+          const dueYear  = month === 12 ? year + 1 : year
+          const dueDate  = `${dueYear}-${String(dueMonth).padStart(2,'0')}-${String(card.due_day).padStart(2,'0')}`
+          const { data: created } = await supabase
+            .from('credit_card_invoices')
+            .insert({ credit_card_id: r.credit_card_id, user_id: user.id, month, year, total_amount: 0, status: 'open', due_date: dueDate })
+            .select('id').single()
+          invoiceId = created?.id ?? null
+        }
+      }
+    }
+
+    // Insere transação
     const { error: err } = await supabase.from('transactions').insert({
       user_id:        user.id,
       type:           r.type,
       description:    r.description,
       amount:         r.amount,
       date:           today,
-      account_id:     r.account_id,
-      credit_card_id: r.credit_card_id,
+      account_id:     r.credit_card_id ? null : r.account_id,
+      credit_card_id: r.credit_card_id ?? null,
+      invoice_id:     invoiceId,
       category_id:    r.category_id,
-      status:         'pending',
+      status:         r.credit_card_id ? 'posted' : 'pending',
       is_recurring:   true,
-      recurrence:     r.frequency,
     })
 
-    if (err) { showToast('Erro ao gerar transacao.', 'error'); setGeneratingId(null); return }
+    if (err) { showToast('Erro ao gerar transação.', 'error'); setGeneratingId(null); return }
 
-    // ── Gamificação ──────────────────────────────────────────────
-    // Cada geração manual conta como uma transação criada
-    await awardXP(user.id, 'transaction_created').catch(() => { /* silencioso */ })
-    // ─────────────────────────────────────────────────────────────
+    // Recalcula total da fatura
+    if (invoiceId) {
+      const { data } = await supabase.from('transactions').select('amount').eq('invoice_id', invoiceId)
+      const total = (data ?? []).reduce((s: number, t: any) => s + Number(t.amount), 0)
+      await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
+    }
 
-    // Avanca next_execution
-    const next = nextExecutionDate(today, r.frequency)
-    await supabase.from('recurring_transactions').update({ next_execution: next }).eq('id', r.id)
+    // Gamificação
+    await awardXP(user.id, 'transaction_created').catch(() => {})
 
-    showToast('Transacao gerada com sucesso!')
+    // Avança next_due_date
+    const next = nextDueDate(today, r.frequency)
+    await supabase.from('recurrences').update({ next_due_date: next }).eq('id', r.id)
+
+    showToast(r.credit_card_id ? 'Transação gerada e lançada na fatura!' : 'Transação gerada com sucesso!')
     await loadAll()
     setGeneratingId(null)
   }
 
   const catsFiltradas = categories.filter(c => c.type === form.type || c.type === 'both')
-  const ativas   = recorrencias.filter(r => r.active)
-  const inativas = recorrencias.filter(r => !r.active)
+  const ativas   = recorrencias.filter(r => r.is_active)
+  const inativas = recorrencias.filter(r => !r.is_active)
 
   return (
     <div className="min-h-screen p-6 max-w-4xl mx-auto" style={{ background: 'var(--color-bg)' }}>
 
       {toast && (
         <div className={`fixed top-5 right-5 z-[60] px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${
-          toast.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+          toast.type === 'success'
+            ? 'bg-green-50 text-green-700 border border-green-200'
+            : 'bg-red-50 text-red-700 border border-red-200'
         }`}>
           {toast.type === 'success' ? '✓ ' : '✕ '}{toast.message}
         </div>
@@ -285,74 +316,86 @@ export default function RecorrenciasPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <a href="/dashboard" className="text-sm hover:underline" style={{ color: 'var(--color-text-muted)' }}>Dashboard</a>
-          <h1 className="text-xl font-semibold mt-1" style={{ color: 'var(--color-text-primary)' }}>Recorrencias</h1>
+          <a href="/dashboard" className="text-sm hover:underline" style={{ color: 'var(--color-text-muted)' }}>← Dashboard</a>
+          <h1 className="text-xl font-semibold mt-1" style={{ color: 'var(--color-text-primary)' }}>Recorrências</h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-            Gerencie salario, aluguel, assinaturas e contas fixas.
+            Gerencie salário, aluguel, assinaturas e contas fixas.
           </p>
         </div>
-        <button
-          onClick={openCreate}
+        <button onClick={openCreate}
           className="text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          style={{ background: 'var(--color-brand)' }}
-        >
-          + Nova Recorrencia
+          style={{ background: 'var(--color-brand)' }}>
+          + Nova Recorrência
         </button>
       </div>
 
       {loading ? (
         <div className="space-y-3">
           {[1,2,3].map(i => (
-            <div key={i} className="h-20 rounded-xl animate-pulse" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }} />
+            <div key={i} className="h-20 rounded-xl animate-pulse"
+              style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }} />
           ))}
         </div>
       ) : recorrencias.length === 0 ? (
-        <div className="rounded-2xl p-12 text-center" style={{ background: 'var(--color-surface)', border: '1px dashed var(--color-border)' }}>
+        <div className="rounded-2xl p-12 text-center"
+          style={{ background: 'var(--color-surface)', border: '1px dashed var(--color-border)' }}>
           <p className="text-4xl mb-3">🔁</p>
-          <p className="text-base font-semibold mb-1" style={{ color: 'var(--color-text-primary)' }}>Nenhuma recorrencia ainda</p>
-          <p className="text-sm mb-5" style={{ color: 'var(--color-text-muted)' }}>
-            Cadastre salario, aluguel, assinaturas e o sistema gera as transacoes automaticamente.
+          <p className="text-base font-semibold mb-1" style={{ color: 'var(--color-text-primary)' }}>
+            Nenhuma recorrência ainda
           </p>
-          <button
-            onClick={openCreate}
+          <p className="text-sm mb-5" style={{ color: 'var(--color-text-muted)' }}>
+            Cadastre salário, aluguel, assinaturas e o sistema gera as transações automaticamente.
+          </p>
+          <button onClick={openCreate}
             className="text-white px-5 py-2.5 rounded-lg text-sm font-medium"
-            style={{ background: 'var(--color-brand)' }}
-          >
-            Criar primeira recorrencia
+            style={{ background: 'var(--color-brand)' }}>
+            Criar primeira recorrência
           </button>
         </div>
       ) : (
         <div className="space-y-6">
           {ativas.length > 0 && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--color-text-muted)' }}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-3"
+                style={{ color: 'var(--color-text-muted)' }}>
                 Ativas ({ativas.length})
               </p>
               <div className="space-y-2">
-                {ativas.map(r => <RecorrenciaCard key={r.id} r={r} onEdit={openEdit} onToggle={toggleActive} onDelete={handleDelete} onGenerate={generateNow} generatingId={generatingId} />)}
+                {ativas.map(r => (
+                  <RecorrenciaCard key={r.id} r={r}
+                    onEdit={openEdit} onToggle={toggleActive}
+                    onDelete={handleDelete} onGenerate={generateNow}
+                    generatingId={generatingId} />
+                ))}
               </div>
             </div>
           )}
-
           {inativas.length > 0 && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--color-text-muted)' }}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-3"
+                style={{ color: 'var(--color-text-muted)' }}>
                 Pausadas ({inativas.length})
               </p>
               <div className="space-y-2 opacity-60">
-                {inativas.map(r => <RecorrenciaCard key={r.id} r={r} onEdit={openEdit} onToggle={toggleActive} onDelete={handleDelete} onGenerate={generateNow} generatingId={generatingId} />)}
+                {inativas.map(r => (
+                  <RecorrenciaCard key={r.id} r={r}
+                    onEdit={openEdit} onToggle={toggleActive}
+                    onDelete={handleDelete} onGenerate={generateNow}
+                    generatingId={generatingId} />
+                ))}
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Modal */}
+      {/* ── Modal ─────────────────────────────────────────────────────────── */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto" style={{ background: 'var(--color-surface)' }}>
+          <div className="rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto"
+            style={{ background: 'var(--color-surface)' }}>
             <h2 className="text-lg font-semibold mb-5" style={{ color: 'var(--color-text-primary)' }}>
-              {editingId ? 'Editar Recorrencia' : 'Nova Recorrencia'}
+              {editingId ? 'Editar Recorrência' : 'Nova Recorrência'}
             </h2>
 
             <div className="space-y-4">
@@ -364,21 +407,22 @@ export default function RecorrenciasPage() {
                     <button key={t} onClick={() => setForm({ ...form, type: t, category_id: '' })}
                       className="flex-1 py-2 rounded-lg text-xs font-medium transition-colors border"
                       style={{
-                        background: form.type === t ? (t === 'income' ? '#dcfce7' : '#fee2e2') : 'transparent',
-                        color:      form.type === t ? (t === 'income' ? '#166534' : '#991b1b') : 'var(--color-text-muted)',
+                        background:  form.type === t ? (t === 'income' ? '#dcfce7' : '#fee2e2') : 'transparent',
+                        color:       form.type === t ? (t === 'income' ? '#166534' : '#991b1b') : 'var(--color-text-muted)',
                         borderColor: form.type === t ? 'transparent' : 'var(--color-border)',
                       }}>
-                      {t === 'income' ? 'Receita' : 'Despesa'}
+                      {t === 'income' ? '↑ Receita' : '↓ Despesa'}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Descricao */}
+              {/* Descrição */}
               <div>
-                <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Descricao</label>
-                <input type="text" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
-                  placeholder={form.type === 'income' ? 'Ex: Salario, Aluguel recebido...' : 'Ex: Aluguel, Netflix, Academia...'}
+                <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Descrição</label>
+                <input type="text" value={form.description}
+                  onChange={e => setForm({ ...form, description: e.target.value })}
+                  placeholder={form.type === 'income' ? 'Ex: Salário, Aluguel recebido...' : 'Ex: Aluguel, Netflix, Academia...'}
                   className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
                   style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} />
               </div>
@@ -386,28 +430,30 @@ export default function RecorrenciasPage() {
               {/* Valor */}
               <div>
                 <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Valor (R$)</label>
-                <input type="text" inputMode="decimal" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })}
+                <input type="text" inputMode="decimal" value={form.amount}
+                  onChange={e => setForm({ ...form, amount: e.target.value })}
                   placeholder="0,00"
                   className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
                   style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} />
               </div>
 
-              {/* Frequencia + Data inicio */}
+              {/* Frequência + Data início */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Frequencia</label>
+                  <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Frequência</label>
                   <select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value as Frequency })}
                     className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
                     style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }}>
-                    <option value="daily">Diaria</option>
+                    <option value="daily">Diária</option>
                     <option value="weekly">Semanal</option>
                     <option value="monthly">Mensal</option>
                     <option value="yearly">Anual</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Data inicio</label>
-                  <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })}
+                  <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Data início</label>
+                  <input type="date" value={form.start_date}
+                    onChange={e => setForm({ ...form, start_date: e.target.value })}
                     className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
                     style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} />
                 </div>
@@ -418,39 +464,42 @@ export default function RecorrenciasPage() {
                 <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>
                   Data fim <span style={{ color: 'var(--color-text-muted)' }}>(opcional)</span>
                 </label>
-                <input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })}
+                <input type="date" value={form.end_date}
+                  onChange={e => setForm({ ...form, end_date: e.target.value })}
                   className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
                   style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} />
               </div>
 
-              {/* Toggle cartao */}
+              {/* Toggle cartão */}
               {form.type === 'expense' && creditCards.length > 0 && (
                 <div className="flex items-center justify-between rounded-lg px-3 py-2.5"
                   style={{ background: '#f5f3ff', border: '1px solid #e9d5ff' }}>
                   <div className="flex items-center gap-2">
                     <span>💳</span>
-                    <span className="text-sm font-medium" style={{ color: '#6d28d9' }}>Pagar com cartao</span>
+                    <span className="text-sm font-medium" style={{ color: '#6d28d9' }}>Pagar com cartão</span>
                   </div>
                   <button
                     onClick={() => setForm({ ...form, use_credit_card: !form.use_credit_card, credit_card_id: creditCards[0]?.id ?? '' })}
                     className="relative w-10 h-5 rounded-full transition-colors"
-                    style={{ background: form.use_credit_card ? '#8b5cf6' : 'var(--color-border-md)' }}
-                  >
+                    style={{ background: form.use_credit_card ? '#8b5cf6' : 'var(--color-border-md, #d1d5db)' }}>
                     <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.use_credit_card ? 'translate-x-5' : 'translate-x-0.5'}`} />
                   </button>
                 </div>
               )}
 
-              {/* Conta ou Cartao */}
+              {/* Conta ou Cartão */}
               {form.use_credit_card && form.type === 'expense' ? (
                 <div>
-                  <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Cartao</label>
+                  <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Cartão</label>
                   <select value={form.credit_card_id} onChange={e => setForm({ ...form, credit_card_id: e.target.value })}
                     className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
                     style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }}>
                     <option value="">Selecione...</option>
                     {creditCards.map(c => <option key={c.id} value={c.id}>💳 {c.name}</option>)}
                   </select>
+                  <p className="text-xs mt-1" style={{ color: '#8b5cf6' }}>
+                    Ao gerar, a transação será lançada na fatura do cartão automaticamente.
+                  </p>
                 </div>
               ) : (
                 <div>
@@ -477,22 +526,6 @@ export default function RecorrenciasPage() {
                 </select>
               </div>
 
-              {/* Auto criar */}
-              <div className="flex items-center justify-between rounded-lg px-3 py-2.5"
-                style={{ background: 'var(--color-brand-light)', border: '1px solid var(--color-border)' }}>
-                <div>
-                  <p className="text-sm font-medium" style={{ color: 'var(--color-brand)' }}>Gerar automaticamente</p>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Cria transacao na data de execucao</p>
-                </div>
-                <button
-                  onClick={() => setForm({ ...form, auto_create: !form.auto_create })}
-                  className="relative w-10 h-5 rounded-full transition-colors"
-                  style={{ background: form.auto_create ? 'var(--color-brand)' : 'var(--color-border-md)' }}
-                >
-                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.auto_create ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                </button>
-              </div>
-
               {error && <p className="text-sm text-red-500">{error}</p>}
             </div>
 
@@ -505,7 +538,7 @@ export default function RecorrenciasPage() {
               <button onClick={handleSave} disabled={saving}
                 className="flex-1 text-white rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-50"
                 style={{ background: form.type === 'income' ? '#16a34a' : 'var(--color-brand)' }}>
-                {saving ? 'Salvando...' : editingId ? 'Salvar alteracoes' : 'Criar recorrencia'}
+                {saving ? 'Salvando...' : editingId ? 'Salvar alterações' : 'Criar recorrência'}
               </button>
             </div>
           </div>
@@ -515,19 +548,19 @@ export default function RecorrenciasPage() {
   )
 }
 
+// ── Card de recorrência ────────────────────────────────────────────────────────
 function RecorrenciaCard({
   r, onEdit, onToggle, onDelete, onGenerate, generatingId
 }: {
-  r: RecurringTransaction
-  onEdit: (r: RecurringTransaction) => void
-  onToggle: (r: RecurringTransaction) => void
+  r: Recorrencia
+  onEdit: (r: Recorrencia) => void
+  onToggle: (r: Recorrencia) => void
   onDelete: (id: string) => void
-  onGenerate: (r: RecurringTransaction) => void
+  onGenerate: (r: Recorrencia) => void
   generatingId: string | null
 }) {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const nextDate = new Date(r.next_execution + 'T12:00:00')
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const nextDate  = new Date(r.next_due_date + 'T12:00:00')
   const daysUntil = Math.round((nextDate.getTime() - today.getTime()) / 86400000)
   const isOverdue = daysUntil < 0
   const isDueSoon = daysUntil <= 3 && daysUntil >= 0
@@ -543,59 +576,61 @@ function RecorrenciaCard({
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>{r.description}</p>
+          <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
+            {r.description}
+          </p>
           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0"
             style={{ background: 'var(--color-brand-light)', color: 'var(--color-brand)' }}>
             {FREQ_LABELS[r.frequency]}
           </span>
+          {r.credit_card_id && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-600 shrink-0">
+              💳 Cartão
+            </span>
+          )}
           {isOverdue && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 shrink-0">Atrasada</span>
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 shrink-0">
+              Atrasada
+            </span>
           )}
           {isDueSoon && !isOverdue && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600 shrink-0">Vence em {daysUntil}d</span>
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600 shrink-0">
+              Vence em {daysUntil}d
+            </span>
           )}
         </div>
         <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--color-text-muted)' }}>
           {r.credit_card_name ? `💳 ${r.credit_card_name}` : (r.account_name ?? '—')}
           {r.category_name ? ` · ${r.category_name}` : ''}
-          {' · Proxima: '}{fmtDate(r.next_execution)}
+          {' · Próxima: '}{fmtDate(r.next_due_date)}
         </p>
       </div>
 
       <div className="text-right shrink-0">
-        <p className="text-sm font-semibold" style={{ color: r.type === 'income' ? '#16a34a' : '#ef4444' }}>
-          {r.type === 'income' ? '+' : '-'} {(v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))(r.amount)}
+        <p className="text-sm font-semibold"
+          style={{ color: r.type === 'income' ? '#16a34a' : '#ef4444' }}>
+          {r.type === 'income' ? '+' : '−'} {fmt(r.amount)}
         </p>
       </div>
 
       <div className="opacity-0 group-hover:opacity-100 transition-all flex gap-1 shrink-0">
-        <button
-          onClick={() => onGenerate(r)}
-          disabled={generatingId === r.id}
-          title="Gerar transacao agora"
+        <button onClick={() => onGenerate(r)} disabled={generatingId === r.id}
+          title="Gerar transação agora"
           className="text-xs px-2 py-1 rounded-lg transition-colors disabled:opacity-30"
-          style={{ background: 'var(--color-brand-light)', color: 'var(--color-brand)' }}
-        >
+          style={{ background: 'var(--color-brand-light)', color: 'var(--color-brand)' }}>
           {generatingId === r.id ? '...' : '▶'}
         </button>
-        <button
-          onClick={() => onToggle(r)}
-          title={r.active ? 'Pausar' : 'Ativar'}
+        <button onClick={() => onToggle(r)} title={r.is_active ? 'Pausar' : 'Ativar'}
           className="text-xs px-2 py-1 rounded-lg transition-colors"
-          style={{ background: 'var(--color-bg)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}
-        >
-          {r.active ? '⏸' : '▶'}
+          style={{ background: 'var(--color-bg)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>
+          {r.is_active ? '⏸' : '▶'}
         </button>
         <button onClick={() => onEdit(r)} title="Editar"
           className="text-sm px-1.5 py-1 rounded transition-colors"
-          style={{ color: 'var(--color-text-muted)' }}>
-          ✏️
-        </button>
+          style={{ color: 'var(--color-text-muted)' }}>✏️</button>
         <button onClick={() => onDelete(r.id)} title="Excluir"
           className="text-sm px-1.5 py-1 rounded transition-colors"
-          style={{ color: 'var(--color-text-muted)' }}>
-          🗑️
-        </button>
+          style={{ color: 'var(--color-text-muted)' }}>🗑️</button>
       </div>
     </div>
   )
