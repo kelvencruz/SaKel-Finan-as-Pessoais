@@ -242,11 +242,11 @@ function KalDiz({ data, enabled }: { data: KalDizData; enabled: boolean }) {
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
         {/* Avatar do Kal */}
-        <div className="w-12 h-12 rounded-full shrink-0 overflow-hidden bg-black border-2 border-purple-500/40" style={{ minWidth: 48 }}>
+        <div className="w-12 h-12 shrink-0 flex items-center justify-center" style={{ minWidth: 48 }}>
           <img
             src="/kal-avatar.png"
             alt="Kal"
-            className="w-full h-full object-cover object-center scale-125"
+            className="w-12 h-12 object-contain drop-shadow-lg"
             onError={(e) => {
               const target = e.currentTarget as HTMLImageElement
               target.style.display = 'none'
@@ -256,7 +256,7 @@ function KalDiz({ data, enabled }: { data: KalDizData; enabled: boolean }) {
           />
           <span
             style={{ display: 'none' }}
-            className="w-full h-full items-center justify-center bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-xs font-bold"
+            className="w-12 h-12 rounded-full items-center justify-center bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-sm font-bold"
           >
             K
           </span>
