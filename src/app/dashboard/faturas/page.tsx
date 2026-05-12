@@ -96,7 +96,7 @@ export default function FaturasPage() {
       .from('credit_card_invoices')
       .select('*')
       .eq('credit_card_id', cardId)
-      .gt('total_amount', 0)          // ← só faturas com valor
+      .gt('total_amount', 0)
       .order('year',  { ascending: false })
       .order('month', { ascending: false })
     setInvoices(data ?? [])
@@ -125,7 +125,6 @@ export default function FaturasPage() {
       .eq('year',  year)
       .single()
 
-    // se não existe ou é zerada, limpa a seleção — não cria
     if (!data || Number(data.total_amount) === 0) {
       setSelectedInvoice(null)
       setInvoiceTransactions([])
@@ -190,10 +189,6 @@ export default function FaturasPage() {
     if (viewMonth === 12) { setViewMonth(1); setViewYear(y => y + 1) }
     else setViewMonth(m => m + 1)
   }
-
-  const currentInvoice = selectedInvoice?.month === viewMonth && selectedInvoice?.year === viewYear
-    ? selectedInvoice
-    : null
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto">
@@ -283,37 +278,37 @@ export default function FaturasPage() {
                   <p className="text-white/70 text-sm">💳 {selectedCard?.name}</p>
                   <p className="text-xl font-bold mt-1">{MONTHS[viewMonth - 1]} {viewYear}</p>
                 </div>
-                {currentInvoice && (
+                {selectedInvoice && (
                   <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                    currentInvoice.status === 'paid'   ? 'bg-green-400/30 text-green-100' :
-                    currentInvoice.status === 'closed' ? 'bg-yellow-400/30 text-yellow-100' :
+                    selectedInvoice.status === 'paid'   ? 'bg-green-400/30 text-green-100' :
+                    selectedInvoice.status === 'closed' ? 'bg-yellow-400/30 text-yellow-100' :
                     'bg-white/20 text-white'
                   }`}>
-                    {STATUS_LABELS[currentInvoice.status]}
+                    {STATUS_LABELS[selectedInvoice.status]}
                   </span>
                 )}
               </div>
               <div className="flex items-end justify-between">
                 <div>
                   <p className="text-white/70 text-xs">Total da fatura</p>
-                  <p className="text-3xl font-bold">{fmt(Number(currentInvoice?.total_amount ?? 0))}</p>
+                  <p className="text-3xl font-bold">{fmt(Number(selectedInvoice?.total_amount ?? 0))}</p>
                 </div>
-                {currentInvoice && (
-                  <p className="text-white/70 text-sm">Vence {currentInvoice.due_date}</p>
+                {selectedInvoice && (
+                  <p className="text-white/70 text-sm">Vence {selectedInvoice.due_date}</p>
                 )}
               </div>
             </div>
 
             {/* Ações */}
             <div className="flex gap-3">
-              {currentInvoice ? (
+              {selectedInvoice ? (
                 <>
                   <button
-                    onClick={() => { setSelectedInvoice(currentInvoice); loadInvoiceTransactions(currentInvoice.id) }}
+                    onClick={() => loadInvoiceTransactions(selectedInvoice.id)}
                     className="flex-1 border border-gray-200 text-gray-700 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">
                     Ver lançamentos
                   </button>
-                  {currentInvoice.status !== 'paid' && currentInvoice.status !== 'cancelled' && Number(currentInvoice.total_amount) > 0 && (
+                  {selectedInvoice.status !== 'paid' && selectedInvoice.status !== 'cancelled' && Number(selectedInvoice.total_amount) > 0 && (
                     <button onClick={() => { setShowPayModal(true); setError(null) }}
                       className="flex-1 bg-green-600 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-green-700 transition-colors">
                       Pagar fatura
