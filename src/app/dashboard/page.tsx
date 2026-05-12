@@ -258,39 +258,98 @@ function KalDiz({ data, enabled }: { data: KalDizData; enabled: boolean }) {
       {/* Header */}
 <div className="flex items-center gap-3 mb-4">
 
-  {/* Avatar do Kal */}
-  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-sm shrink-0 border border-indigo-400/20">
+  // ─── Componente KalDiz ─────────────────────────────────────────────────────
+function KalDiz({ data, enabled }: { data: KalDizData; enabled: boolean }) {
+  if (!enabled) return null
 
-    <img
-      src="/kal-avatar.png"
-      alt="Kal"
-      className="w-8 h-8 object-contain"
-      onError={e => {
-        const target = e.currentTarget as HTMLImageElement
-        target.style.display = 'none'
+  const insights = gerarInsights(data)
 
-        const fallback = target.nextElementSibling as HTMLElement
-        if (fallback) fallback.style.display = 'flex'
-      }}
-    />
+  if (insights.length === 0) return null
 
-    {/* Fallback */}
-    <div className="hidden w-8 h-8 items-center justify-center text-white text-xs font-bold">
-      K
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl p-4 mb-6">
+
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-4">
+
+        {/* Avatar do Kal */}
+        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-sm shrink-0 border border-indigo-400/20">
+
+          <img
+            src="/kal-avatar.png"
+            alt="Kal"
+            className="w-8 h-8 object-contain"
+            onError={(e) => {
+              const target = e.currentTarget as HTMLImageElement
+              target.style.display = 'none'
+
+              const fallback = target.nextElementSibling as HTMLElement
+
+              if (fallback) {
+                fallback.style.display = 'flex'
+              }
+            }}
+          />
+
+          {/* Fallback */}
+          <div className="hidden w-8 h-8 items-center justify-center text-white text-xs font-bold">
+            K
+          </div>
+        </div>
+
+        {/* Texto */}
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-gray-800 leading-none">
+            Kal
+          </p>
+
+          <p className="text-[11px] text-gray-500 mt-1">
+            Insights financeiros inteligentes
+          </p>
+        </div>
+      </div>
+
+      {/* Insights */}
+      <div className="space-y-3">
+        {insights.map((insight) => (
+          <div
+            key={insight.id}
+            className={`rounded-xl px-4 py-3 border ${insight.bg}`}
+          >
+            <div className="flex items-start gap-2.5">
+
+              <span className="text-base shrink-0 mt-0.5">
+                {insight.icone}
+              </span>
+
+              <div className="flex-1 min-w-0">
+
+                <p className={`text-xs font-semibold mb-0.5 ${insight.cor}`}>
+                  {insight.titulo}
+                </p>
+
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  {insight.texto}
+                </p>
+
+                {insight.acao && (
+                  <a
+                    href={insight.acao.href}
+                    className={`inline-flex items-center gap-1 text-[11px] font-medium mt-1.5 hover:underline ${insight.cor}`}
+                  >
+                    {insight.acao.label} →
+                  </a>
+                )}
+
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
     </div>
-  </div>
-
-  {/* Texto */}
-  <div className="min-w-0">
-    <p className="text-sm font-semibold text-gray-800 leading-none">
-      Kal
-    </p>
-
-    <p className="text-[11px] text-gray-500 mt-1">
-      Insights financeiros inteligentes
-    </p>
-  </div>
-</div>
+  )
+}
     
     {/* Fallback */}
     <div className="hidden w-7 h-7 items-center justify-center text-white text-xs font-bold">
