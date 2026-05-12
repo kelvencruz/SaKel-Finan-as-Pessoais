@@ -256,25 +256,41 @@ function KalDiz({ data, enabled }: { data: KalDizData; enabled: boolean }) {
   return (
     <div className="bg-white border border-gray-100 rounded-xl p-4 mb-6">
       {/* Header */}
-      <div className="flex items-center gap-2.5 mb-4">
-        <img
-          src="/kal-avatar.png"
-          alt="Kal"
-          className="w-15 h-15 rounded-full object-cover shrink-0"
-          onError={e => {
-            // fallback se imagem não carregar
-            const target = e.currentTarget as HTMLImageElement
-            target.style.display = 'none'
-            const next = target.nextElementSibling as HTMLElement
-            if (next) next.style.display = 'flex'
-          }}
-        />
-        <div
-          className="w-15 h-15 rounded-full items-center justify-center text-white text-xs font-bold shrink-0"
-          style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', display: 'none' }}
-        >K</div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Kal diz</p>
-      </div>
+<div className="flex items-center gap-3 mb-4">
+
+  {/* Avatar do Kal */}
+  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-sm shrink-0 border border-indigo-400/20">
+    
+    <img
+      src="/kal-avatar.png"
+      alt="Kal"
+      className="w-7 h-7 object-contain"
+      onError={e => {
+        const target = e.currentTarget as HTMLImageElement
+        target.style.display = 'none'
+
+        const fallback = target.nextElementSibling as HTMLElement
+        if (fallback) fallback.style.display = 'flex'
+      }}
+    />
+
+    {/* Fallback */}
+    <div className="hidden w-7 h-7 items-center justify-center text-white text-xs font-bold">
+      K
+    </div>
+  </div>
+
+  {/* Texto */}
+  <div className="min-w-0">
+    <p className="text-sm font-semibold text-gray-800 leading-none">
+      Kal
+    </p>
+
+    <p className="text-[11px] text-gray-400 mt-1">
+      Insights financeiros inteligentes
+    </p>
+  </div>
+</div>
 
       {/* Insights */}
       <div className="space-y-3">
