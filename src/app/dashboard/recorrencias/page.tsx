@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { awardXP } from '@/lib/gamification'
 
 type TxType = 'income' | 'expense'
 type Frequency = 'daily' | 'weekly' | 'monthly' | 'yearly'
@@ -197,6 +198,17 @@ export default function RecorrenciasPage() {
     } else {
       const { error: err } = await supabase.from('recurring_transactions').insert({ ...payload, user_id: user.id })
       if (err) { setError(err.message); setSaving(false); return }
+
+      // ── Gamificação ──────────────────────────────────────────────
+      // É a primeira recorrência se a lista em memória está vazia
+      const isFirstRecurring = recorrencias.length === 0
+      await awardXP(
+        user.id,
+        'first_recurring',
+        isFirstRecurring ? 'first_recurring' : undefined,
+      ).catch(() => { /* silencioso */ })
+      // ─────────────────────────────────────────────────────────────
+
       showToast('Recorrencia criada!')
     }
 
@@ -240,6 +252,11 @@ export default function RecorrenciasPage() {
     })
 
     if (err) { showToast('Erro ao gerar transacao.', 'error'); setGeneratingId(null); return }
+
+    // ── Gamificação ──────────────────────────────────────────────
+    // Cada geração manual conta como uma transação criada
+    await awardXP(user.id, 'transaction_created').catch(() => { /* silencioso */ })
+    // ─────────────────────────────────────────────────────────────
 
     // Avanca next_execution
     const next = nextExecutionDate(today, r.frequency)
@@ -306,7 +323,6 @@ export default function RecorrenciasPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Ativas */}
           {ativas.length > 0 && (
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--color-text-muted)' }}>
@@ -318,7 +334,6 @@ export default function RecorrenciasPage() {
             </div>
           )}
 
-          {/* Inativas */}
           {inativas.length > 0 && (
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--color-text-muted)' }}>
@@ -521,13 +536,11 @@ function RecorrenciaCard({
     <div className="rounded-xl px-4 py-3 flex items-center gap-4 group transition-colors"
       style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
 
-      {/* Icone */}
       <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
         style={{ background: r.type === 'income' ? '#dcfce7' : '#fee2e2' }}>
         {r.category_icon ?? FREQ_ICONS[r.frequency]}
       </div>
 
-      {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>{r.description}</p>
@@ -549,16 +562,13 @@ function RecorrenciaCard({
         </p>
       </div>
 
-      {/* Valor */}
       <div className="text-right shrink-0">
         <p className="text-sm font-semibold" style={{ color: r.type === 'income' ? '#16a34a' : '#ef4444' }}>
           {r.type === 'income' ? '+' : '-'} {(v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))(r.amount)}
         </p>
       </div>
 
-      {/* Acoes */}
       <div className="opacity-0 group-hover:opacity-100 transition-all flex gap-1 shrink-0">
-        {/* Gerar agora */}
         <button
           onClick={() => onGenerate(r)}
           disabled={generatingId === r.id}
@@ -568,7 +578,6 @@ function RecorrenciaCard({
         >
           {generatingId === r.id ? '...' : '▶'}
         </button>
-        {/* Pausar/Ativar */}
         <button
           onClick={() => onToggle(r)}
           title={r.active ? 'Pausar' : 'Ativar'}
@@ -577,13 +586,11 @@ function RecorrenciaCard({
         >
           {r.active ? '⏸' : '▶'}
         </button>
-        {/* Editar */}
         <button onClick={() => onEdit(r)} title="Editar"
           className="text-sm px-1.5 py-1 rounded transition-colors"
           style={{ color: 'var(--color-text-muted)' }}>
           ✏️
         </button>
-        {/* Excluir */}
         <button onClick={() => onDelete(r.id)} title="Excluir"
           className="text-sm px-1.5 py-1 rounded transition-colors"
           style={{ color: 'var(--color-text-muted)' }}>

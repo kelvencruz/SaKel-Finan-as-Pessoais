@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { awardXP } from '@/lib/gamification'
 
 interface Investment {
   id: string
@@ -190,6 +191,17 @@ export default function InvestimentosPage() {
     } else {
       const { error: err } = await supabase.from('investments').insert(payload)
       if (err) { setError(err.message); setSaving(false); return }
+
+      // ── Gamificação ──────────────────────────────────────────────
+      // É o primeiro investimento se a lista em memória está vazia
+      const isFirstInvestment = investments.filter(i => i.is_active).length === 0
+      await awardXP(
+        user.id,
+        'first_investment',
+        isFirstInvestment ? 'first_investment' : undefined,
+      ).catch(() => { /* silencioso */ })
+      // ─────────────────────────────────────────────────────────────
+
       showToast('Investimento cadastrado!')
     }
 
@@ -479,7 +491,7 @@ export default function InvestimentosPage() {
                 </div>
               </div>
 
-              {/* Objetivo — dropdown + criação inline */}
+              {/* Objetivo */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Objetivo</label>
                 {!showNewGoal ? (
@@ -550,7 +562,7 @@ export default function InvestimentosPage() {
                 </div>
               </div>
 
-              {/* Rentabilidade texto livre */}
+              {/* Rentabilidade */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Rentabilidade <span className="text-gray-400">(opcional)</span></label>
                 <input type="text" value={form.profitability} onChange={e => setForm({ ...form, profitability: e.target.value })}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { awardXP } from '@/lib/gamification'
 import { Account, AccountType } from '@/types'
 
 // 'credit' removido — cartões vivem em /dashboard/cartoes
@@ -54,7 +55,7 @@ export default function ContasPage() {
     const { data } = await supabase
       .from('accounts')
       .select('*')
-      .neq('type', 'credit')   // nunca mostra contas do tipo credit
+      .neq('type', 'credit')
       .order('created_at')
     setAccounts(data ?? [])
     setLoading(false)
@@ -88,7 +89,7 @@ export default function ContasPage() {
     if (!form.name.trim()) { setError('Nome é obrigatório.'); return }
 
     const initialBalance = parseFloat(String(form.initial_balance).replace(',', '.') || '0')
-    if (isNaN(initialBalance))          { setError('Saldo inicial inválido.'); return }
+    if (isNaN(initialBalance))            { setError('Saldo inicial inválido.'); return }
     if (!editingId && initialBalance < 0) { setError('Saldo inicial não pode ser negativo.'); return }
 
     setSaving(true)
@@ -114,6 +115,18 @@ export default function ContasPage() {
         is_active:       true,
       })
       if (err) { setError(err.message); setSaving(false); return }
+
+      // ── Gamificação ──────────────────────────────────────────────
+      // Verifica se é a primeira conta (excluindo a que acabou de criar,
+      // pois loadAccounts ainda não rodou — usa a lista atual em memória)
+      const isFirstAccount = accounts.filter(a => a.type !== 'credit').length === 0
+      await awardXP(
+        user.id,
+        'account_created',
+        isFirstAccount ? 'first_account' : undefined,
+      ).catch(() => { /* silencioso — não bloqueia o fluxo */ })
+      // ─────────────────────────────────────────────────────────────
+
       showToast('Conta criada!')
     }
 
