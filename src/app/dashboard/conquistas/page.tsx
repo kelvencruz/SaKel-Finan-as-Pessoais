@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getLevelInfo, LEVELS, BADGES, getGamification } from '@/lib/gamification'
-import { kalAvatarBase64 } from '@/lib/kalAvatarBase64'
+import { kalAvatar } from '@/lib/kalAvatarBase64'
 
 export default function ConquistasPage() {
   const supabase = createClient()
@@ -78,7 +78,7 @@ export default function ConquistasPage() {
           <p className="text-sm text-gray-400 mt-0.5">Sua jornada financeira com o Kal</p>
         </div>
         <div className="bg-white border border-gray-100 rounded-xl p-10 text-center">
-          <img src={kalAvatarBase64} alt="Kal" className="w-20 h-20 object-contain mx-auto mb-4 drop-shadow" />
+          <img src={kalAvatar} alt="Kal" className="w-20 h-20 object-contain mx-auto mb-4 drop-shadow" />
           <h2 className="text-lg font-semibold text-gray-700 mb-2">Nenhuma atividade ainda</h2>
           <p className="text-sm text-gray-400 mb-6">
             Registre sua primeira transação para começar a ganhar XP e desbloquear conquistas!
@@ -124,7 +124,7 @@ export default function ConquistasPage() {
         <div className="flex items-center gap-4 mb-4">
           <div className="w-16 h-16 shrink-0">
             <img
-              src={kalAvatarBase64}
+              src={kalAvatar}
               alt="Kal"
               className="w-full h-full object-contain drop-shadow-lg"
             />
