@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage() {
@@ -11,6 +11,12 @@ export default function LoginPage() {
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState<string | null>(null)
   const [message,  setMessage]  = useState<string | null>(null)
+  const [isDark,   setIsDark]   = useState(true)
+
+  useEffect(() => {
+    // O login tem fundo sempre escuro, então sempre usa logo dark
+    setIsDark(true)
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -36,6 +42,8 @@ export default function LoginPage() {
     setLoading(false)
   }
 
+  const logo = '/sakel-logo-dark.png'
+
   return (
     <div
       className="min-h-screen flex"
@@ -52,7 +60,7 @@ export default function LoginPage() {
       {/* Esquerda — branding desktop */}
       <div className="hidden lg:flex flex-col justify-between w-1/2 p-12 relative">
         <img
-          src="/sakel-logo-dark.png"
+          src={logo}
           alt="SaKel Finanças"
           style={{ width: 280, height: 'auto', display: 'block', objectFit: 'contain' }}
         />
@@ -91,10 +99,10 @@ export default function LoginPage() {
           boxShadow: '0 32px 64px rgba(0,0,0,0.4)',
         }}>
 
-          {/* Logo mobile — grande e centralizada */}
+          {/* Logo mobile */}
           <div className="lg:hidden flex justify-center mb-8">
             <img
-              src="/sakel-logo-dark.png"
+              src={logo}
               alt="SaKel Finanças"
               style={{ width: '70%', maxWidth: 260, height: 'auto', display: 'block', objectFit: 'contain' }}
             />

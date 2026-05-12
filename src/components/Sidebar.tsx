@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import ThemeToggle from './ThemeToggle'
 
@@ -24,6 +24,18 @@ const bottomItems = [
 export default function Sidebar() {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
+  const [isDark, setIsDark] = useState(false)
+
+  useEffect(() => {
+    // Lê o tema atual
+    const check = () => setIsDark(document.documentElement.classList.contains('dark'))
+    check()
+
+    // Observa mudanças de tema
+    const observer = new MutationObserver(check)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [])
 
   async function handleLogout() {
     const supabase = createClient()
@@ -67,8 +79,22 @@ export default function Sidebar() {
       style={{ background: 'var(--color-surface)', borderRight: '1px solid var(--color-border)', fontFamily: 'var(--font-main)' }}
     >
       {/* Logo */}
-      <div className="px-5 py-5 mb-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
-        <div className="flex items-center gap-2.5">
+      <div className="px-5 py-4 mb-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
+        <img
+          src={isDark ? '/sakel-logo-dark.png' : '/sakel-logo-ligth.png'}
+          alt="SaKel Finanças"
+          className="w-full"
+          style={{ maxWidth: 140, height: 'auto', objectFit: 'contain', display: 'block' }}
+          onError={(e) => {
+            // Fallback: mostra texto se imagem não carregar
+            const target = e.currentTarget as HTMLImageElement
+            target.style.display = 'none'
+            const fallback = target.nextElementSibling as HTMLElement
+            if (fallback) fallback.style.display = 'flex'
+          }}
+        />
+        {/* Fallback texto */}
+        <div style={{ display: 'none' }} className="items-center gap-2.5">
           <div
             className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold shrink-0"
             style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}
