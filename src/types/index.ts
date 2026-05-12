@@ -1,7 +1,7 @@
 export type TransactionType = 'income' | 'expense' | 'transfer'
 export type TransactionStatus = 'paid' | 'pending' | 'overdue' | 'cancelled'
 export type AccountType = 'checking' | 'savings' | 'cash' | 'credit' | 'investment' | 'other'
-export type CategoryType = 'income' | 'expense'
+export type CategoryType = 'income' | 'expense' | 'investment'  // ← 'investment' adicionado
 export type BudgetPeriod = 'monthly' | 'yearly'
 
 export interface Profile {
@@ -24,6 +24,17 @@ export interface Category {
   created_at: string
 }
 
+export interface InvestmentGoal {
+  id: string
+  user_id: string
+  name: string
+  icon: string
+  color: string
+  target_amount: number | null
+  target_date: string | null
+  created_at: string
+}
+
 export interface Account {
   id: string
   user_id: string
@@ -43,6 +54,7 @@ export interface Transaction {
   user_id: string
   account_id: string
   category_id: string | null
+  goal_id: string | null          // ← novo
   type: TransactionType
   amount: number
   description: string
@@ -60,6 +72,7 @@ export interface Transaction {
   // joins
   category?: Category
   account?: Account
+  goal?: InvestmentGoal
 }
 
 export interface Budget {

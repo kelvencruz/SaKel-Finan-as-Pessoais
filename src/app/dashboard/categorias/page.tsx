@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Category, CategoryType } from '@/types'
+import { Category, CategoryType, InvestmentGoal } from '@/types'
 
 const COLORS = [
   '#6366f1','#3b82f6','#22c55e','#f97316',
@@ -16,13 +16,21 @@ const ICONS = [
   '🍕','☕','🎓','🏋️','🧾','🎬','🏥','🐶','🌱','🧴',
 ]
 
-const emptyForm = { name: '', type: 'expense' as CategoryType, color: '#6366f1', icon: '🛒', customIcon: '' }
+const GOAL_ICONS = [
+  '🎯','🛡️','🏖️','✈️','🏠','🚗','📚','💍','👶','🏥',
+  '💼','🌍','📈','💰','🔑','⛵','🎓','🏋️','🌱','👑',
+]
 
+const emptyForm     = { name: '', type: 'expense' as CategoryType, color: '#6366f1', icon: '🛒', customIcon: '' }
+const emptyGoalForm = { name: '', icon: '🎯', color: '#6366f1', target_amount: '', target_date: '' }
+
+type Tab   = 'expense' | 'income' | 'investment'
 type Toast = { message: string; type: 'success' | 'error' }
 
 export default function CategoriasPage() {
   const supabase = createClient()
 
+  // ── categorias ───────────────────────────────────────────────────────
   const [categories, setCategories] = useState<Category[]>([])
   const [loading,    setLoading]    = useState(true)
   const [showModal,  setShowModal]  = useState(false)
@@ -31,29 +39,41 @@ export default function CategoriasPage() {
   const [saving,     setSaving]     = useState(false)
   const [error,      setError]      = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [tab,        setTab]        = useState<CategoryType>('expense')
-  const [toast,      setToast]      = useState<Toast | null>(null)
 
-  // ── helpers ──────────────────────────────────────────────
+  // ── goals ────────────────────────────────────────────────────────────
+  const [goals,         setGoals]         = useState<InvestmentGoal[]>([])
+  const [showGoalModal, setShowGoalModal] = useState(false)
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null)
+  const [goalForm,      setGoalForm]      = useState(emptyGoalForm)
+  const [savingGoal,    setSavingGoal]    = useState(false)
+  const [goalError,     setGoalError]     = useState<string | null>(null)
+  const [deletingGoalId,setDeletingGoalId]= useState<string | null>(null)
+
+  // ── ui ───────────────────────────────────────────────────────────────
+  const [tab,   setTab]   = useState<Tab>('expense')
+  const [toast, setToast] = useState<Toast | null>(null)
+
   function showToast(message: string, type: Toast['type'] = 'success') {
     setToast({ message, type })
     setTimeout(() => setToast(null), 3000)
   }
 
-  async function loadCategories() {
-    const { data } = await supabase
-      .from('categories')
-      .select('*')
-      .order('name')
-    setCategories(data ?? [])
+  // ── load ─────────────────────────────────────────────────────────────
+  async function loadAll() {
+    const [{ data: cats }, { data: gls }] = await Promise.all([
+      supabase.from('categories').select('*').order('name'),
+      supabase.from('investment_goals').select('*').order('name'),
+    ])
+    setCategories(cats ?? [])
+    setGoals((gls ?? []) as InvestmentGoal[])
     setLoading(false)
   }
 
-  useEffect(() => { loadCategories() }, [])
+  useEffect(() => { loadAll() }, [])
 
-  // ── modal ────────────────────────────────────────────────
+  // ── categoria modal ───────────────────────────────────────────────────
   function openCreate() {
-    setForm({ ...emptyForm, type: tab })
+    setForm({ ...emptyForm, type: tab === 'investment' ? 'investment' : tab })
     setEditingId(null)
     setError(null)
     setShowModal(true)
@@ -73,13 +93,10 @@ export default function CategoriasPage() {
     setShowModal(true)
   }
 
-  // ── save ─────────────────────────────────────────────────
   async function handleSave() {
     setError(null)
     if (!form.name.trim()) { setError('Nome é obrigatório.'); return }
-
     const finalIcon = form.customIcon.trim() || form.icon
-
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setError('Não autenticado.'); setSaving(false); return }
@@ -98,48 +115,107 @@ export default function CategoriasPage() {
       if (err) { setError(err.message); setSaving(false); return }
       showToast('Categoria criada!')
     }
-
-    await loadCategories()
+    await loadAll()
     setShowModal(false)
     setSaving(false)
   }
 
-  // ── delete ───────────────────────────────────────────────
   async function handleDelete(cat: Category) {
-    const confirmed = confirm(`Excluir a categoria "${cat.name}"?`)
-    if (!confirmed) return
-
-    // verifica transações vinculadas
+    if (!confirm(`Excluir a categoria "${cat.name}"?`)) return
     const { count } = await supabase
-      .from('transactions')
-      .select('id', { count: 'exact', head: true })
-      .eq('category_id', cat.id)
-
+      .from('transactions').select('id', { count: 'exact', head: true }).eq('category_id', cat.id)
     if (count && count > 0) {
-      alert(
-        `Não é possível excluir "${cat.name}" pois ela possui ${count} transação(ões) vinculada(s).\n\nAltere a categoria dessas transações antes de remover.`
-      )
+      alert(`Não é possível excluir "${cat.name}" pois ela possui ${count} transação(ões) vinculada(s).`)
       return
     }
-
     setDeletingId(cat.id)
     const { error: err } = await supabase.from('categories').delete().eq('id', cat.id)
-
-    if (err) {
-      showToast('Erro ao excluir categoria.', 'error')
-    } else {
-      showToast('Categoria excluída.')
-    }
-
-    await loadCategories()
+    if (err) showToast('Erro ao excluir categoria.', 'error')
+    else showToast('Categoria excluída.')
+    await loadAll()
     setDeletingId(null)
   }
 
-  // ── derived ──────────────────────────────────────────────
-  const filtered       = categories.filter(c => c.type === tab)
-  const expenseCount   = categories.filter(c => c.type === 'expense').length
-  const incomeCount    = categories.filter(c => c.type === 'income').length
-  const activeIcon     = form.customIcon.trim() || form.icon
+  // ── goal modal ────────────────────────────────────────────────────────
+  function openCreateGoal() {
+    setGoalForm(emptyGoalForm)
+    setEditingGoalId(null)
+    setGoalError(null)
+    setShowGoalModal(true)
+  }
+
+  function openEditGoal(g: InvestmentGoal) {
+    setGoalForm({
+      name:          g.name,
+      icon:          g.icon,
+      color:         g.color,
+      target_amount: g.target_amount ? String(g.target_amount) : '',
+      target_date:   g.target_date ?? '',
+    })
+    setEditingGoalId(g.id)
+    setGoalError(null)
+    setShowGoalModal(true)
+  }
+
+  async function handleSaveGoal() {
+    setGoalError(null)
+    if (!goalForm.name.trim()) { setGoalError('Nome é obrigatório.'); return }
+    const targetAmount = goalForm.target_amount ? parseFloat(goalForm.target_amount) : null
+    if (goalForm.target_amount && isNaN(targetAmount!)) { setGoalError('Valor meta inválido.'); return }
+
+    setSavingGoal(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setGoalError('Não autenticado.'); setSavingGoal(false); return }
+
+    const payload = {
+      name:          goalForm.name.trim(),
+      icon:          goalForm.icon,
+      color:         goalForm.color,
+      target_amount: targetAmount,
+      target_date:   goalForm.target_date || null,
+    }
+
+    if (editingGoalId) {
+      const { error: err } = await supabase.from('investment_goals').update(payload).eq('id', editingGoalId)
+      if (err) { setGoalError(err.message); setSavingGoal(false); return }
+      showToast('Objetivo atualizado!')
+    } else {
+      const { error: err } = await supabase.from('investment_goals').insert({ ...payload, user_id: user.id })
+      if (err) { setGoalError(err.message); setSavingGoal(false); return }
+      showToast('Objetivo criado!')
+    }
+    await loadAll()
+    setShowGoalModal(false)
+    setSavingGoal(false)
+  }
+
+  async function handleDeleteGoal(g: InvestmentGoal) {
+    if (!confirm(`Excluir o objetivo "${g.name}"?`)) return
+
+    // Verifica investimentos vinculados
+    const { count: invCount } = await supabase
+      .from('investments').select('id', { count: 'exact', head: true }).eq('goal_id', g.id)
+    if (invCount && invCount > 0) {
+      alert(`Não é possível excluir "${g.name}" pois ele possui ${invCount} investimento(s) vinculado(s).`)
+      return
+    }
+
+    setDeletingGoalId(g.id)
+    const { error: err } = await supabase.from('investment_goals').delete().eq('id', g.id)
+    if (err) showToast('Erro ao excluir objetivo.', 'error')
+    else showToast('Objetivo excluído.')
+    await loadAll()
+    setDeletingGoalId(null)
+  }
+
+  // ── derived ───────────────────────────────────────────────────────────
+  const filtered     = categories.filter(c => c.type === tab)
+  const expenseCount = categories.filter(c => c.type === 'expense').length
+  const incomeCount  = categories.filter(c => c.type === 'income').length
+  const investCount  = categories.filter(c => c.type === 'investment').length
+  const activeIcon   = form.customIcon.trim() || form.icon
+
+  const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 max-w-4xl mx-auto">
@@ -147,9 +223,7 @@ export default function CategoriasPage() {
       {/* Toast */}
       {toast && (
         <div className={`fixed top-5 right-5 z-[60] px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all ${
-          toast.type === 'success'
-            ? 'bg-green-50 text-green-700 border border-green-200'
-            : 'bg-red-50 text-red-700 border border-red-200'
+          toast.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
         }`}>
           {toast.type === 'success' ? '✓ ' : '✕ '}{toast.message}
         </div>
@@ -162,205 +236,360 @@ export default function CategoriasPage() {
           <h1 className="text-xl font-semibold mt-1">Categorias</h1>
         </div>
         <button
-          onClick={openCreate}
+          onClick={tab === 'investment' ? openCreateGoal : openCreate}
           className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
         >
-          + Nova Categoria
+          {tab === 'investment' ? '+ Novo Objetivo' : '+ Nova Categoria'}
         </button>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6">
-        {(['expense', 'income'] as CategoryType[]).map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
+        {([
+          { key: 'expense',    label: '💸 Despesas',    count: expenseCount, active: 'bg-red-100 text-red-600'    },
+          { key: 'income',     label: '💰 Receitas',    count: incomeCount,  active: 'bg-green-100 text-green-600'},
+          { key: 'investment', label: '📈 Investimentos', count: investCount, active: 'bg-indigo-100 text-indigo-600'},
+        ] as const).map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              tab === t
-                ? t === 'expense' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'
-                : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
-            }`}
-          >
-            {t === 'expense' ? '💸 Despesas' : '💰 Receitas'}
-            <span className="ml-2 text-xs opacity-60">
-              {t === 'expense' ? expenseCount : incomeCount}
-            </span>
+              tab === t.key ? t.active : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
+            }`}>
+            {t.label}
+            <span className="ml-2 text-xs opacity-60">{t.count}</span>
           </button>
         ))}
       </div>
 
-      {/* Lista */}
       {loading ? (
         <p className="text-gray-400 text-sm">Carregando...</p>
-      ) : filtered.length === 0 ? (
-        <div className="bg-white border border-dashed border-gray-200 rounded-xl p-10 text-center">
-          <p className="text-gray-400 text-sm">
-            Nenhuma categoria de {tab === 'expense' ? 'despesa' : 'receita'} ainda.
-          </p>
-          <button onClick={openCreate} className="mt-3 text-indigo-600 text-sm hover:underline">
-            Criar primeira categoria
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtered.map(cat => (
-            <div
-              key={cat.id}
-              className="bg-white border border-gray-100 rounded-xl p-4 flex items-center justify-between group hover:border-gray-200 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
-                  style={{ backgroundColor: cat.color + '22', border: `2px solid ${cat.color}44` }}
-                >
-                  {cat.icon}
-                </div>
-                <span className="font-medium text-gray-800 text-sm">{cat.name}</span>
-              </div>
 
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={() => openEdit(cat)}
-                  className="text-xs text-gray-400 hover:text-indigo-600 px-2 py-1 rounded hover:bg-indigo-50 transition-colors"
-                >
-                  Editar
-                </button>
-                <button
-                  onClick={() => handleDelete(cat)}
-                  disabled={deletingId === cat.id}
-                  className="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded hover:bg-red-50 transition-colors disabled:opacity-50"
-                >
-                  {deletingId === cat.id ? '...' : 'Excluir'}
-                </button>
+      ) : tab === 'investment' ? (
+        // ── ABA INVESTIMENTOS ─────────────────────────────────────────────
+        <div className="space-y-8">
+
+          {/* Categorias de investimento */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-700">Categorias de Investimento</p>
+                <p className="text-xs text-gray-400 mt-0.5">Classificam as transações do tipo investimento</p>
               </div>
+              <button onClick={openCreate}
+                className="text-xs text-indigo-600 hover:underline font-medium">
+                + Nova categoria
+              </button>
             </div>
-          ))}
+            {filtered.length === 0 ? (
+              <div className="bg-white border border-dashed border-gray-200 rounded-xl p-6 text-center">
+                <p className="text-gray-400 text-sm">Nenhuma categoria de investimento ainda.</p>
+                <button onClick={openCreate} className="mt-2 text-indigo-600 text-sm hover:underline">Criar primeira</button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {filtered.map(cat => (
+                  <div key={cat.id}
+                    className="bg-white border border-gray-100 rounded-xl p-4 flex items-center justify-between group hover:border-gray-200 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
+                        style={{ backgroundColor: cat.color + '22', border: `2px solid ${cat.color}44` }}>
+                        {cat.icon}
+                      </div>
+                      <span className="font-medium text-gray-800 text-sm">{cat.name}</span>
+                    </div>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => openEdit(cat)}
+                        className="text-xs text-gray-400 hover:text-indigo-600 px-2 py-1 rounded hover:bg-indigo-50 transition-colors">
+                        Editar
+                      </button>
+                      <button onClick={() => handleDelete(cat)} disabled={deletingId === cat.id}
+                        className="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded hover:bg-red-50 transition-colors disabled:opacity-50">
+                        {deletingId === cat.id ? '...' : 'Excluir'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Divisor */}
+          <div className="border-t border-gray-200" />
+
+          {/* Objetivos financeiros */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-700">Objetivos Financeiros</p>
+                <p className="text-xs text-gray-400 mt-0.5">Agrupam investimentos por intenção — reserva, viagem, aposentadoria…</p>
+              </div>
+              <button onClick={openCreateGoal}
+                className="text-xs text-indigo-600 hover:underline font-medium">
+                + Novo objetivo
+              </button>
+            </div>
+            {goals.length === 0 ? (
+              <div className="bg-white border border-dashed border-gray-200 rounded-xl p-6 text-center">
+                <p className="text-gray-400 text-sm">Nenhum objetivo criado ainda.</p>
+                <button onClick={openCreateGoal} className="mt-2 text-indigo-600 text-sm hover:underline">Criar primeiro objetivo</button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {goals.map(g => (
+                  <div key={g.id}
+                    className="bg-white border border-gray-100 rounded-xl p-4 flex items-center justify-between group hover:border-gray-200 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-full flex items-center justify-center text-xl shrink-0"
+                        style={{ backgroundColor: g.color + '22', border: `2px solid ${g.color}55` }}>
+                        {g.icon}
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-800 text-sm">{g.name}</p>
+                        {g.target_amount && (
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            Meta: {fmt(g.target_amount)}
+                            {g.target_date ? ` · ${new Date(g.target_date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => openEditGoal(g)}
+                        className="text-xs text-gray-400 hover:text-indigo-600 px-2 py-1 rounded hover:bg-indigo-50 transition-colors">
+                        Editar
+                      </button>
+                      <button onClick={() => handleDeleteGoal(g)} disabled={deletingGoalId === g.id}
+                        className="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded hover:bg-red-50 transition-colors disabled:opacity-50">
+                        {deletingGoalId === g.id ? '...' : 'Excluir'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+
+      ) : (
+        // ── ABAS DESPESA / RECEITA ────────────────────────────────────────
+        filtered.length === 0 ? (
+          <div className="bg-white border border-dashed border-gray-200 rounded-xl p-10 text-center">
+            <p className="text-gray-400 text-sm">
+              Nenhuma categoria de {tab === 'expense' ? 'despesa' : 'receita'} ainda.
+            </p>
+            <button onClick={openCreate} className="mt-3 text-indigo-600 text-sm hover:underline">
+              Criar primeira categoria
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filtered.map(cat => (
+              <div key={cat.id}
+                className="bg-white border border-gray-100 rounded-xl p-4 flex items-center justify-between group hover:border-gray-200 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
+                    style={{ backgroundColor: cat.color + '22', border: `2px solid ${cat.color}44` }}>
+                    {cat.icon}
+                  </div>
+                  <span className="font-medium text-gray-800 text-sm">{cat.name}</span>
+                </div>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => openEdit(cat)}
+                    className="text-xs text-gray-400 hover:text-indigo-600 px-2 py-1 rounded hover:bg-indigo-50 transition-colors">
+                    Editar
+                  </button>
+                  <button onClick={() => handleDelete(cat)} disabled={deletingId === cat.id}
+                    className="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded hover:bg-red-50 transition-colors disabled:opacity-50">
+                    {deletingId === cat.id ? '...' : 'Excluir'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
       )}
 
-      {/* Modal */}
+      {/* ── Modal Categoria ─────────────────────────────────────────────── */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-semibold mb-5">
               {editingId ? 'Editar Categoria' : 'Nova Categoria'}
             </h2>
-
             <div className="space-y-4">
-
-              {/* Nome */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Nome</label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={e => setForm({ ...form, name: e.target.value })}
-                  placeholder="Ex: Alimentação, Salário..."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+                <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                  placeholder="Ex: Aporte, Reserva, Ações..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
 
-              {/* Tipo */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Tipo</label>
                 <div className="flex gap-2">
-                  {(['expense', 'income'] as CategoryType[]).map(t => (
-                    <button
-                      key={t}
-                      onClick={() => setForm({ ...form, type: t })}
-                      className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        form.type === t
-                          ? t === 'expense' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'
+                  {([
+                    { v: 'expense',    label: '💸 Despesa'     },
+                    { v: 'income',     label: '💰 Receita'     },
+                    { v: 'investment', label: '📈 Investimento' },
+                  ] as const).map(t => (
+                    <button key={t.v} onClick={() => setForm({ ...form, type: t.v })}
+                      className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
+                        form.type === t.v
+                          ? t.v === 'expense'    ? 'bg-red-100 text-red-600'
+                          : t.v === 'income'     ? 'bg-green-100 text-green-600'
+                          : 'bg-indigo-100 text-indigo-700'
                           : 'border border-gray-200 text-gray-500 hover:bg-gray-50'
-                      }`}
-                    >
-                      {t === 'expense' ? '💸 Despesa' : '💰 Receita'}
+                      }`}>
+                      {t.label}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Ícone predefinido */}
               <div>
                 <label className="block text-sm text-gray-600 mb-2">Ícone</label>
                 <div className="flex gap-2 flex-wrap">
                   {ICONS.map(icon => (
-                    <button
-                      key={icon}
-                      onClick={() => setForm({ ...form, icon, customIcon: '' })}
+                    <button key={icon} onClick={() => setForm({ ...form, icon, customIcon: '' })}
                       className={`w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all ${
                         form.icon === icon && !form.customIcon
                           ? 'bg-indigo-100 ring-2 ring-indigo-400 scale-110'
                           : 'bg-gray-50 hover:bg-gray-100'
-                      }`}
-                    >
+                      }`}>
                       {icon}
                     </button>
                   ))}
                 </div>
-
-                {/* Ícone personalizado */}
                 <div className="mt-2">
-                  <input
-                    type="text"
-                    value={form.customIcon}
-                    onChange={e => setForm({ ...form, customIcon: e.target.value })}
+                  <input type="text" value={form.customIcon} onChange={e => setForm({ ...form, customIcon: e.target.value })}
                     placeholder="Ou digite um emoji personalizado…"
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    maxLength={4}
-                  />
+                    maxLength={4} />
                 </div>
               </div>
 
-              {/* Cor */}
               <div>
                 <label className="block text-sm text-gray-600 mb-2">Cor</label>
                 <div className="flex gap-2 flex-wrap">
                   {COLORS.map(color => (
-                    <button
-                      key={color}
-                      onClick={() => setForm({ ...form, color })}
+                    <button key={color} onClick={() => setForm({ ...form, color })}
                       className="w-7 h-7 rounded-full transition-transform hover:scale-110"
-                      style={{
-                        backgroundColor: color,
-                        outline: form.color === color ? `3px solid ${color}` : 'none',
-                        outlineOffset: '2px',
-                      }}
-                    />
+                      style={{ backgroundColor: color, outline: form.color === color ? `3px solid ${color}` : 'none', outlineOffset: '2px' }} />
                   ))}
                 </div>
               </div>
 
-              {/* Preview */}
               <div className="bg-gray-50 rounded-lg p-3 flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
-                  style={{ backgroundColor: form.color + '22', border: `2px solid ${form.color}55` }}
-                >
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
+                  style={{ backgroundColor: form.color + '22', border: `2px solid ${form.color}55` }}>
                   {activeIcon}
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-700">{form.name || 'Prévia da categoria'}</p>
-                  <p className="text-xs text-gray-400">{form.type === 'expense' ? 'Despesa' : 'Receita'}</p>
+                  <p className="text-xs text-gray-400">
+                    {form.type === 'expense' ? 'Despesa' : form.type === 'income' ? 'Receita' : 'Investimento'}
+                  </p>
                 </div>
               </div>
 
               {error && <p className="text-sm text-red-500">{error}</p>}
             </div>
-
             <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowModal(false)}
-                className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm hover:bg-gray-50 transition-colors"
-              >
+              <button onClick={() => setShowModal(false)}
+                className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm hover:bg-gray-50 transition-colors">
                 Cancelar
               </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-              >
+              <button onClick={handleSave} disabled={saving}
+                className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
                 {saving ? 'Salvando...' : editingId ? 'Salvar alterações' : 'Criar categoria'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Objetivo ───────────────────────────────────────────────── */}
+      {showGoalModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg font-semibold mb-5">
+              {editingGoalId ? 'Editar Objetivo' : 'Novo Objetivo'}
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Nome do objetivo</label>
+                <input type="text" value={goalForm.name} onChange={e => setGoalForm({ ...goalForm, name: e.target.value })}
+                  placeholder="Ex: Reserva de emergência, Carro, Viagem..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-600 mb-2">Ícone</label>
+                <div className="flex gap-2 flex-wrap">
+                  {GOAL_ICONS.map(icon => (
+                    <button key={icon} onClick={() => setGoalForm({ ...goalForm, icon })}
+                      className={`w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all ${
+                        goalForm.icon === icon
+                          ? 'bg-indigo-100 ring-2 ring-indigo-400 scale-110'
+                          : 'bg-gray-50 hover:bg-gray-100'
+                      }`}>
+                      {icon}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-600 mb-2">Cor</label>
+                <div className="flex gap-2 flex-wrap">
+                  {COLORS.map(color => (
+                    <button key={color} onClick={() => setGoalForm({ ...goalForm, color })}
+                      className="w-7 h-7 rounded-full transition-transform hover:scale-110"
+                      style={{ backgroundColor: color, outline: goalForm.color === color ? `3px solid ${color}` : 'none', outlineOffset: '2px' }} />
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Valor meta (R$) <span className="text-gray-400">opcional</span></label>
+                  <input type="number" value={goalForm.target_amount} onChange={e => setGoalForm({ ...goalForm, target_amount: e.target.value })}
+                    placeholder="0,00" min="0" step="0.01"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Data alvo <span className="text-gray-400">opcional</span></label>
+                  <input type="date" value={goalForm.target_date} onChange={e => setGoalForm({ ...goalForm, target_date: e.target.value })}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+              </div>
+
+              {/* Preview */}
+              <div className="bg-gray-50 rounded-lg p-3 flex items-center gap-3">
+                <div className="w-11 h-11 rounded-full flex items-center justify-center text-xl shrink-0"
+                  style={{ backgroundColor: goalForm.color + '22', border: `2px solid ${goalForm.color}55` }}>
+                  {goalForm.icon}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-700">{goalForm.name || 'Prévia do objetivo'}</p>
+                  {goalForm.target_amount && (
+                    <p className="text-xs text-gray-400">
+                      Meta: {parseFloat(goalForm.target_amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      {goalForm.target_date ? ` · ${new Date(goalForm.target_date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {goalError && <p className="text-sm text-red-500">{goalError}</p>}
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setShowGoalModal(false)}
+                className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm hover:bg-gray-50 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={handleSaveGoal} disabled={savingGoal}
+                className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+                {savingGoal ? 'Salvando...' : editingGoalId ? 'Salvar alterações' : 'Criar objetivo'}
               </button>
             </div>
           </div>

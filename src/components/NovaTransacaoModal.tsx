@@ -7,9 +7,10 @@ import { awardXP } from '@/lib/gamification'
 type TxType = 'income' | 'expense' | 'transfer'
 type Frequency = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
-interface Account    { id: string; name: string; color: string; current_balance: number }
-interface Category   { id: string; name: string; type: string; icon: string }
-interface CreditCard { id: string; name: string; color: string; closing_day: number; due_day: number }
+interface Account       { id: string; name: string; color: string; current_balance: number }
+interface Category      { id: string; name: string; type: string; icon: string }
+interface CreditCard    { id: string; name: string; color: string; closing_day: number; due_day: number }
+interface InvestmentGoal { id: string; name: string; icon: string; color: string }
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -34,6 +35,7 @@ const emptyForm = {
   account_id:             '',
   destination_account_id: '',
   category_id:            '',
+  goal_id:                '',
   notes:                  '',
   status:                 'paid',
   use_credit_card:        false,
@@ -52,7 +54,7 @@ interface Props {
   onSaved?: () => void
 }
 
-// ─── Toast de XP ─────────────────────────────────────────────────────────
+// ─── Toast de XP ─────────────────────────────────────────────────────────────
 function XPToast({ xp, badge, onDone }: { xp: number; badge?: string | null; onDone: () => void }) {
   useEffect(() => {
     const t = setTimeout(onDone, 2500)
@@ -84,45 +86,58 @@ function Toggle({ active, onChange }: { active: boolean; onChange: () => void })
 export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
   const supabase = createClient()
 
-  const [accounts,    setAccounts]    = useState<Account[]>([])
-  const [categories,  setCategories]  = useState<Category[]>([])
-  const [creditCards, setCreditCards] = useState<CreditCard[]>([])
-  const [loaded,      setLoaded]      = useState(false)
-  const [saving,      setSaving]      = useState(false)
-  const [form,        setForm]        = useState(emptyForm)
-  const [error,       setError]       = useState<string | null>(null)
-  const [xpToast,     setXpToast]     = useState<{ xp: number; badge?: string | null } | null>(null)
-  const [gamEnabled,  setGamEnabled]  = useState(false)
+  const [accounts,     setAccounts]     = useState<Account[]>([])
+  const [categories,   setCategories]   = useState<Category[]>([])
+  const [creditCards,  setCreditCards]  = useState<CreditCard[]>([])
+  const [goals,        setGoals]        = useState<InvestmentGoal[]>([])
+  const [loaded,       setLoaded]       = useState(false)
+  const [saving,       setSaving]       = useState(false)
+  const [form,         setForm]         = useState(emptyForm)
+  const [error,        setError]        = useState<string | null>(null)
+  const [xpToast,      setXpToast]      = useState<{ xp: number; badge?: string | null } | null>(null)
+  const [gamEnabled,   setGamEnabled]   = useState(false)
 
+  // ─── Carrega dados ao abrir ───────────────────────────────────────────────
   useEffect(() => {
     if (!open || loaded) return
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-      const [{ data: acc }, { data: cat }, { data: cards }, { data: prefs }] = await Promise.all([
+      const [{ data: acc }, { data: cat }, { data: cards }, { data: prefs }, { data: gls }] = await Promise.all([
         supabase.from('accounts').select('id, name, color, current_balance').eq('user_id', user.id).order('name'),
         supabase.from('categories').select('id, name, type, icon').eq('user_id', user.id).order('name'),
         supabase.from('credit_cards').select('id, name, color, closing_day, due_day').eq('user_id', user.id).eq('is_active', true).order('name'),
         supabase.from('user_preferences').select('gamification_enabled').eq('user_id', user.id).single(),
+        supabase.from('investment_goals').select('id, name, icon, color').eq('user_id', user.id).order('name'),
       ])
       const accList = (acc ?? []) as Account[]
       setAccounts(accList)
       setCategories((cat ?? []) as Category[])
       setCreditCards((cards ?? []) as CreditCard[])
+      setGoals((gls ?? []) as InvestmentGoal[])
       setGamEnabled(prefs?.gamification_enabled ?? false)
       setForm(f => ({ ...f, account_id: accList[0]?.id ?? '' }))
       setLoaded(true)
     }
     load()
-  }, [open])
+  }, [open, loaded])
 
+  // ─── Reset ao abrir/fechar ────────────────────────────────────────────────
   useEffect(() => {
-    if (open) { setForm(f => ({ ...emptyForm, account_id: accounts[0]?.id ?? '' })); setError(null) }
+    if (open) {
+      setForm(f => ({ ...emptyForm, account_id: accounts[0]?.id ?? '' }))
+      setError(null)
+      setLoaded(false) // força reload para pegar dados frescos (ex: nova conta criada)
+    }
   }, [open])
 
   const amount = parseFloat(String(form.amount).replace(',', '.')) || 0
   const valorParcela = form.is_installment && form.installment_count > 1
     ? amount / form.installment_count : amount
+
+  // Detecta se a categoria selecionada é do tipo investment
+  const selectedCategory = categories.find(c => c.id === form.category_id)
+  const isInvestmentCategory = selectedCategory?.type === 'investment'
 
   async function getOrCreateInvoice(cardId: string, date: string, userId: string): Promise<string | null> {
     const d    = new Date(date + 'T12:00:00')
@@ -159,41 +174,27 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     return dates
   }
 
-  // ─── Lógica de XP pós-save ───────────────────────────────────────────────
-  async function handleXP(userId: string, hasCategory: boolean, isFirstTx: boolean, isRecurring: boolean) {
+  // ─── XP: só usa actions que existem em XP_ACTIONS ────────────────────────
+  async function handleXP(userId: string, isFirstTx: boolean) {
     if (!gamEnabled) return
-
     let totalXP = 0
     let badgeEarned: string | null = null
 
-    // XP por criar transação
+    // +10 XP por criar transação (action válida)
     const r1 = await awardXP(userId, 'transaction_created', isFirstTx ? 'first_transaction' : undefined)
     totalXP += 10
     if (r1.newBadge) badgeEarned = r1.newBadge
 
-    // XP por categorizar
-    if (hasCategory) {
-      await awardXP(userId, 'transaction_categorized')
-      totalXP += 5
-    }
-
-    // XP por recorrência
-    if (isRecurring) {
-      const r2 = await awardXP(userId, 'first_recurring', 'first_recurring')
-      totalXP += 20
-      if (r2.newBadge && !badgeEarned) badgeEarned = r2.newBadge
-    }
-
-    // Verifica se é 10ª ou 50ª transação
+    // Milestone: 10 transações
     const { count } = await supabase
       .from('transactions').select('*', { count: 'exact', head: true }).eq('user_id', userId)
     if (count === 10) {
-      const r3 = await awardXP(userId, 'transaction_created', 'ten_transactions')
-      if (r3.newBadge && !badgeEarned) badgeEarned = r3.newBadge
+      const r2 = await awardXP(userId, 'transaction_created', 'ten_transactions')
+      if (r2.newBadge && !badgeEarned) badgeEarned = r2.newBadge
     }
     if (count === 50) {
-      const r4 = await awardXP(userId, 'transaction_created', 'fifty_transactions')
-      if (r4.newBadge && !badgeEarned) badgeEarned = r4.newBadge
+      const r3 = await awardXP(userId, 'transaction_created', 'fifty_transactions')
+      if (r3.newBadge && !badgeEarned) badgeEarned = r3.newBadge
     }
 
     setXpToast({ xp: totalXP, badge: badgeEarned })
@@ -218,12 +219,14 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setError('Não autenticado.'); setSaving(false); return }
 
-    // Verifica se é primeira transação
     const { count: txCount } = await supabase
       .from('transactions').select('*', { count: 'exact', head: true }).eq('user_id', user.id)
     const isFirstTx = (txCount ?? 0) === 0
 
-    // ─── RECORRENTE ───────────────────────────────────────────────────
+    // goal_id só vai se a categoria for do tipo investment
+    const goalId = isInvestmentCategory && form.goal_id ? form.goal_id : null
+
+    // ─── RECORRENTE ───────────────────────────────────────────────────────
     if (form.is_recurring) {
       const recPayload = {
         user_id: user.id, type: form.type, description: form.description.trim(),
@@ -238,15 +241,15 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       await supabase.from('transactions').insert({
         user_id: user.id, type: form.type, description: form.description.trim(),
         amount, date: form.date, account_id: form.account_id || null,
-        category_id: form.category_id || null, notes: form.notes?.trim() || null,
-        status: form.status, is_recurring: true,
+        category_id: form.category_id || null, goal_id: goalId,
+        notes: form.notes?.trim() || null, status: form.status, is_recurring: true,
       })
 
-      await handleXP(user.id, !!form.category_id, isFirstTx, true)
+      await handleXP(user.id, isFirstTx)
       setSaving(false); onSaved?.(); onClose(); return
     }
 
-    // ─── PARCELADO ────────────────────────────────────────────────────
+    // ─── PARCELADO ────────────────────────────────────────────────────────
     if (form.is_installment) {
       const dates = getInstallmentDates()
       const { data: group, error: groupErr } = await supabase
@@ -270,6 +273,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
           description: `${form.description.trim()} (${i + 1}/${form.installment_count})`,
           amount: parseFloat(valorParcela.toFixed(2)), date: dates[i],
           account_id: accountId, category_id: form.category_id || null,
+          goal_id: goalId,
           notes: form.notes?.trim() || null, status: i === 0 ? form.status : 'pending',
           credit_card_id: form.use_credit_card ? form.credit_card_id : null,
           invoice_id: invoiceId, is_installment: true,
@@ -289,11 +293,11 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         }
       }
 
-      await handleXP(user.id, !!form.category_id, isFirstTx, false)
+      await handleXP(user.id, isFirstTx)
       setSaving(false); onSaved?.(); onClose(); return
     }
 
-    // ─── TRANSAÇÃO NORMAL ─────────────────────────────────────────────
+    // ─── TRANSAÇÃO NORMAL ─────────────────────────────────────────────────
     let invoiceId: string | null = null
     let accountId = form.account_id || null
     if (form.use_credit_card && form.type === 'expense') {
@@ -305,7 +309,9 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       user_id: user.id, type: form.type, description: form.description.trim(),
       amount, date: form.date, account_id: accountId,
       destination_account_id: form.type === 'transfer' ? form.destination_account_id : null,
-      category_id: form.category_id || null, notes: form.notes?.trim() || null,
+      category_id: form.category_id || null,
+      goal_id: goalId,
+      notes: form.notes?.trim() || null,
       status: form.use_credit_card ? 'posted' : form.status,
       credit_card_id: form.use_credit_card ? form.credit_card_id : null,
       invoice_id: invoiceId,
@@ -320,19 +326,22 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
     }
 
-    await handleXP(user.id, !!form.category_id, isFirstTx, false)
+    await handleXP(user.id, isFirstTx)
     setSaving(false); onSaved?.(); onClose()
   }
 
-  const catsFiltradas = categories.filter(c =>
-    form.type !== 'transfer' && (c.type === form.type || c.type === 'both')
-  )
+  // Filtra categorias por tipo de transação
+  const catsFiltradas = categories.filter(c => {
+    if (form.type === 'transfer') return false
+    if (form.type === 'income')   return c.type === 'income'   || c.type === 'both'
+    if (form.type === 'expense')  return c.type === 'expense'  || c.type === 'both' || c.type === 'investment'
+    return false
+  })
 
   if (!open) return null
 
   return (
     <>
-      {/* Toast XP */}
       {xpToast && (
         <XPToast xp={xpToast.xp} badge={xpToast.badge} onDone={() => setXpToast(null)} />
       )}
@@ -348,7 +357,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
               <div className="flex gap-2">
                 {(['expense', 'income', 'transfer'] as TxType[]).map(t => (
                   <button key={t}
-                    onClick={() => setForm({ ...form, type: t, category_id: '', use_credit_card: false })}
+                    onClick={() => setForm({ ...form, type: t, category_id: '', goal_id: '', use_credit_card: false })}
                     className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
                       form.type === t
                         ? t === 'income'   ? 'bg-green-100 text-green-700'
@@ -370,8 +379,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
                 </div>
                 <button
                   onClick={() => setForm({ ...form, use_credit_card: !form.use_credit_card, credit_card_id: creditCards[0]?.id ?? '' })}
-                  className={`relative w-10 h-5 rounded-full transition-colors ${form.use_credit_card ? 'bg-purple-500' : 'bg-gray-200'}`}
-                >
+                  className={`relative w-10 h-5 rounded-full transition-colors ${form.use_credit_card ? 'bg-purple-500' : 'bg-gray-200'}`}>
                   <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.use_credit_card ? 'translate-x-5' : 'translate-x-0.5'}`} />
                 </button>
               </div>
@@ -465,11 +473,27 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
                 <label className="block text-sm text-gray-600 mb-1">
                   Categoria <span className="text-gray-400">(opcional)</span>
                 </label>
-                <select value={form.category_id} onChange={e => setForm({ ...form, category_id: e.target.value })}
+                <select value={form.category_id}
+                  onChange={e => setForm({ ...form, category_id: e.target.value, goal_id: '' })}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
                   <option value="">Sem categoria</option>
                   {catsFiltradas.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
                 </select>
+              </div>
+            )}
+
+            {/* Objetivo — aparece só quando categoria é do tipo investment */}
+            {isInvestmentCategory && goals.length > 0 && (
+              <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-3">
+                <label className="block text-sm text-indigo-700 font-medium mb-1">
+                  📈 Objetivo financeiro <span className="text-indigo-400 font-normal">(opcional)</span>
+                </label>
+                <select value={form.goal_id} onChange={e => setForm({ ...form, goal_id: e.target.value })}
+                  className="w-full border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                  <option value="">Sem objetivo específico</option>
+                  {goals.map(g => <option key={g.id} value={g.id}>{g.icon} {g.name}</option>)}
+                </select>
+                <p className="text-xs text-indigo-400 mt-1">Vincula este aporte a um objetivo para acompanhar o progresso.</p>
               </div>
             )}
 
