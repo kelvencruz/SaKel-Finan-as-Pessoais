@@ -1,29 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useTheme } from '@/contexts/ThemeContext'
 
 export default function ThemeToggle() {
-  const [dark, setDark] = useState(false)
-
-  useEffect(() => {
-    // Le preferencia salva ou sistema
-    const saved = localStorage.getItem('sakel-theme')
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    const isDark = saved === 'dark' || (!saved && prefersDark)
-    setDark(isDark)
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
-  }, [])
-
-  function toggle() {
-    const next = !dark
-    setDark(next)
-    document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light')
-    localStorage.setItem('sakel-theme', next ? 'dark' : 'light')
-  }
+  const { theme, toggleTheme } = useTheme()
+  const dark = theme === 'dark'
 
   return (
     <button
-      onClick={toggle}
+      onClick={toggleTheme}
       title={dark ? 'Modo claro' : 'Modo escuro'}
       className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:bg-gray-100"
       style={{ color: 'var(--color-text-muted)' }}

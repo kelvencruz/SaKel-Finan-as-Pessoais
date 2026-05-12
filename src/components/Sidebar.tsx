@@ -31,11 +31,12 @@ export default function Sidebar() {
   const [xp,         setXp]         = useState(0)
   const [streakDays, setStreakDays] = useState(0)
 
+  // CORRIGIDO: usa data-theme em vez de classList.contains('dark')
   useEffect(() => {
-    const check = () => setIsDark(document.documentElement.classList.contains('dark'))
+    const check = () => setIsDark(document.documentElement.getAttribute('data-theme') === 'dark')
     check()
     const observer = new MutationObserver(check)
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
     return () => observer.disconnect()
   }, [])
 
