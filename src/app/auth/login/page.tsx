@@ -51,7 +51,13 @@ export default function LoginPage() {
 
       {/* Esquerda — branding desktop */}
       <div className="hidden lg:flex flex-col justify-between w-1/2 p-12 relative">
-        <img src="/sakel-logo.png" alt="SaKel Finanças" className="h-12 w-auto object-contain" style={{ maxWidth: '180px' }} />
+        {/* Logo versão clara (fundo escuro) */}
+        <img
+          src="/sakel-logo-dark.png"
+          alt="SaKel Finanças"
+          className="object-contain"
+          style={{ height: 56, maxWidth: 220, width: 'auto' }}
+        />
 
         <div>
           <h2 className="text-4xl font-bold leading-tight mb-4" style={{ color: '#ffffff', letterSpacing: '-.02em' }}>
@@ -87,9 +93,14 @@ export default function LoginPage() {
           boxShadow: '0 32px 64px rgba(0,0,0,0.4)',
         }}>
 
-          {/* Logo mobile — centralizada, sem fundo */}
+          {/* Logo mobile */}
           <div className="lg:hidden flex justify-center mb-8">
-            <img src="/sakel-logo.png" alt="SaKel Finanças" className="h-10 w-auto object-contain" style={{ maxWidth: '160px' }} />
+            <img
+              src="/sakel-logo-dark.png"
+              alt="SaKel Finanças"
+              className="object-contain"
+              style={{ height: 48, maxWidth: 180, width: 'auto' }}
+            />
           </div>
 
           <div className="mb-8">

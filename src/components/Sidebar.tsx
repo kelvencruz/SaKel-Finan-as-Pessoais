@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import ThemeToggle from './ThemeToggle'
 
@@ -20,6 +20,15 @@ const navItems = [
 export default function Sidebar() {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
+  const [isDark, setIsDark] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsDark(document.documentElement.getAttribute('data-theme') === 'dark')
+    check()
+    const observer = new MutationObserver(check)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => observer.disconnect()
+  }, [])
 
   async function handleLogout() {
     const supabase = createClient()
@@ -27,19 +36,22 @@ export default function Sidebar() {
     window.location.href = '/auth/login'
   }
 
+  const logoSrc = isDark ? '/sakel-logo-dark.png' : '/sakel-logo-ligth.png'
+
   const SidebarContent = () => (
     <aside
       className="flex flex-col w-56 h-full"
       style={{ background: 'var(--color-surface)', borderRight: '1px solid var(--color-border)', fontFamily: 'var(--font-main)' }}
     >
       {/* Logo */}
-<div className="px-4 py-4" style={{ borderBottom: '1px solid var(--color-border)' }}>
-  <img
-    src="/sakel-logo.png"
-    alt="SaKel Finanças"
-    className="h-16 w-auto sakel-logo"
-  />
-</div>
+      <div className="px-4 py-5 flex items-center" style={{ borderBottom: '1px solid var(--color-border)', minHeight: 72 }}>
+        <img
+          src={logoSrc}
+          alt="SaKel Finanças"
+          className="w-full h-auto object-contain"
+          style={{ maxHeight: 48 }}
+        />
+      </div>
 
       {/* Nav label */}
       <p className="px-5 mt-4 mb-1.5 text-[10px] font-semibold tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
@@ -108,9 +120,9 @@ export default function Sidebar() {
         aria-label="Abrir menu"
       >
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-          <rect y="2" width="18" height="2" rx="1" fill="#475467"/>
-          <rect y="8" width="18" height="2" rx="1" fill="#475467"/>
-          <rect y="14" width="18" height="2" rx="1" fill="#475467"/>
+          <rect y="2" width="18" height="2" rx="1" fill="currentColor"/>
+          <rect y="8" width="18" height="2" rx="1" fill="currentColor"/>
+          <rect y="14" width="18" height="2" rx="1" fill="currentColor"/>
         </svg>
       </button>
 
