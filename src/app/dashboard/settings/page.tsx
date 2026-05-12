@@ -6,35 +6,39 @@ import { createClient } from '@/lib/supabase/client'
 type Tab = 'perfil' | 'aparencia' | 'financeiro' | 'seguranca' | 'dados'
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
-  { id: 'perfil',     label: 'Perfil',      emoji: '👤' },
-  { id: 'aparencia',  label: 'Aparência',   emoji: '🎨' },
-  { id: 'financeiro', label: 'Financeiro',  emoji: '💰' },
-  { id: 'seguranca',  label: 'Segurança',   emoji: '🔒' },
-  { id: 'dados',      label: 'Dados',       emoji: '📦' },
+  { id: 'perfil',     label: 'Perfil',     emoji: '👤' },
+  { id: 'aparencia',  label: 'Aparência',  emoji: '🎨' },
+  { id: 'financeiro', label: 'Financeiro', emoji: '💰' },
+  { id: 'seguranca',  label: 'Segurança',  emoji: '🔒' },
+  { id: 'dados',      label: 'Dados',      emoji: '📦' },
 ]
 
 interface Prefs {
-  full_name:         string
-  timezone:          string
-  theme:             string
-  accent_color:      string
-  sidebar_collapsed: boolean
-  compact_mode:      boolean
-  currency:          string
-  hide_balances:     boolean
-  number_format:     string
+  full_name:           string
+  timezone:            string
+  theme:               string
+  accent_color:        string
+  sidebar_collapsed:   boolean
+  compact_mode:        boolean
+  currency:            string
+  hide_balances:       boolean
+  number_format:       string
+  kaldiz_enabled:      boolean
+  gamification_enabled: boolean
 }
 
 const DEFAULT_PREFS: Prefs = {
-  full_name:         '',
-  timezone:          'America/Sao_Paulo',
-  theme:             'system',
-  accent_color:      '#4f46e5',
-  sidebar_collapsed: false,
-  compact_mode:      false,
-  currency:          'BRL',
-  hide_balances:     false,
-  number_format:     'pt-BR',
+  full_name:            '',
+  timezone:             'America/Sao_Paulo',
+  theme:                'system',
+  accent_color:         '#4f46e5',
+  sidebar_collapsed:    false,
+  compact_mode:         false,
+  currency:             'BRL',
+  hide_balances:        false,
+  number_format:        'pt-BR',
+  kaldiz_enabled:       true,
+  gamification_enabled: true,
 }
 
 const ACCENT_COLORS = [
@@ -48,14 +52,21 @@ const ACCENT_COLORS = [
   { value: '#14b8a6', label: 'Teal'     },
 ]
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h3 className="text-sm font-semibold text-gray-700 mb-4 pb-2 border-b border-gray-100">{children}</h3>
+function Toggle({ active, onChange }: { active: boolean; onChange: () => void }) {
+  return (
+    <button
+      onClick={onChange}
+      className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ${active ? 'bg-indigo-500' : 'bg-gray-200'}`}
+    >
+      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${active ? 'translate-x-5' : 'translate-x-0.5'}`} />
+    </button>
+  )
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-6 py-3 border-b border-gray-50 last:border-0">
-      <div className="min-w-0">
+    <div className="flex items-center justify-between gap-4 py-3 border-b border-gray-50 last:border-0">
+      <div>
         <p className="text-sm text-gray-700">{label}</p>
         {hint && <p className="text-xs text-gray-400 mt-0.5">{hint}</p>}
       </div>
@@ -64,27 +75,31 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   )
 }
 
-function Toggle({ active, onChange }: { active: boolean; onChange: () => void }) {
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3 mt-5 first:mt-0">{children}</h3>
+}
+
+function SaveButton({ onSave, saving }: { onSave: () => void; saving: boolean }) {
   return (
     <button
-      onClick={onChange}
-      className={`relative w-10 h-5 rounded-full transition-colors ${active ? 'bg-indigo-500' : 'bg-gray-200'}`}
+      onClick={onSave}
+      disabled={saving}
+      className="mt-6 bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
     >
-      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${active ? 'translate-x-5' : 'translate-x-0.5'}`} />
+      {saving ? 'Salvando…' : 'Salvar alterações'}
     </button>
   )
 }
 
+// ── Aba Perfil ──────────────────────────────────────────────────────────────
 function TabPerfil({ prefs, email, onChange, onSave, saving }: {
   prefs: Prefs; email: string
-  onChange: (p: Partial<Prefs>) => void
-  onSave: () => void
-  saving: boolean
+  onChange: (p: Partial<Prefs>) => void; onSave: () => void; saving: boolean
 }) {
   return (
     <div>
       <SectionTitle>Informações pessoais</SectionTitle>
-      <div className="space-y-4 mb-6">
+      <div className="space-y-4">
         <div>
           <label className="block text-xs text-gray-500 mb-1">Nome completo</label>
           <input
@@ -97,12 +112,8 @@ function TabPerfil({ prefs, email, onChange, onSave, saving }: {
         </div>
         <div>
           <label className="block text-xs text-gray-500 mb-1">E-mail</label>
-          <input
-            type="email"
-            value={email}
-            disabled
-            className="w-full border border-gray-100 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-400 cursor-not-allowed"
-          />
+          <input type="email" value={email} disabled
+            className="w-full border border-gray-100 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-400 cursor-not-allowed" />
           <p className="text-[11px] text-gray-400 mt-1">O e-mail não pode ser alterado aqui.</p>
         </div>
         <div>
@@ -114,26 +125,20 @@ function TabPerfil({ prefs, email, onChange, onSave, saving }: {
           >
             <option value="America/Sao_Paulo">Brasília (UTC-3)</option>
             <option value="America/Manaus">Manaus (UTC-4)</option>
-            <option value="America/Belem">Belém (UTC-3)</option>
             <option value="America/Fortaleza">Fortaleza (UTC-3)</option>
             <option value="America/Recife">Recife (UTC-3)</option>
             <option value="America/Noronha">Fernando de Noronha (UTC-2)</option>
           </select>
         </div>
       </div>
-      <button onClick={onSave} disabled={saving}
-        className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-        {saving ? 'Salvando…' : 'Salvar perfil'}
-      </button>
+      <SaveButton onSave={onSave} saving={saving} />
     </div>
   )
 }
 
+// ── Aba Aparência ───────────────────────────────────────────────────────────
 function TabAparencia({ prefs, onChange, onSave, saving }: {
-  prefs: Prefs
-  onChange: (p: Partial<Prefs>) => void
-  onSave: () => void
-  saving: boolean
+  prefs: Prefs; onChange: (p: Partial<Prefs>) => void; onSave: () => void; saving: boolean
 }) {
   function applyTheme(theme: string) {
     if (theme === 'dark') {
@@ -143,8 +148,8 @@ function TabAparencia({ prefs, onChange, onSave, saving }: {
       document.documentElement.setAttribute('data-theme', 'light')
       localStorage.setItem('sakel-theme', 'light')
     } else {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light')
+      const dark = window.matchMedia('(prefers-color-scheme: dark)').matches
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
       localStorage.removeItem('sakel-theme')
     }
     onChange({ theme })
@@ -153,7 +158,7 @@ function TabAparencia({ prefs, onChange, onSave, saving }: {
   return (
     <div>
       <SectionTitle>Tema</SectionTitle>
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-3">
         {[
           { value: 'light',  label: 'Claro',   emoji: '☀️' },
           { value: 'dark',   label: 'Escuro',  emoji: '🌙' },
@@ -164,50 +169,44 @@ function TabAparencia({ prefs, onChange, onSave, saving }: {
               prefs.theme === t.value
                 ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
                 : 'border-gray-100 bg-white text-gray-600 hover:border-gray-200'
-            }`}>
-            <span className="text-2xl">{t.emoji}</span>
-            {t.label}
+            }`}
+          >
+            <span className="text-2xl">{t.emoji}</span>{t.label}
           </button>
         ))}
       </div>
 
       <SectionTitle>Cor de destaque</SectionTitle>
-      <div className="flex flex-wrap gap-3 mb-6">
+      <div className="flex flex-wrap gap-3">
         {ACCENT_COLORS.map(c => (
           <button key={c.value} onClick={() => onChange({ accent_color: c.value })} title={c.label}
             className={`w-8 h-8 rounded-full transition-transform hover:scale-110 ${prefs.accent_color === c.value ? 'ring-2 ring-offset-2 ring-gray-400 scale-110' : ''}`}
-            style={{ background: c.value }} />
+            style={{ background: c.value }}
+          />
         ))}
       </div>
 
       <SectionTitle>Layout</SectionTitle>
-      <div className="space-y-1 mb-6">
-        <Field label="Modo compacto" hint="Reduz o espaçamento entre elementos">
-          <Toggle active={prefs.compact_mode} onChange={() => onChange({ compact_mode: !prefs.compact_mode })} />
-        </Field>
-        <Field label="Sidebar recolhida por padrão" hint="Mostra apenas ícones no desktop">
-          <Toggle active={prefs.sidebar_collapsed} onChange={() => onChange({ sidebar_collapsed: !prefs.sidebar_collapsed })} />
-        </Field>
-      </div>
+      <Field label="Modo compacto" hint="Reduz o espaçamento entre elementos">
+        <Toggle active={prefs.compact_mode} onChange={() => onChange({ compact_mode: !prefs.compact_mode })} />
+      </Field>
+      <Field label="Sidebar recolhida por padrão" hint="Mostra apenas ícones no desktop">
+        <Toggle active={prefs.sidebar_collapsed} onChange={() => onChange({ sidebar_collapsed: !prefs.sidebar_collapsed })} />
+      </Field>
 
-      <button onClick={onSave} disabled={saving}
-        className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-        {saving ? 'Salvando…' : 'Salvar aparência'}
-      </button>
+      <SaveButton onSave={onSave} saving={saving} />
     </div>
   )
 }
 
+// ── Aba Financeiro ──────────────────────────────────────────────────────────
 function TabFinanceiro({ prefs, onChange, onSave, saving }: {
-  prefs: Prefs
-  onChange: (p: Partial<Prefs>) => void
-  onSave: () => void
-  saving: boolean
+  prefs: Prefs; onChange: (p: Partial<Prefs>) => void; onSave: () => void; saving: boolean
 }) {
   return (
     <div>
       <SectionTitle>Moeda e formato</SectionTitle>
-      <div className="space-y-4 mb-6">
+      <div className="space-y-4">
         <div>
           <label className="block text-xs text-gray-500 mb-1">Moeda padrão</label>
           <select value={prefs.currency} onChange={e => onChange({ currency: e.target.value })}
@@ -228,51 +227,52 @@ function TabFinanceiro({ prefs, onChange, onSave, saving }: {
         </div>
       </div>
 
-      <SectionTitle>Privacidade financeira</SectionTitle>
-      <div className="mb-6">
-        <Field label="Ocultar saldos" hint="Substitui valores por •••••• em todas as telas">
-          <Toggle active={prefs.hide_balances} onChange={() => onChange({ hide_balances: !prefs.hide_balances })} />
-        </Field>
-      </div>
+      <SectionTitle>Privacidade</SectionTitle>
+      <Field label="Ocultar saldos" hint="Substitui valores por •••••• em todas as telas">
+        <Toggle active={prefs.hide_balances} onChange={() => onChange({ hide_balances: !prefs.hide_balances })} />
+      </Field>
 
-      <button onClick={onSave} disabled={saving}
-        className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-        {saving ? 'Salvando…' : 'Salvar preferências'}
-      </button>
+      <SectionTitle>Inteligência</SectionTitle>
+      <Field label="Kal diz (insights)" hint="Exibe insights automáticos no dashboard">
+        <Toggle active={prefs.kaldiz_enabled} onChange={() => onChange({ kaldiz_enabled: !prefs.kaldiz_enabled })} />
+      </Field>
+      <Field label="Gamificação" hint="Conquistas e marcos financeiros (em breve)">
+        <Toggle active={prefs.gamification_enabled} onChange={() => onChange({ gamification_enabled: !prefs.gamification_enabled })} />
+      </Field>
+
+      <SaveButton onSave={onSave} saving={saving} />
     </div>
   )
 }
 
+// ── Aba Segurança ───────────────────────────────────────────────────────────
 function TabSeguranca({ email }: { email: string }) {
   const supabase = createClient()
   const [sending, setSending] = useState(false)
   const [sent,    setSent]    = useState(false)
   const [error,   setError]   = useState('')
 
-  async function handleResetPassword() {
+  async function handleReset() {
     setSending(true); setError('')
     const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/auth/reset-password`,
     })
-    if (err) setError(err.message)
-    else setSent(true)
+    if (err) setError(err.message); else setSent(true)
     setSending(false)
   }
 
   return (
     <div>
       <SectionTitle>Senha</SectionTitle>
-      <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 mb-6">
+      <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 mb-4">
         <p className="text-sm text-gray-700 mb-1">Alterar senha</p>
         <p className="text-xs text-gray-400 mb-4">
-          Enviaremos um link de redefinição para <strong>{email}</strong>.
+          Um link de redefinição será enviado para <strong>{email}</strong>.
         </p>
         {sent ? (
-          <div className="flex items-center gap-2 text-green-600 text-sm">
-            <span>✅</span> Link enviado! Verifique seu e-mail.
-          </div>
+          <p className="text-sm text-green-600 flex items-center gap-2"><span>✅</span> Link enviado! Verifique seu e-mail.</p>
         ) : (
-          <button onClick={handleResetPassword} disabled={sending}
+          <button onClick={handleReset} disabled={sending}
             className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
             {sending ? 'Enviando…' : 'Enviar link de redefinição'}
           </button>
@@ -283,33 +283,31 @@ function TabSeguranca({ email }: { email: string }) {
       <SectionTitle>Sessões</SectionTitle>
       <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
         <p className="text-sm text-gray-700 mb-1">Gerenciar sessões ativas</p>
-        <p className="text-xs text-gray-400">Em breve — você poderá ver e encerrar sessões em outros dispositivos.</p>
-        <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full">
-          <span>🚧</span> Em desenvolvimento
-        </div>
+        <p className="text-xs text-gray-400 mb-3">Visualize e encerre sessões em outros dispositivos.</p>
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full">
+          🚧 Em desenvolvimento
+        </span>
       </div>
     </div>
   )
 }
 
+// ── Aba Dados ───────────────────────────────────────────────────────────────
 function TabDados({ email }: { email: string }) {
   const supabase = createClient()
   const [exporting,   setExporting]   = useState(false)
   const [confirming,  setConfirming]  = useState(false)
-  const [deleting,    setDeleting]    = useState(false)
   const [confirmText, setConfirmText] = useState('')
+  const [deleting,    setDeleting]    = useState(false)
 
   async function handleExport() {
     setExporting(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setExporting(false); return }
-
     const { data: txs } = await supabase
       .from('transactions').select('*').eq('user_id', user.id).order('date', { ascending: false })
-
     const rows = (txs ?? []) as Record<string, unknown>[]
     if (rows.length === 0) { alert('Nenhuma transação para exportar.'); setExporting(false); return }
-
     const headers = Object.keys(rows[0]).join(',')
     const lines   = rows.map(r => Object.values(r).map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
     const csv     = [headers, ...lines].join('\n')
@@ -321,7 +319,7 @@ function TabDados({ email }: { email: string }) {
     setExporting(false)
   }
 
-  async function handleDeleteAccount() {
+  async function handleDelete() {
     if (confirmText !== 'EXCLUIR') return
     setDeleting(true)
     await supabase.auth.signOut()
@@ -331,7 +329,7 @@ function TabDados({ email }: { email: string }) {
   return (
     <div>
       <SectionTitle>Exportar dados</SectionTitle>
-      <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 mb-6">
+      <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 mb-4">
         <p className="text-sm text-gray-700 mb-1">Exportar transações</p>
         <p className="text-xs text-gray-400 mb-4">Baixe todas as suas transações em formato CSV.</p>
         <button onClick={handleExport} disabled={exporting}
@@ -343,7 +341,7 @@ function TabDados({ email }: { email: string }) {
       <SectionTitle>Zona de perigo</SectionTitle>
       <div className="border border-red-100 rounded-xl p-4 bg-red-50">
         <p className="text-sm font-medium text-red-700 mb-1">Excluir conta</p>
-        <p className="text-xs text-red-400 mb-4">Ação irreversível. Todos os seus dados serão permanentemente removidos.</p>
+        <p className="text-xs text-red-400 mb-4">Ação irreversível. Todos os dados serão permanentemente removidos.</p>
         {!confirming ? (
           <button onClick={() => setConfirming(true)}
             className="border border-red-300 text-red-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors">
@@ -352,15 +350,14 @@ function TabDados({ email }: { email: string }) {
         ) : (
           <div className="space-y-3">
             <p className="text-xs text-red-600 font-medium">Digite <strong>EXCLUIR</strong> para confirmar:</p>
-            <input type="text" value={confirmText} onChange={e => setConfirmText(e.target.value)}
-              placeholder="EXCLUIR"
+            <input type="text" value={confirmText} onChange={e => setConfirmText(e.target.value)} placeholder="EXCLUIR"
               className="w-full border border-red-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
             <div className="flex gap-2">
               <button onClick={() => { setConfirming(false); setConfirmText('') }}
                 className="flex-1 border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors">
                 Cancelar
               </button>
-              <button onClick={handleDeleteAccount} disabled={confirmText !== 'EXCLUIR' || deleting}
+              <button onClick={handleDelete} disabled={confirmText !== 'EXCLUIR' || deleting}
                 className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-40 transition-colors">
                 {deleting ? 'Excluindo…' : 'Confirmar exclusão'}
               </button>
@@ -372,21 +369,15 @@ function TabDados({ email }: { email: string }) {
   )
 }
 
-// ── Página principal ──────────────────────────────────────────────────────
+// ── Página principal ────────────────────────────────────────────────────────
 export default function SettingsPage() {
-  const supabase  = createClient()
+  const supabase = createClient()
   const [tab,     setTab]     = useState<Tab>('perfil')
   const [email,   setEmail]   = useState('')
   const [prefs,   setPrefs]   = useState<Prefs>(DEFAULT_PREFS)
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
   const [saved,   setSaved]   = useState(false)
-
-  useEffect(() => {
-    // Abre na aba correta via hash (#aparencia, #perfil, etc.)
-    const hash = window.location.hash.replace('#', '') as Tab
-    if (hash && TABS.find(t => t.id === hash)) setTab(hash)
-  }, [])
 
   useEffect(() => {
     async function load() {
@@ -399,22 +390,23 @@ export default function SettingsPage() {
 
       if (p) {
         setPrefs({
-          full_name:         p.full_name         ?? '',
-          timezone:          p.timezone          ?? DEFAULT_PREFS.timezone,
-          theme:             p.theme             ?? DEFAULT_PREFS.theme,
-          accent_color:      p.accent_color      ?? DEFAULT_PREFS.accent_color,
-          sidebar_collapsed: p.sidebar_collapsed ?? false,
-          compact_mode:      p.compact_mode      ?? false,
-          currency:          p.currency          ?? DEFAULT_PREFS.currency,
-          hide_balances:     p.hide_balances     ?? false,
-          number_format:     p.number_format     ?? DEFAULT_PREFS.number_format,
+          full_name:            p.full_name            ?? '',
+          timezone:             p.timezone             ?? DEFAULT_PREFS.timezone,
+          theme:                p.theme                ?? DEFAULT_PREFS.theme,
+          accent_color:         p.accent_color         ?? DEFAULT_PREFS.accent_color,
+          sidebar_collapsed:    p.sidebar_collapsed    ?? false,
+          compact_mode:         p.compact_mode         ?? false,
+          currency:             p.currency             ?? DEFAULT_PREFS.currency,
+          hide_balances:        p.hide_balances        ?? false,
+          number_format:        p.number_format        ?? DEFAULT_PREFS.number_format,
+          kaldiz_enabled:       p.kaldiz_enabled       ?? true,
+          gamification_enabled: p.gamification_enabled ?? true,
         })
       } else {
         const { data: profile } = await supabase
           .from('profiles').select('full_name').eq('id', user.id).single()
         if (profile?.full_name) setPrefs(prev => ({ ...prev, full_name: profile.full_name }))
       }
-
       setLoading(false)
     }
     load()
@@ -430,17 +422,19 @@ export default function SettingsPage() {
     if (!user) { setSaving(false); return }
 
     await supabase.from('user_preferences').upsert({
-      user_id:           user.id,
-      full_name:         prefs.full_name,
-      timezone:          prefs.timezone,
-      theme:             prefs.theme,
-      accent_color:      prefs.accent_color,
-      sidebar_collapsed: prefs.sidebar_collapsed,
-      compact_mode:      prefs.compact_mode,
-      currency:          prefs.currency,
-      hide_balances:     prefs.hide_balances,
-      number_format:     prefs.number_format,
-      updated_at:        new Date().toISOString(),
+      user_id:              user.id,
+      full_name:            prefs.full_name,
+      timezone:             prefs.timezone,
+      theme:                prefs.theme,
+      accent_color:         prefs.accent_color,
+      sidebar_collapsed:    prefs.sidebar_collapsed,
+      compact_mode:         prefs.compact_mode,
+      currency:             prefs.currency,
+      hide_balances:        prefs.hide_balances,
+      number_format:        prefs.number_format,
+      kaldiz_enabled:       prefs.kaldiz_enabled,
+      gamification_enabled: prefs.gamification_enabled,
+      updated_at:           new Date().toISOString(),
     }, { onConflict: 'user_id' })
 
     await supabase.from('profiles').update({ full_name: prefs.full_name }).eq('id', user.id)
@@ -462,42 +456,45 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 max-w-4xl mx-auto">
+
       <div className="mb-6">
-        <a href="/dashboard" className="text-sm text-gray-400 hover:text-gray-600">← Dashboard</a>
-        <h1 className="text-xl font-semibold text-gray-900 mt-1">Configurações</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Configurações</h1>
         <p className="text-sm text-gray-400 mt-0.5">Gerencie seu perfil, aparência e preferências</p>
       </div>
 
       {/* Toast */}
       {saved && (
-        <div className="fixed top-4 right-4 z-50 bg-green-600 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2">
+        <div className="fixed top-4 right-4 z-50 bg-green-600 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 animate-fade-in">
           <span>✅</span> Salvo com sucesso!
         </div>
       )}
 
       <div className="flex gap-6">
-        {/* Sidebar de tabs — desktop */}
-        <div className="hidden sm:flex flex-col w-44 shrink-0 gap-0.5">
+
+        {/* Sidebar — desktop */}
+        <nav className="hidden sm:flex flex-col w-44 shrink-0 gap-0.5">
           {TABS.map(t => (
-            <button key={t.id} onClick={() => { setTab(t.id); window.location.hash = t.id }}
+            <button key={t.id} onClick={() => setTab(t.id)}
               className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-colors ${
                 tab === t.id
                   ? 'bg-indigo-50 text-indigo-700 font-semibold'
                   : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
-              }`}>
+              }`}
+            >
               <span>{t.emoji}</span> {t.label}
             </button>
           ))}
-        </div>
+        </nav>
 
         {/* Tabs — mobile */}
-        <div className="sm:hidden w-full mb-4">
-          <div className="flex gap-1 overflow-x-auto pb-1">
+        <div className="sm:hidden w-full">
+          <div className="flex gap-1 overflow-x-auto pb-2 mb-4">
             {TABS.map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
                   tab === t.id ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-100'
-                }`}>
+                }`}
+              >
                 <span>{t.emoji}</span> {t.label}
               </button>
             ))}

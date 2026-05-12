@@ -8,14 +8,39 @@ import {
 } from 'recharts'
 import UserMenu from '@/components/UserMenu'
 
-interface MonthBar  { mes: string; receitas: number; despesas: number }
-interface CatSlice  { name: string; value: number }
-interface InvoiceDue {
-  id: string; card_name: string; card_color: string
-  due_date: string; total_amount: number; days_until_due: number
+interface MonthBar   { mes: string; receitas: number; despesas: number }
+interface CatSlice   { name: string; value: number }
+interface InvoiceDue { id: string; card_name: string; card_color: string; due_date: string; total_amount: number; days_until_due: number }
+interface ProjecaoItem { label: string; value: number; color: string; sign: string }
+
+// ─── KalDiz types ──────────────────────────────────────────────────────────
+interface KalInsight {
+  id:        string
+  prioridade: 1 | 2 | 3          // 1=crítico 2=ação 3=positivo
+  icone:     string
+  titulo:    string
+  texto:     string
+  acao?:     { label: string; href: string }
+  cor:       string               // classe tailwind de cor do texto
+  bg:        string               // classe tailwind de bg
 }
-interface ProjecaoItem {
-  label: string; value: number; color: string; sign: string
+
+interface KalDizData {
+  saldoLiquido:        number
+  saldoContas:         number
+  saldoPrevisto:       number
+  recMes:              number
+  despMes:             number
+  recCount:            number
+  instCount:           number
+  invoicesDue:         { days_until_due: number; total_amount: number; card_name: string }[]
+  totalFaturas:        number
+  patrimonioInvestido: number
+  uncategorizedCount:  number
+  catAtual:            Record<string, number>
+  catAnterior:         Record<string, number>
+  recorrenteSugerida:  { descricao: string; valor: number }[]
+  mesesPositivos:      number
 }
 
 const SLICE_COLORS = ['#6366f1','#f97316','#22c55e','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6']
@@ -26,78 +51,253 @@ const fmtK = (v: number) => v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v}`
 
 function daysUntil(dateStr: string) {
   const today = new Date(); today.setHours(0,0,0,0)
-  const due   = new Date(dateStr + 'T12:00:00')
-  return Math.round((due.getTime() - today.getTime()) / 86400000)
+  return Math.round((new Date(dateStr + 'T12:00:00').getTime() - today.getTime()) / 86400000)
 }
 
-function InvoiceBadge({ days }: { days: number }) {
-  if (days < 0)   return <span className="text-[10px] font-medium bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Vencida</span>
-  if (days === 0) return <span className="text-[10px] font-medium bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Vence hoje</span>
-  if (days <= 3)  return <span className="text-[10px] font-medium bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">Vence em {days}d</span>
-  if (days <= 7)  return <span className="text-[10px] font-medium bg-yellow-100 text-yellow-600 px-2 py-0.5 rounded-full">Vence em {days}d</span>
-  return <span className="text-[10px] font-medium bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{days}d</span>
+// ─── Normalização de descrição ─────────────────────────────────────────────
+function normalizeDesc(desc: string): string {
+  return desc
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]/g, '')
+    .replace(/\d{4,}/g, '')       // remove números longos (ex: últimos 4 dígitos)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 30)
 }
 
-// ─── Kal diz ───────────────────────────────────────────────────────────────
-function KalDiz({ saldoLiquido, recMes, despMes, recCount, instCount, invoicesDue, totalFaturas, saldoPrevisto }: {
-  saldoLiquido: number
-  recMes: number
-  despMes: number
-  recCount: number
-  instCount: number
-  invoicesDue: { days_until_due: number }[]
-  totalFaturas: number
-  saldoPrevisto: number
-}) {
-  const msgs: { texto: string; cor: string; icone: string }[] = []
+// ─── Motor de regras KalDiz v2 ─────────────────────────────────────────────
+function gerarInsights(data: KalDizData): KalInsight[] {
+  const candidatos: KalInsight[] = []
+  const PISO_INVESTIMENTO = 200
 
-  if (saldoLiquido < 0) {
-    msgs.push({ icone: '⚠️', cor: 'text-red-600', texto: 'Suas faturas superam seu saldo atual. Vale quitar antes de novos gastos.' })
-  } else if (saldoLiquido > 0 && totalFaturas > 0) {
-    msgs.push({ icone: '✅', cor: 'text-green-600', texto: 'Você tem saldo suficiente para cobrir todas as faturas em aberto.' })
+  // ── PRIORIDADE 1 — Risco / Urgência ────────────────────────────────────
+
+  // Saldo negativo
+  if (data.saldoLiquido < 0) {
+    candidatos.push({
+      id: 'saldo-negativo', prioridade: 1,
+      icone: '⚠️', cor: 'text-red-700', bg: 'bg-red-50 border-red-100',
+      titulo: 'Saldo em risco',
+      texto: `Suas faturas (${fmt(data.totalFaturas)}) superam seu saldo atual. Considere quitar antes de novos gastos.`,
+      acao: { label: 'Ver faturas', href: '/dashboard/faturas' },
+    })
   }
 
-  if (despMes > recMes && recMes > 0) {
-    const pct = Math.round(((despMes - recMes) / recMes) * 100)
-    msgs.push({ icone: '📊', cor: 'text-orange-600', texto: `Despesas ${pct}% acima das receitas este mês. Bom momento para revisar.` })
-  } else if (recMes > despMes && recMes > 0) {
-    msgs.push({ icone: '💚', cor: 'text-green-600', texto: `Você está sobrando ${fmt(recMes - despMes)} este mês. Considere reforçar a reserva.` })
-  }
-
-  const fatVencendo = invoicesDue.filter(i => i.days_until_due <= 5)
+  // Fatura vencendo em até 5 dias
+  const fatVencendo = data.invoicesDue.filter(i => i.days_until_due >= 0 && i.days_until_due <= 5)
   if (fatVencendo.length > 0) {
-    msgs.push({ icone: '📅', cor: 'text-purple-600', texto: `${fatVencendo.length} fatura(s) vencendo nos próximos 5 dias. Fique atento.` })
+    const nomes = fatVencendo.map(f => f.card_name).join(', ')
+    candidatos.push({
+      id: 'fatura-vencendo', prioridade: 1,
+      icone: '📅', cor: 'text-purple-700', bg: 'bg-purple-50 border-purple-100',
+      titulo: fatVencendo.length === 1 ? 'Fatura vencendo em breve' : `${fatVencendo.length} faturas vencendo`,
+      texto: `${nomes} vence${fatVencendo.length === 1 ? '' : 'm'} nos próximos 5 dias.`,
+      acao: { label: 'Ver faturas', href: '/dashboard/faturas' },
+    })
   }
 
-  if (recCount > 0) {
-    msgs.push({ icone: '🔁', cor: 'text-indigo-600', texto: `${recCount} lançamento(s) recorrente(s) previstos para os próximos 30 dias.` })
+  // Fatura vencida
+  const fatVencidas = data.invoicesDue.filter(i => i.days_until_due < 0)
+  if (fatVencidas.length > 0) {
+    candidatos.push({
+      id: 'fatura-vencida', prioridade: 1,
+      icone: '🚨', cor: 'text-red-700', bg: 'bg-red-50 border-red-100',
+      titulo: `${fatVencidas.length} fatura(s) vencida(s)`,
+      texto: `Você tem faturas em atraso. Regularize para evitar juros.`,
+      acao: { label: 'Ver faturas', href: '/dashboard/faturas' },
+    })
   }
 
-  if (instCount > 0) {
-    msgs.push({ icone: '📦', cor: 'text-orange-500', texto: `${instCount} parcela(s) pendente(s) nos próximos 30 dias já estão no saldo previsto.` })
+  // Alta de gasto por categoria (>= 30% vs mês anterior)
+  let maiorAltaCat = ''
+  let maiorAltaPct = 0
+  for (const [cat, valorAtual] of Object.entries(data.catAtual)) {
+    const valorAnterior = data.catAnterior[cat] ?? 0
+    if (valorAnterior >= 50 && valorAtual > valorAnterior) {
+      const pct = Math.round(((valorAtual - valorAnterior) / valorAnterior) * 100)
+      if (pct >= 30 && pct > maiorAltaPct) { maiorAltaPct = pct; maiorAltaCat = cat }
+    }
+  }
+  if (maiorAltaCat) {
+    candidatos.push({
+      id: 'alta-categoria', prioridade: 1,
+      icone: '📈', cor: 'text-orange-700', bg: 'bg-orange-50 border-orange-100',
+      titulo: `${maiorAltaCat} subiu ${maiorAltaPct}%`,
+      texto: `Gastos em ${maiorAltaCat} aumentaram ${maiorAltaPct}% em relação ao mês passado.`,
+      acao: { label: 'Ver transações', href: '/dashboard/transacoes' },
+    })
   }
 
-  if (msgs.length === 0 && saldoPrevisto > 0) {
-    msgs.push({ icone: '🎯', cor: 'text-green-600', texto: 'Tudo parece equilibrado para os próximos 30 dias. Continue assim.' })
+  // ── PRIORIDADE 2 — Ação prática ─────────────────────────────────────────
+
+  // Despesas > Receitas
+  if (data.despMes > data.recMes && data.recMes > 0) {
+    const pct = Math.round(((data.despMes - data.recMes) / data.recMes) * 100)
+    candidatos.push({
+      id: 'despesa-maior', prioridade: 2,
+      icone: '📊', cor: 'text-orange-600', bg: 'bg-orange-50 border-orange-100',
+      titulo: 'Despesas acima das receitas',
+      texto: `Você gastou ${pct}% a mais do que recebeu este mês. Bom momento para revisar.`,
+      acao: { label: 'Ver transações', href: '/dashboard/transacoes' },
+    })
   }
 
-  const visiveis = msgs.slice(0, 2)
-  if (visiveis.length === 0) return null
+  // Transações sem categoria
+  if (data.uncategorizedCount >= 3) {
+    candidatos.push({
+      id: 'sem-categoria', prioridade: 2,
+      icone: '🏷️', cor: 'text-yellow-700', bg: 'bg-yellow-50 border-yellow-100',
+      titulo: `${data.uncategorizedCount} lançamentos sem categoria`,
+      texto: 'Categorizar suas transações melhora os relatórios e os insights do Kal.',
+      acao: { label: 'Organizar agora', href: '/dashboard/transacoes' },
+    })
+  }
+
+  // Recorrência sugerida
+  if (data.recorrenteSugerida.length > 0) {
+    const s = data.recorrenteSugerida[0]
+    candidatos.push({
+      id: 'recorrente-sugerida', prioridade: 2,
+      icone: '🔁', cor: 'text-indigo-600', bg: 'bg-indigo-50 border-indigo-100',
+      titulo: 'Recorrência identificada',
+      texto: `"${s.descricao}" aparece todo mês (≈ ${fmt(s.valor)}). Quer cadastrar como recorrente?`,
+      acao: { label: 'Cadastrar recorrência', href: '/dashboard/recorrencias' },
+    })
+  }
+
+  // Parcelas longas (instCount alto)
+  if (data.instCount >= 6) {
+    candidatos.push({
+      id: 'parcelas-longas', prioridade: 2,
+      icone: '📦', cor: 'text-orange-600', bg: 'bg-orange-50 border-orange-100',
+      titulo: `${data.instCount} parcelas ainda pendentes`,
+      texto: 'Você tem compromissos parcelados que se estendem pelos próximos meses — já estão no saldo previsto.',
+      acao: { label: 'Ver transações', href: '/dashboard/transacoes' },
+    })
+  }
+
+  // Recorrências previstas
+  if (data.recCount > 0 && !candidatos.find(c => c.id === 'fatura-vencendo') && !candidatos.find(c => c.id === 'fatura-vencida')) {
+    candidatos.push({
+      id: 'recorrencias-previstas', prioridade: 2,
+      icone: '🔁', cor: 'text-indigo-600', bg: 'bg-indigo-50 border-indigo-100',
+      titulo: `${data.recCount} recorrência(s) nos próximos 30 dias`,
+      texto: 'Lançamentos recorrentes já estão considerados no seu saldo previsto.',
+    })
+  }
+
+  // ── PRIORIDADE 3 — Positivos ─────────────────────────────────────────────
+
+  // Saldo positivo + sem investimento
+  if (data.saldoPrevisto > PISO_INVESTIMENTO && data.patrimonioInvestido === 0) {
+    candidatos.push({
+      id: 'sobra-sem-investimento', prioridade: 3,
+      icone: '💡', cor: 'text-green-700', bg: 'bg-green-50 border-green-100',
+      titulo: 'Você vai ter sobra este mês',
+      texto: `Saldo previsto positivo de ${fmt(data.saldoPrevisto)}. Já pensou em investir uma parte?`,
+      acao: { label: 'Ver investimentos', href: '/dashboard/investimentos' },
+    })
+  }
+
+  // Saldo positivo + com investimento
+  if (data.saldoPrevisto > 0 && data.patrimonioInvestido > 0) {
+    candidatos.push({
+      id: 'saldo-positivo-investindo', prioridade: 3,
+      icone: '💚', cor: 'text-green-700', bg: 'bg-green-50 border-green-100',
+      titulo: 'Boa consistência financeira',
+      texto: `Saldo previsto positivo e patrimônio investido de ${fmt(data.patrimonioInvestido)}. Continue assim.`,
+      acao: { label: 'Ver investimentos', href: '/dashboard/investimentos' },
+    })
+  }
+
+  // 3 meses consecutivos positivos
+  if (data.mesesPositivos >= 3) {
+    candidatos.push({
+      id: 'tres-meses-positivos', prioridade: 3,
+      icone: '🎯', cor: 'text-green-700', bg: 'bg-green-50 border-green-100',
+      titulo: `${data.mesesPositivos}º mês consecutivo no azul`,
+      texto: 'Manter saldo positivo por meses seguidos é o hábito mais importante. Parabéns.',
+    })
+  }
+
+  // Receitas > despesas (sem outros positivos)
+  if (data.recMes > data.despMes && data.recMes > 0) {
+    candidatos.push({
+      id: 'receita-maior', prioridade: 3,
+      icone: '✅', cor: 'text-green-700', bg: 'bg-green-50 border-green-100',
+      titulo: 'Mês no azul',
+      texto: `Você está sobrando ${fmt(data.recMes - data.despMes)} este mês. Considere reforçar a reserva.`,
+    })
+  }
+
+  // Fallback
+  if (candidatos.length === 0) {
+    candidatos.push({
+      id: 'tudo-ok', prioridade: 3,
+      icone: '🎯', cor: 'text-green-700', bg: 'bg-green-50 border-green-100',
+      titulo: 'Tudo equilibrado',
+      texto: 'Nada de crítico nos próximos 30 dias. Continue acompanhando.',
+    })
+  }
+
+  // Seleciona: 1 crítico + 1 ação + 1 positivo (máx 3)
+  const critico  = candidatos.filter(c => c.prioridade === 1)[0]
+  const acao     = candidatos.filter(c => c.prioridade === 2)[0]
+  const positivo = candidatos.filter(c => c.prioridade === 3)[0]
+  return [critico, acao, positivo].filter(Boolean) as KalInsight[]
+}
+
+// ─── Componente KalDiz ─────────────────────────────────────────────────────
+function KalDiz({ data, enabled }: { data: KalDizData; enabled: boolean }) {
+  if (!enabled) return null
+  const insights = gerarInsights(data)
+  if (insights.length === 0) return null
 
   return (
     <div className="bg-white border border-gray-100 rounded-xl p-4 mb-6">
-      <div className="flex items-center gap-2 mb-3">
+      {/* Header */}
+      <div className="flex items-center gap-2.5 mb-4">
+        <img
+          src="/kal-avatar.png"
+          alt="Kal"
+          className="w-7 h-7 rounded-full object-cover shrink-0"
+          onError={e => {
+            // fallback se imagem não carregar
+            const target = e.currentTarget as HTMLImageElement
+            target.style.display = 'none'
+            const next = target.nextElementSibling as HTMLElement
+            if (next) next.style.display = 'flex'
+          }}
+        />
         <div
-          className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-          style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}
+          className="w-7 h-7 rounded-full items-center justify-center text-white text-xs font-bold shrink-0"
+          style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', display: 'none' }}
         >K</div>
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Kal diz</p>
       </div>
-      <div className="space-y-2">
-        {visiveis.map((m, i) => (
-          <div key={i} className="flex items-start gap-2">
-            <span className="text-sm shrink-0 mt-0.5">{m.icone}</span>
-            <p className={`text-sm ${m.cor}`}>{m.texto}</p>
+
+      {/* Insights */}
+      <div className="space-y-3">
+        {insights.map(insight => (
+          <div
+            key={insight.id}
+            className={`rounded-xl px-4 py-3 border ${insight.bg}`}
+          >
+            <div className="flex items-start gap-2.5">
+              <span className="text-base shrink-0 mt-0.5">{insight.icone}</span>
+              <div className="flex-1 min-w-0">
+                <p className={`text-xs font-semibold mb-0.5 ${insight.cor}`}>{insight.titulo}</p>
+                <p className="text-xs text-gray-600 leading-relaxed">{insight.texto}</p>
+                {insight.acao && (
+                  <a
+                    href={insight.acao.href}
+                    className={`inline-flex items-center gap-1 text-[11px] font-medium mt-1.5 hover:underline ${insight.cor}`}
+                  >
+                    {insight.acao.label} →
+                  </a>
+                )}
+              </div>
+            </div>
           </div>
         ))}
       </div>
@@ -132,9 +332,7 @@ function SaldoPrevisto({ itens, saldoPrevisto, recCount, instCount }: {
       <div className={`rounded-lg px-4 py-3 flex items-center justify-between ${saldoPrevisto >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
         <div>
           <p className="text-xs font-semibold text-gray-700">Saldo projetado</p>
-          <p className="text-[10px] text-gray-400 mt-0.5">
-            {recCount} recorrência(s) · {instCount} parcela(s) pendente(s)
-          </p>
+          <p className="text-[10px] text-gray-400 mt-0.5">{recCount} recorrência(s) · {instCount} parcela(s) pendente(s)</p>
         </div>
         <p className={`text-xl font-bold ${saldoPrevisto >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmt(saldoPrevisto)}</p>
       </div>
@@ -148,8 +346,7 @@ function InvestimentoCard({ valor }: { valor: number }) {
     try { return localStorage.getItem('sakel-inv-visivel') !== 'false' } catch { return true }
   })
   function toggle() {
-    const next = !visivel
-    setVisivel(next)
+    const next = !visivel; setVisivel(next)
     try { localStorage.setItem('sakel-inv-visivel', String(next)) } catch {}
   }
   return (
@@ -160,10 +357,8 @@ function InvestimentoCard({ valor }: { valor: number }) {
       </div>
       <div className="text-right">
         <div className="flex items-center gap-2 justify-end mb-1">
-          <p className="text-2xl font-bold text-indigo-700">
-            {visivel ? fmt(valor) : '••••••'}
-          </p>
-          <button onClick={toggle} title={visivel ? 'Ocultar valor' : 'Mostrar valor'}
+          <p className="text-2xl font-bold text-indigo-700">{visivel ? fmt(valor) : '••••••'}</p>
+          <button onClick={toggle} title={visivel ? 'Ocultar' : 'Mostrar'}
             className="text-indigo-400 hover:text-indigo-600 transition-colors text-sm">
             {visivel ? '👁️' : '🙈'}
           </button>
@@ -172,6 +367,14 @@ function InvestimentoCard({ valor }: { valor: number }) {
       </div>
     </div>
   )
+}
+
+function InvoiceBadge({ days }: { days: number }) {
+  if (days < 0)   return <span className="text-[10px] font-medium bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Vencida</span>
+  if (days === 0) return <span className="text-[10px] font-medium bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Vence hoje</span>
+  if (days <= 3)  return <span className="text-[10px] font-medium bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">Vence em {days}d</span>
+  if (days <= 7)  return <span className="text-[10px] font-medium bg-yellow-100 text-yellow-600 px-2 py-0.5 rounded-full">Vence em {days}d</span>
+  return <span className="text-[10px] font-medium bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{days}d</span>
 }
 
 // ─── Empty state ───────────────────────────────────────────────────────────
@@ -188,9 +391,9 @@ function EmptyDashboard({ email }: { email: string }) {
       <div className="bg-white border border-dashed border-gray-200 rounded-2xl p-10 text-center mb-6">
         <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl"
           style={{ background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)' }}>🏦</div>
-        <h2 className="text-lg font-semibold text-gray-800 mb-2">Crie sua primeira conta</h2>
+        <h2 className="text-lg font-semibold text-gray-800 mb-2">Sua central financeira começa aqui</h2>
         <p className="text-sm text-gray-400 max-w-sm mx-auto mb-6">
-          Para começar a controlar suas finanças, cadastre uma conta bancária, carteira ou poupança.
+          Adicione uma conta para acompanhar saldo, transações e investimentos.
         </p>
         <a href="/dashboard/contas"
           className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700">
@@ -216,9 +419,7 @@ function EmptyDashboard({ email }: { email: string }) {
         <span className="text-xl shrink-0">💡</span>
         <div>
           <p className="text-sm font-medium text-indigo-700 mb-0.5">Dica rápida</p>
-          <p className="text-xs text-indigo-500">
-            Após criar uma conta, use o botão + no canto inferior direito para registrar receitas e despesas.
-          </p>
+          <p className="text-xs text-indigo-500">Após criar uma conta, use o botão + no canto inferior direito para registrar receitas e despesas.</p>
         </div>
       </div>
     </div>
@@ -244,6 +445,8 @@ export default function DashboardPage() {
   const [saldoPrevisto,       setSaldoPrevisto]       = useState(0)
   const [recCount,            setRecCount]            = useState(0)
   const [instCount,           setInstCount]           = useState(0)
+  const [kalEnabled,          setKalEnabled]          = useState(true)
+  const [kalData,             setKalData]             = useState<KalDizData | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -259,50 +462,70 @@ export default function DashboardPage() {
       const hoje      = now.toISOString().split('T')[0]
       const limit30   = new Date(now); limit30.setDate(limit30.getDate() + 30)
       const horizon30 = limit30.toISOString().split('T')[0]
+      const inicio2m  = new Date(year, month - 1, 1).toISOString().split('T')[0]
+      const inicioMesAnterior = new Date(year, month - 1, 1).toISOString().slice(0, 7)
+      const fimMesAnterior    = new Date(year, month, 0).toISOString().split('T')[0]
 
+      // Preferências do usuário
+      const { data: prefs } = await supabase
+        .from('user_preferences').select('kaldiz_enabled').eq('user_id', user.id).single()
+      if (prefs) setKalEnabled(prefs.kaldiz_enabled ?? true)
+
+      // Contas
       const { data: acc } = await supabase
         .from('accounts').select('current_balance')
         .eq('user_id', user.id).eq('is_active', true).neq('type', 'credit')
       const accList = (acc ?? []) as { current_balance: number }[]
-
       if (accList.length === 0) { setHasAccounts(false); setLoading(false); return }
-
       setHasAccounts(true)
       const saldo = accList.reduce((s, a) => s + Number(a.current_balance), 0)
       setSaldoContas(saldo)
 
+      // Faturas
       const { data: openInv } = await supabase
         .from('credit_card_invoices').select('total_amount')
         .eq('user_id', user.id).in('status', ['open','overdue'])
       const faturas = ((openInv ?? []) as { total_amount: number }[]).reduce((s, i) => s + Number(i.total_amount), 0)
       setTotalFaturas(faturas)
 
+      // Investimentos
       const { data: invData } = await supabase
         .from('investments').select('current_amount').eq('user_id', user.id).eq('is_active', true)
-      setPatrimonioInvestido(((invData ?? []) as { current_amount: number }[]).reduce((s, i) => s + Number(i.current_amount), 0))
+      const totalInv = ((invData ?? []) as { current_amount: number }[]).reduce((s, i) => s + Number(i.current_amount), 0)
+      setPatrimonioInvestido(totalInv)
 
+      // Faturas próximas
       const { data: dueInv } = await supabase
         .from('credit_card_invoices').select('id, total_amount, status, due_date, credit_card_id')
         .eq('user_id', user.id).in('status', ['open','overdue'])
         .lte('due_date', horizon30).order('due_date')
       const { data: cards } = await supabase.from('credit_cards').select('id, name, color').eq('user_id', user.id)
       const cardMap = Object.fromEntries(((cards ?? []) as { id: string; name: string; color: string }[]).map(c => [c.id, c]))
-      setInvoicesDue(((dueInv ?? []) as { id: string; total_amount: number; due_date: string; credit_card_id: string }[]).map(inv => ({
-        id:             inv.id,
+      const invoicesFormatted = ((dueInv ?? []) as { id: string; total_amount: number; due_date: string; credit_card_id: string }[]).map(inv => ({
+        id: inv.id,
         card_name:      cardMap[inv.credit_card_id]?.name  ?? 'Cartão',
         card_color:     cardMap[inv.credit_card_id]?.color ?? '#6366f1',
         due_date:       inv.due_date,
         total_amount:   Number(inv.total_amount),
         days_until_due: daysUntil(inv.due_date),
-      })))
+      }))
+      setInvoicesDue(invoicesFormatted)
 
+      // Transações do mês
       const { data: txMes } = await supabase
-        .from('transactions').select('type, amount').eq('user_id', user.id)
-        .gte('date', inicioMes).lte('date', fimMes).in('type', ['income','expense'])
-      const txArr = (txMes ?? []) as { type: string; amount: number }[]
-      setRecMes( txArr.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0))
-      setDespMes(txArr.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0))
+        .from('transactions').select('type, amount, category_id, description, status')
+        .eq('user_id', user.id).gte('date', inicioMes).lte('date', fimMes)
+        .in('type', ['income','expense'])
+      const txArr = (txMes ?? []) as { type: string; amount: number; category_id: string | null; description: string; status: string }[]
+      const recMesVal  = txArr.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
+      const despMesVal = txArr.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
+      setRecMes(recMesVal)
+      setDespMes(despMesVal)
 
+      // Sem categoria
+      const uncategorized = txArr.filter(t => t.type === 'expense' && !t.category_id).length
+
+      // Gráfico 6 meses
       const meses = Array.from({ length: 6 }, (_, i) => {
         const d = new Date(year, month - (5 - i), 1)
         return { key: d.toISOString().slice(0, 7), label: MONTH_NAMES[d.getMonth()] + '/' + String(d.getFullYear()).slice(2) }
@@ -320,40 +543,94 @@ export default function DashboardPage() {
         }
       }))
 
-      const { data: txCat } = await supabase
-        .from('transactions').select('amount, category_id').eq('user_id', user.id)
-        .eq('type', 'expense').gte('date', inicioMes).lte('date', fimMes)
+      // Meses consecutivos positivos (últimos 3)
+      let mesesPositivos = 0
+      for (let i = 0; i < 3; i++) {
+        const key = meses[5 - i]?.key
+        if (!key) break
+        const txs = histArr.filter(t => t.date.startsWith(key))
+        const rec  = txs.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
+        const desp = txs.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
+        if (rec > desp) mesesPositivos++; else break
+      }
+
+      // Categorias
       const { data: cats } = await supabase.from('categories').select('id, name').eq('user_id', user.id)
       const catNameMap = Object.fromEntries(((cats ?? []) as { id: string; name: string }[]).map(c => [c.id, c.name]))
       const catMap2: Record<string, number> = {}
-      ;((txCat ?? []) as { amount: number; category_id: string | null }[]).forEach(t => {
+      txArr.filter(t => t.type === 'expense').forEach(t => {
         const k = t.category_id ? (catNameMap[t.category_id] ?? 'Outros') : 'Sem categoria'
         catMap2[k] = (catMap2[k] ?? 0) + Number(t.amount)
       })
       setCatSlices(Object.entries(catMap2).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 7))
 
+      // Categorias mês anterior (para comparar alta)
+      const { data: txAnt } = await supabase
+        .from('transactions').select('amount, category_id').eq('user_id', user.id)
+        .eq('type', 'expense').gte('date', fimMesAnterior.slice(0,7) + '-01').lte('date', fimMesAnterior)
+      const catAntMap: Record<string, number> = {}
+      ;((txAnt ?? []) as { amount: number; category_id: string | null }[]).forEach(t => {
+        const k = t.category_id ? (catNameMap[t.category_id] ?? 'Outros') : 'Sem categoria'
+        catAntMap[k] = (catAntMap[k] ?? 0) + Number(t.amount)
+      })
+
+      // Recorrências previstas 30d
       const { data: recData } = await supabase
-        .from('transactions').select('type, amount, date')
+        .from('transactions').select('type, amount')
         .eq('user_id', user.id).eq('is_recurring', true)
         .in('status', ['pending','overdue'])
-        .gte('date', hoje).lte('date', horizon30)
-        .in('type', ['income','expense'])
-      const recArr = (recData ?? []) as { type: string; amount: number }[]
-      const recEntradas = recArr.filter(r => r.type === 'income').reduce((s, r) => s + Number(r.amount), 0)
-      const recSaidas   = recArr.filter(r => r.type === 'expense').reduce((s, r) => s + Number(r.amount), 0)
-      setRecCount(recArr.length)
+        .gte('date', hoje).lte('date', horizon30).in('type', ['income','expense'])
+      const recArr2 = (recData ?? []) as { type: string; amount: number }[]
+      const recEntradas = recArr2.filter(r => r.type === 'income').reduce((s, r) => s + Number(r.amount), 0)
+      const recSaidas   = recArr2.filter(r => r.type === 'expense').reduce((s, r) => s + Number(r.amount), 0)
+      setRecCount(recArr2.length)
 
+      // Parcelas pendentes 30d
       const { data: instData } = await supabase
         .from('transactions').select('type, amount')
         .eq('user_id', user.id).not('installment_total', 'is', null)
-        .eq('status', 'pending')
-        .gte('date', hoje).lte('date', horizon30)
+        .eq('status', 'pending').gte('date', hoje).lte('date', horizon30)
         .in('type', ['income','expense'])
       const instArr = (instData ?? []) as { type: string; amount: number }[]
       const totalParcelas   = instArr.filter(i => i.type === 'expense').reduce((s, i) => s + Number(i.amount), 0)
       const parcelaReceitas = instArr.filter(i => i.type === 'income').reduce((s, i) => s + Number(i.amount), 0)
       setInstCount(instArr.length)
 
+      // Recorrência sugerida: transações normalizadas repetidas em 2+ meses
+      const { data: tx60 } = await supabase
+        .from('transactions').select('description, amount, date')
+        .eq('user_id', user.id).eq('type', 'expense')
+        .gte('date', inicio2m).lte('date', fimMes)
+      const tx60Arr = (tx60 ?? []) as { description: string; amount: number; date: string }[]
+
+      // Agrupa por descrição normalizada + mês
+      const descMesMap: Record<string, Set<string>> = {}
+      const descValMap: Record<string, number[]>    = {}
+      tx60Arr.forEach(t => {
+        const key = normalizeDesc(t.description)
+        const mes = t.date.slice(0, 7)
+        if (!descMesMap[key]) descMesMap[key] = new Set()
+        descMesMap[key].add(mes)
+        if (!descValMap[key]) descValMap[key] = []
+        descValMap[key].push(Number(t.amount))
+      })
+
+      const sugeridas: { descricao: string; valor: number }[] = []
+      for (const [desc, mesesSet] of Object.entries(descMesMap)) {
+        if (mesesSet.size >= 2 && desc.length > 2) {
+          const vals  = descValMap[desc]
+          const media = vals.reduce((a, b) => a + b, 0) / vals.length
+          const maxV  = Math.max(...vals)
+          const minV  = Math.min(...vals)
+          // Variação máxima de 20%
+          if (maxV > 0 && (maxV - minV) / maxV <= 0.20) {
+            sugeridas.push({ descricao: desc, valor: media })
+          }
+        }
+      }
+
+      const previsto = saldo + recEntradas + parcelaReceitas - recSaidas - totalParcelas - faturas
+      setSaldoPrevisto(previsto)
       setProjecaoItens([
         { label: 'Saldo atual em contas',      value: saldo,         color: 'text-indigo-600', sign: ''  },
         { label: 'Receitas recorrentes (30d)', value: recEntradas,   color: 'text-green-600',  sign: '+' },
@@ -361,7 +638,25 @@ export default function DashboardPage() {
         { label: 'Parcelas pendentes (30d)',   value: totalParcelas, color: 'text-orange-500', sign: '−' },
         { label: 'Faturas em aberto',          value: faturas,       color: 'text-purple-600', sign: '−' },
       ])
-      setSaldoPrevisto(saldo + recEntradas + parcelaReceitas - recSaidas - totalParcelas - faturas)
+
+      setKalData({
+        saldoLiquido:        saldo - faturas,
+        saldoContas:         saldo,
+        saldoPrevisto:       previsto,
+        recMes:              recMesVal,
+        despMes:             despMesVal,
+        recCount:            recArr2.length,
+        instCount:           instArr.length,
+        invoicesDue:         invoicesFormatted,
+        totalFaturas:        faturas,
+        patrimonioInvestido: totalInv,
+        uncategorizedCount:  uncategorized,
+        catAtual:            catMap2,
+        catAnterior:         catAntMap,
+        recorrenteSugerida:  sugeridas.slice(0, 1),
+        mesesPositivos,
+      })
+
       setLoading(false)
     }
     load()
@@ -400,17 +695,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Kal diz */}
-      <KalDiz
-        saldoLiquido={saldoLiquido}
-        recMes={recMes}
-        despMes={despMes}
-        recCount={recCount}
-        instCount={instCount}
-        invoicesDue={invoicesDue}
-        totalFaturas={totalFaturas}
-        saldoPrevisto={saldoPrevisto}
-      />
+      {/* KalDiz v2 */}
+      {kalData && <KalDiz data={kalData} enabled={kalEnabled} />}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
@@ -443,18 +729,10 @@ export default function DashboardPage() {
         <p className={`text-2xl font-bold ${saldoLiquido >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmt(saldoLiquido)}</p>
       </div>
 
-      {/* Investimentos */}
       {patrimonioInvestido > 0 && <InvestimentoCard valor={patrimonioInvestido} />}
 
-      {/* Saldo Previsto */}
-      <SaldoPrevisto
-        itens={projecaoItens}
-        saldoPrevisto={saldoPrevisto}
-        recCount={recCount}
-        instCount={instCount}
-      />
+      <SaldoPrevisto itens={projecaoItens} saldoPrevisto={saldoPrevisto} recCount={recCount} instCount={instCount} />
 
-      {/* Faturas próximas */}
       {invoicesDue.length > 0 && (
         <div className="bg-white border border-gray-100 rounded-xl p-5 mb-6">
           <div className="flex items-center justify-between mb-3">
@@ -482,7 +760,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-6">
         <div className="lg:col-span-3 bg-white border border-gray-100 rounded-xl p-5">
           <p className="text-sm font-medium text-gray-700 mb-4">Receitas × Despesas (6 meses)</p>
@@ -518,7 +795,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Links rápidos */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
           { label: 'Transações',    href: '/dashboard/transacoes',    emoji: '📋' },
