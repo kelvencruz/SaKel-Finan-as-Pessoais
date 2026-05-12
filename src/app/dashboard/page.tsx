@@ -259,12 +259,12 @@ function KalDiz({ data, enabled }: { data: KalDizData; enabled: boolean }) {
 <div className="flex items-center gap-3 mb-4">
 
   {/* Avatar do Kal */}
-  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-sm shrink-0 border border-indigo-400/20">
-    
+  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-sm shrink-0 border border-indigo-400/20">
+
     <img
       src="/kal-avatar.png"
       alt="Kal"
-      className="w-7 h-7 object-contain"
+      className="w-8 h-8 object-contain"
       onError={e => {
         const target = e.currentTarget as HTMLImageElement
         target.style.display = 'none'
@@ -274,6 +274,24 @@ function KalDiz({ data, enabled }: { data: KalDizData; enabled: boolean }) {
       }}
     />
 
+    {/* Fallback */}
+    <div className="hidden w-8 h-8 items-center justify-center text-white text-xs font-bold">
+      K
+    </div>
+  </div>
+
+  {/* Texto */}
+  <div className="min-w-0">
+    <p className="text-sm font-semibold text-gray-800 leading-none">
+      Kal
+    </p>
+
+    <p className="text-[11px] text-gray-500 mt-1">
+      Insights financeiros inteligentes
+    </p>
+  </div>
+</div>
+    
     {/* Fallback */}
     <div className="hidden w-7 h-7 items-center justify-center text-white text-xs font-bold">
       K
