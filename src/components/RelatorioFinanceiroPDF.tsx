@@ -103,6 +103,12 @@ const fmtDate = (s: string) => {
   return `${d}/${m}/${y}`
 }
 
+// Trunca texto para evitar overflow no PDF (substitui numberOfLines)
+function truncate(str: string, max: number): string {
+  if (!str) return ''
+  return str.length > max ? str.slice(0, max - 1) + '…' : str
+}
+
 export default function RelatorioFinanceiroPDF({ data }: { data: ReportData }) {
   const maxCat = Math.max(...data.categories.map(c => c.total), 1)
   const saldoLiquido = data.total_income - data.total_expense
@@ -162,7 +168,7 @@ export default function RelatorioFinanceiroPDF({ data }: { data: ReportData }) {
             <Text style={S.sectionTitle}>Despesas por Categoria</Text>
             {data.categories.slice(0, 8).map((cat, i) => (
               <View key={i} style={S.catRow}>
-                <Text style={S.catName}>{cat.name}</Text>
+                <Text style={S.catName}>{truncate(cat.name, 20)}</Text>
                 <View style={S.catBar}>
                   <View style={[S.catBarFill, { width: `${(cat.total / maxCat) * 100}%` as any }]} />
                 </View>
@@ -177,7 +183,7 @@ export default function RelatorioFinanceiroPDF({ data }: { data: ReportData }) {
             <Text style={S.sectionTitle}>Saldo por Conta</Text>
             {data.accounts.map((acc, i) => (
               <View key={i} style={S.accountRow}>
-                <Text style={S.accountName}>{acc.name}</Text>
+                <Text style={S.accountName}>{truncate(acc.name, 22)}</Text>
                 <Text style={[S.accountBalance, acc.balance < 0 ? { color: '#dc2626' } : {}]}>{fmt(acc.balance)}</Text>
               </View>
             ))}
@@ -216,9 +222,9 @@ export default function RelatorioFinanceiroPDF({ data }: { data: ReportData }) {
         {data.transactions.map((tx, i) => (
           <View key={i} style={[S.tableRow, i % 2 === 1 ? S.tableRowAlt : {}]} wrap={false}>
             <Text style={[S.cellText, S.colDate]}>{fmtDate(tx.date)}</Text>
-            <Text style={[S.cellText, S.colDesc]} numberOfLines={1}>{tx.description}</Text>
-            <Text style={[S.cellMuted, S.colCat]} numberOfLines={1}>{tx.category_name ?? '—'}</Text>
-            <Text style={[S.cellMuted, S.colAccount]} numberOfLines={1}>{tx.account_name ?? '—'}</Text>
+            <Text style={[S.cellText, S.colDesc]}>{truncate(tx.description, 35)}</Text>
+            <Text style={[S.cellMuted, S.colCat]}>{truncate(tx.category_name ?? '—', 18)}</Text>
+            <Text style={[S.cellMuted, S.colAccount]}>{truncate(tx.account_name ?? '—', 15)}</Text>
             <Text style={[
               tx.type === 'income' ? S.cellIncome : tx.type === 'expense' ? S.cellExpense : S.cellTransfer,
               S.colAmount,
