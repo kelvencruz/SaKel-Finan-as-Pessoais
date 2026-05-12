@@ -260,7 +260,7 @@ function KalDiz({ data, enabled }: { data: KalDizData; enabled: boolean }) {
         <img
           src="/kal-avatar.png"
           alt="Kal"
-          className="w-7 h-7 rounded-full object-cover shrink-0"
+          className="w-15 h-15 rounded-full object-cover shrink-0"
           onError={e => {
             // fallback se imagem não carregar
             const target = e.currentTarget as HTMLImageElement
@@ -270,7 +270,7 @@ function KalDiz({ data, enabled }: { data: KalDizData; enabled: boolean }) {
           }}
         />
         <div
-          className="w-7 h-7 rounded-full items-center justify-center text-white text-xs font-bold shrink-0"
+          className="w-15 h-15 rounded-full items-center justify-center text-white text-xs font-bold shrink-0"
           style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', display: 'none' }}
         >K</div>
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Kal diz</p>
