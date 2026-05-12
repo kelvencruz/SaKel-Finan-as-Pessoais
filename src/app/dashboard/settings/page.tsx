@@ -236,7 +236,7 @@ function TabFinanceiro({ prefs, onChange, onSave, saving }: {
       <Field label="Kal diz (insights)" hint="Exibe insights automáticos no dashboard">
         <Toggle active={prefs.kaldiz_enabled} onChange={() => onChange({ kaldiz_enabled: !prefs.kaldiz_enabled })} />
       </Field>
-      <Field label="Gamificação" hint="Conquistas e marcos financeiros (em breve)">
+      <Field label="Gamificação" hint="Conquistas, XP e marcos financeiros">
         <Toggle active={prefs.gamification_enabled} onChange={() => onChange({ gamification_enabled: !prefs.gamification_enabled })} />
       </Field>
 
@@ -403,9 +403,17 @@ export default function SettingsPage() {
           gamification_enabled: p.gamification_enabled ?? true,
         })
       } else {
+        // Sem registro em user_preferences ainda — lê o que tem em profiles
         const { data: profile } = await supabase
-          .from('profiles').select('full_name').eq('id', user.id).single()
-        if (profile?.full_name) setPrefs(prev => ({ ...prev, full_name: profile.full_name }))
+          .from('profiles').select('full_name, gamification_enabled, kal_enabled').eq('id', user.id).single()
+        if (profile) {
+          setPrefs(prev => ({
+            ...prev,
+            full_name:            profile.full_name            ?? prev.full_name,
+            gamification_enabled: profile.gamification_enabled ?? prev.gamification_enabled,
+            kaldiz_enabled:       profile.kal_enabled          ?? prev.kaldiz_enabled,
+          }))
+        }
       }
       setLoading(false)
     }
@@ -421,6 +429,7 @@ export default function SettingsPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setSaving(false); return }
 
+    // Salva tudo em user_preferences (fonte primária)
     await supabase.from('user_preferences').upsert({
       user_id:              user.id,
       full_name:            prefs.full_name,
@@ -437,7 +446,13 @@ export default function SettingsPage() {
       updated_at:           new Date().toISOString(),
     }, { onConflict: 'user_id' })
 
-    await supabase.from('profiles').update({ full_name: prefs.full_name }).eq('id', user.id)
+    // Sincroniza profiles (outras partes do app leem daqui)
+    await supabase.from('profiles').update({
+      full_name:            prefs.full_name,
+      gamification_enabled: prefs.gamification_enabled,
+      kal_enabled:          prefs.kaldiz_enabled,
+      updated_at:           new Date().toISOString(),
+    }).eq('id', user.id)
 
     setSaving(false)
     setSaved(true)
@@ -469,10 +484,9 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Mobile: layout em coluna */}
       <div className="flex flex-col sm:flex-row gap-6">
 
-        {/* Tabs — mobile (scroll horizontal) */}
+        {/* Tabs — mobile */}
         <div className="sm:hidden w-full">
           <div className="flex gap-1 overflow-x-auto pb-1 -mx-4 px-4">
             {TABS.map(t => (
@@ -502,7 +516,7 @@ export default function SettingsPage() {
           ))}
         </nav>
 
-        {/* Conteúdo — ocupa largura total no mobile */}
+        {/* Conteúdo */}
         <div className="flex-1 bg-white border border-gray-100 rounded-xl p-4 sm:p-6 min-w-0 w-full">
           {tab === 'perfil'     && <TabPerfil     prefs={prefs} email={email} onChange={handleChange} onSave={handleSave} saving={saving} />}
           {tab === 'aparencia'  && <TabAparencia  prefs={prefs} onChange={handleChange} onSave={handleSave} saving={saving} />}
