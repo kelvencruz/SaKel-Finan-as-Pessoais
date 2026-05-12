@@ -38,6 +38,73 @@ function InvoiceBadge({ days }: { days: number }) {
   return <span className="text-[10px] font-medium bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{days}d</span>
 }
 
+// ─── Kal diz ───────────────────────────────────────────────────────────────
+function KalDiz({ saldoLiquido, recMes, despMes, recCount, instCount, invoicesDue, totalFaturas, saldoPrevisto }: {
+  saldoLiquido: number
+  recMes: number
+  despMes: number
+  recCount: number
+  instCount: number
+  invoicesDue: { days_until_due: number }[]
+  totalFaturas: number
+  saldoPrevisto: number
+}) {
+  const msgs: { texto: string; cor: string; icone: string }[] = []
+
+  if (saldoLiquido < 0) {
+    msgs.push({ icone: '⚠️', cor: 'text-red-600', texto: 'Suas faturas superam seu saldo atual. Vale quitar antes de novos gastos.' })
+  } else if (saldoLiquido > 0 && totalFaturas > 0) {
+    msgs.push({ icone: '✅', cor: 'text-green-600', texto: 'Você tem saldo suficiente para cobrir todas as faturas em aberto.' })
+  }
+
+  if (despMes > recMes && recMes > 0) {
+    const pct = Math.round(((despMes - recMes) / recMes) * 100)
+    msgs.push({ icone: '📊', cor: 'text-orange-600', texto: `Despesas ${pct}% acima das receitas este mês. Bom momento para revisar.` })
+  } else if (recMes > despMes && recMes > 0) {
+    msgs.push({ icone: '💚', cor: 'text-green-600', texto: `Você está sobrando ${fmt(recMes - despMes)} este mês. Considere reforçar a reserva.` })
+  }
+
+  const fatVencendo = invoicesDue.filter(i => i.days_until_due <= 5)
+  if (fatVencendo.length > 0) {
+    msgs.push({ icone: '📅', cor: 'text-purple-600', texto: `${fatVencendo.length} fatura(s) vencendo nos próximos 5 dias. Fique atento.` })
+  }
+
+  if (recCount > 0) {
+    msgs.push({ icone: '🔁', cor: 'text-indigo-600', texto: `${recCount} lançamento(s) recorrente(s) previstos para os próximos 30 dias.` })
+  }
+
+  if (instCount > 0) {
+    msgs.push({ icone: '📦', cor: 'text-orange-500', texto: `${instCount} parcela(s) pendente(s) nos próximos 30 dias já estão no saldo previsto.` })
+  }
+
+  if (msgs.length === 0 && saldoPrevisto > 0) {
+    msgs.push({ icone: '🎯', cor: 'text-green-600', texto: 'Tudo parece equilibrado para os próximos 30 dias. Continue assim.' })
+  }
+
+  const visiveis = msgs.slice(0, 2)
+  if (visiveis.length === 0) return null
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl p-4 mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <div
+          className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+          style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}
+        >K</div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Kal diz</p>
+      </div>
+      <div className="space-y-2">
+        {visiveis.map((m, i) => (
+          <div key={i} className="flex items-start gap-2">
+            <span className="text-sm shrink-0 mt-0.5">{m.icone}</span>
+            <p className={`text-sm ${m.cor}`}>{m.texto}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── Saldo Previsto ────────────────────────────────────────────────────────
 function SaldoPrevisto({ itens, saldoPrevisto, recCount, instCount }: {
   itens: ProjecaoItem[]; saldoPrevisto: number; recCount: number; instCount: number
@@ -75,7 +142,7 @@ function SaldoPrevisto({ itens, saldoPrevisto, recCount, instCount }: {
   )
 }
 
-// ─── Card de Investimentos (com localStorage) ──────────────────────────────
+// ─── Card de Investimentos ─────────────────────────────────────────────────
 function InvestimentoCard({ valor }: { valor: number }) {
   const [visivel, setVisivel] = useState(() => {
     try { return localStorage.getItem('sakel-inv-visivel') !== 'false' } catch { return true }
@@ -96,11 +163,8 @@ function InvestimentoCard({ valor }: { valor: number }) {
           <p className="text-2xl font-bold text-indigo-700">
             {visivel ? fmt(valor) : '••••••'}
           </p>
-          <button
-            onClick={toggle}
-            title={visivel ? 'Ocultar valor' : 'Mostrar valor'}
-            className="text-indigo-400 hover:text-indigo-600 transition-colors text-sm"
-          >
+          <button onClick={toggle} title={visivel ? 'Ocultar valor' : 'Mostrar valor'}
+            className="text-indigo-400 hover:text-indigo-600 transition-colors text-sm">
             {visivel ? '👁️' : '🙈'}
           </button>
         </div>
@@ -121,24 +185,18 @@ function EmptyDashboard({ email }: { email: string }) {
         </div>
         <UserMenu />
       </div>
-
       <div className="bg-white border border-dashed border-gray-200 rounded-2xl p-10 text-center mb-6">
-        <div
-          className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl"
-          style={{ background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)' }}
-        >🏦</div>
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl"
+          style={{ background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)' }}>🏦</div>
         <h2 className="text-lg font-semibold text-gray-800 mb-2">Crie sua primeira conta</h2>
         <p className="text-sm text-gray-400 max-w-sm mx-auto mb-6">
           Para começar a controlar suas finanças, cadastre uma conta bancária, carteira ou poupança.
         </p>
-        <a
-          href="/dashboard/contas"
-          className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700"
-        >
+        <a href="/dashboard/contas"
+          className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700">
           Criar minha primeira conta
         </a>
       </div>
-
       <p className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-3">O que você pode fazer</p>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         {[
@@ -146,24 +204,20 @@ function EmptyDashboard({ email }: { email: string }) {
           { emoji: '💳', title: 'Cadastrar cartões', desc: 'Vincule seus cartões de crédito e acompanhe faturas.',     href: '/dashboard/cartoes' },
           { emoji: '🏷️', title: 'Ver categorias',   desc: '14 categorias padrão já foram criadas para você.',         href: '/dashboard/categorias' },
         ].map(item => (
-          <a
-            key={item.href} href={item.href}
-            className="bg-white border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 rounded-xl p-4 transition-colors group"
-          >
+          <a key={item.href} href={item.href}
+            className="bg-white border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 rounded-xl p-4 transition-colors group">
             <span className="text-2xl mb-2 block">{item.emoji}</span>
             <p className="text-sm font-medium text-gray-700 group-hover:text-indigo-700 mb-1">{item.title}</p>
             <p className="text-xs text-gray-400">{item.desc}</p>
           </a>
         ))}
       </div>
-
-      {/* Dica rápida — mantida do antigo */}
       <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-5 py-4 flex items-start gap-3">
         <span className="text-xl shrink-0">💡</span>
         <div>
           <p className="text-sm font-medium text-indigo-700 mb-0.5">Dica rápida</p>
           <p className="text-xs text-indigo-500">
-            Após criar uma conta, use o botão + no canto inferior direito para registrar receitas e despesas de qualquer página.
+            Após criar uma conta, use o botão + no canto inferior direito para registrar receitas e despesas.
           </p>
         </div>
       </div>
@@ -206,7 +260,6 @@ export default function DashboardPage() {
       const limit30   = new Date(now); limit30.setDate(limit30.getDate() + 30)
       const horizon30 = limit30.toISOString().split('T')[0]
 
-      // Contas
       const { data: acc } = await supabase
         .from('accounts').select('current_balance')
         .eq('user_id', user.id).eq('is_active', true).neq('type', 'credit')
@@ -218,23 +271,18 @@ export default function DashboardPage() {
       const saldo = accList.reduce((s, a) => s + Number(a.current_balance), 0)
       setSaldoContas(saldo)
 
-      // Faturas abertas
       const { data: openInv } = await supabase
         .from('credit_card_invoices').select('total_amount')
         .eq('user_id', user.id).in('status', ['open','overdue'])
       const faturas = ((openInv ?? []) as { total_amount: number }[]).reduce((s, i) => s + Number(i.total_amount), 0)
       setTotalFaturas(faturas)
 
-      // Investimentos
       const { data: invData } = await supabase
-        .from('investments').select('current_amount')
-        .eq('user_id', user.id).eq('is_active', true)
+        .from('investments').select('current_amount').eq('user_id', user.id).eq('is_active', true)
       setPatrimonioInvestido(((invData ?? []) as { current_amount: number }[]).reduce((s, i) => s + Number(i.current_amount), 0))
 
-      // Faturas próximas do vencimento (30d)
       const { data: dueInv } = await supabase
-        .from('credit_card_invoices')
-        .select('id, total_amount, status, due_date, credit_card_id')
+        .from('credit_card_invoices').select('id, total_amount, status, due_date, credit_card_id')
         .eq('user_id', user.id).in('status', ['open','overdue'])
         .lte('due_date', horizon30).order('due_date')
       const { data: cards } = await supabase.from('credit_cards').select('id, name, color').eq('user_id', user.id)
@@ -248,7 +296,6 @@ export default function DashboardPage() {
         days_until_due: daysUntil(inv.due_date),
       })))
 
-      // Receitas e despesas do mês
       const { data: txMes } = await supabase
         .from('transactions').select('type, amount').eq('user_id', user.id)
         .gte('date', inicioMes).lte('date', fimMes).in('type', ['income','expense'])
@@ -256,7 +303,6 @@ export default function DashboardPage() {
       setRecMes( txArr.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0))
       setDespMes(txArr.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0))
 
-      // Gráfico 6 meses
       const meses = Array.from({ length: 6 }, (_, i) => {
         const d = new Date(year, month - (5 - i), 1)
         return { key: d.toISOString().slice(0, 7), label: MONTH_NAMES[d.getMonth()] + '/' + String(d.getFullYear()).slice(2) }
@@ -274,7 +320,6 @@ export default function DashboardPage() {
         }
       }))
 
-      // Pizza categorias
       const { data: txCat } = await supabase
         .from('transactions').select('amount, category_id').eq('user_id', user.id)
         .eq('type', 'expense').gte('date', inicioMes).lte('date', fimMes)
@@ -287,7 +332,6 @@ export default function DashboardPage() {
       })
       setCatSlices(Object.entries(catMap2).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 7))
 
-      // Saldo Previsto — recorrências pendentes nos próximos 30d
       const { data: recData } = await supabase
         .from('transactions').select('type, amount, date')
         .eq('user_id', user.id).eq('is_recurring', true)
@@ -299,7 +343,6 @@ export default function DashboardPage() {
       const recSaidas   = recArr.filter(r => r.type === 'expense').reduce((s, r) => s + Number(r.amount), 0)
       setRecCount(recArr.length)
 
-      // Saldo Previsto — parcelas pendentes nos próximos 30d
       const { data: instData } = await supabase
         .from('transactions').select('type, amount')
         .eq('user_id', user.id).not('installment_total', 'is', null)
@@ -319,7 +362,6 @@ export default function DashboardPage() {
         { label: 'Faturas em aberto',          value: faturas,       color: 'text-purple-600', sign: '−' },
       ])
       setSaldoPrevisto(saldo + recEntradas + parcelaReceitas - recSaidas - totalParcelas - faturas)
-
       setLoading(false)
     }
     load()
@@ -343,24 +385,34 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto">
 
-      {/* ── Header: título + UserMenu ── */}
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold">Dashboard</h1>
           <p className="text-sm text-gray-400 mt-0.5">{MONTH_NAMES[now.getMonth()]} de {now.getFullYear()}</p>
         </div>
         <div className="flex items-center gap-3">
-          <a
-            href="/dashboard/transacoes"
-            className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-          >
+          <a href="/dashboard/transacoes"
+            className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
             + Nova Transação
           </a>
           <UserMenu />
         </div>
       </div>
 
-      {/* ── KPIs ── */}
+      {/* Kal diz */}
+      <KalDiz
+        saldoLiquido={saldoLiquido}
+        recMes={recMes}
+        despMes={despMes}
+        recCount={recCount}
+        instCount={instCount}
+        invoicesDue={invoicesDue}
+        totalFaturas={totalFaturas}
+        saldoPrevisto={saldoPrevisto}
+      />
+
+      {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <div className="bg-white border border-gray-100 rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">Saldo em Contas</p>
@@ -382,7 +434,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Saldo disponível (patrimônio líquido) ── */}
+      {/* Patrimônio líquido */}
       <div className={`rounded-xl px-5 py-4 mb-4 flex items-center justify-between border ${saldoLiquido >= 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
         <div>
           <p className="text-xs font-medium text-gray-600">💰 Patrimônio líquido estimado</p>
@@ -391,10 +443,10 @@ export default function DashboardPage() {
         <p className={`text-2xl font-bold ${saldoLiquido >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmt(saldoLiquido)}</p>
       </div>
 
-      {/* ── Patrimônio investido (com localStorage) ── */}
+      {/* Investimentos */}
       {patrimonioInvestido > 0 && <InvestimentoCard valor={patrimonioInvestido} />}
 
-      {/* ── Saldo Previsto 30 dias ── */}
+      {/* Saldo Previsto */}
       <SaldoPrevisto
         itens={projecaoItens}
         saldoPrevisto={saldoPrevisto}
@@ -402,7 +454,7 @@ export default function DashboardPage() {
         instCount={instCount}
       />
 
-      {/* ── Faturas próximas do vencimento ── */}
+      {/* Faturas próximas */}
       {invoicesDue.length > 0 && (
         <div className="bg-white border border-gray-100 rounded-xl p-5 mb-6">
           <div className="flex items-center justify-between mb-3">
@@ -430,7 +482,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Gráficos ── */}
+      {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-6">
         <div className="lg:col-span-3 bg-white border border-gray-100 rounded-xl p-5">
           <p className="text-sm font-medium text-gray-700 mb-4">Receitas × Despesas (6 meses)</p>
@@ -466,7 +518,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Links rápidos ── */}
+      {/* Links rápidos */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
           { label: 'Transações',    href: '/dashboard/transacoes',    emoji: '📋' },
