@@ -51,12 +51,10 @@ export default function LoginPage() {
 
       {/* Esquerda — branding desktop */}
       <div className="hidden lg:flex flex-col justify-between w-1/2 p-12 relative">
-        {/* Logo versão clara (fundo escuro) */}
         <img
           src="/sakel-logo-dark.png"
           alt="SaKel Finanças"
-          className="object-contain"
-          style={{ height: 56, maxWidth: 220, width: 'auto' }}
+          style={{ width: 280, height: 'auto', display: 'block', objectFit: 'contain' }}
         />
 
         <div>
@@ -93,13 +91,12 @@ export default function LoginPage() {
           boxShadow: '0 32px 64px rgba(0,0,0,0.4)',
         }}>
 
-          {/* Logo mobile */}
+          {/* Logo mobile — grande e centralizada */}
           <div className="lg:hidden flex justify-center mb-8">
             <img
               src="/sakel-logo-dark.png"
               alt="SaKel Finanças"
-              className="object-contain"
-              style={{ height: 48, maxWidth: 180, width: 'auto' }}
+              style={{ width: '70%', maxWidth: 260, height: 'auto', display: 'block', objectFit: 'contain' }}
             />
           </div>
 
@@ -113,7 +110,6 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Email */}
             <div>
               <label className="block text-xs font-medium mb-2"
                 style={{ color: 'rgba(255,255,255,0.5)', letterSpacing: '.04em', textTransform: 'uppercase' }}>
@@ -128,7 +124,6 @@ export default function LoginPage() {
               />
             </div>
 
-            {/* Senha */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-medium"

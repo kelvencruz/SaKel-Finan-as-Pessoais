@@ -43,13 +43,12 @@ export default function Sidebar() {
       className="flex flex-col w-56 h-full"
       style={{ background: 'var(--color-surface)', borderRight: '1px solid var(--color-border)', fontFamily: 'var(--font-main)' }}
     >
-      {/* Logo */}
-      <div className="px-4 py-5 flex items-center" style={{ borderBottom: '1px solid var(--color-border)', minHeight: 72 }}>
+      {/* Logo — grande, ocupa toda a largura */}
+      <div style={{ padding: '20px 16px 20px', borderBottom: '1px solid var(--color-border)' }}>
         <img
           src={logoSrc}
           alt="SaKel Finanças"
-          className="w-full h-auto object-contain"
-          style={{ maxHeight: 48 }}
+          style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'contain' }}
         />
       </div>
 
@@ -107,12 +106,10 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Desktop: sidebar fixa */}
       <div className="hidden md:flex w-56 min-h-screen shrink-0">
         <SidebarContent />
       </div>
 
-      {/* Mobile: botao hamburguer */}
       <button
         onClick={() => setOpen(true)}
         className="md:hidden fixed top-4 left-4 z-50 w-9 h-9 flex items-center justify-center rounded-lg shadow border"
@@ -126,18 +123,11 @@ export default function Sidebar() {
         </svg>
       </button>
 
-      {/* Mobile: overlay */}
       {open && (
-        <div
-          className="md:hidden fixed inset-0 z-40 bg-black/40"
-          onClick={() => setOpen(false)}
-        />
+        <div className="md:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setOpen(false)} />
       )}
 
-      {/* Mobile: drawer */}
-      <div
-        className={`md:hidden fixed top-0 left-0 z-50 h-full transition-transform duration-300 ${open ? 'translate-x-0' : '-translate-x-full'}`}
-      >
+      <div className={`md:hidden fixed top-0 left-0 z-50 h-full transition-transform duration-300 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
         <SidebarContent />
       </div>
     </>
