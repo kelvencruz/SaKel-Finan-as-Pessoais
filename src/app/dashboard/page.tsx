@@ -16,13 +16,13 @@ interface ProjecaoItem { label: string; value: number; color: string; sign: stri
 // ─── KalDiz types ──────────────────────────────────────────────────────────
 interface KalInsight {
   id:        string
-  prioridade: 1 | 2 | 3          // 1=crítico 2=ação 3=positivo
+  prioridade: 1 | 2 | 3
   icone:     string
   titulo:    string
   texto:     string
   acao?:     { label: string; href: string }
-  cor:       string               // classe tailwind de cor do texto
-  bg:        string               // classe tailwind de bg
+  cor:       string
+  bg:        string
 }
 
 interface KalDizData {
@@ -54,12 +54,11 @@ function daysUntil(dateStr: string) {
   return Math.round((new Date(dateStr + 'T12:00:00').getTime() - today.getTime()) / 86400000)
 }
 
-// ─── Normalização de descrição ─────────────────────────────────────────────
 function normalizeDesc(desc: string): string {
   return desc
     .toUpperCase()
     .replace(/[^A-Z0-9\s]/g, '')
-    .replace(/\d{4,}/g, '')       // remove números longos (ex: últimos 4 dígitos)
+    .replace(/\d{4,}/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 30)
@@ -72,7 +71,6 @@ function gerarInsights(data: KalDizData): KalInsight[] {
 
   // ── PRIORIDADE 1 — Risco / Urgência ────────────────────────────────────
 
-  // Saldo negativo
   if (data.saldoLiquido < 0) {
     candidatos.push({
       id: 'saldo-negativo', prioridade: 1,
@@ -83,7 +81,6 @@ function gerarInsights(data: KalDizData): KalInsight[] {
     })
   }
 
-  // Fatura vencendo em até 5 dias
   const fatVencendo = data.invoicesDue.filter(i => i.days_until_due >= 0 && i.days_until_due <= 5)
   if (fatVencendo.length > 0) {
     const nomes = fatVencendo.map(f => f.card_name).join(', ')
@@ -96,7 +93,6 @@ function gerarInsights(data: KalDizData): KalInsight[] {
     })
   }
 
-  // Fatura vencida
   const fatVencidas = data.invoicesDue.filter(i => i.days_until_due < 0)
   if (fatVencidas.length > 0) {
     candidatos.push({
@@ -108,7 +104,6 @@ function gerarInsights(data: KalDizData): KalInsight[] {
     })
   }
 
-  // Alta de gasto por categoria (>= 30% vs mês anterior)
   let maiorAltaCat = ''
   let maiorAltaPct = 0
   for (const [cat, valorAtual] of Object.entries(data.catAtual)) {
@@ -130,7 +125,6 @@ function gerarInsights(data: KalDizData): KalInsight[] {
 
   // ── PRIORIDADE 2 — Ação prática ─────────────────────────────────────────
 
-  // Despesas > Receitas
   if (data.despMes > data.recMes && data.recMes > 0) {
     const pct = Math.round(((data.despMes - data.recMes) / data.recMes) * 100)
     candidatos.push({
@@ -142,7 +136,6 @@ function gerarInsights(data: KalDizData): KalInsight[] {
     })
   }
 
-  // Transações sem categoria
   if (data.uncategorizedCount >= 3) {
     candidatos.push({
       id: 'sem-categoria', prioridade: 2,
@@ -153,7 +146,6 @@ function gerarInsights(data: KalDizData): KalInsight[] {
     })
   }
 
-  // Recorrência sugerida
   if (data.recorrenteSugerida.length > 0) {
     const s = data.recorrenteSugerida[0]
     candidatos.push({
@@ -165,7 +157,6 @@ function gerarInsights(data: KalDizData): KalInsight[] {
     })
   }
 
-  // Parcelas longas (instCount alto)
   if (data.instCount >= 6) {
     candidatos.push({
       id: 'parcelas-longas', prioridade: 2,
@@ -176,7 +167,6 @@ function gerarInsights(data: KalDizData): KalInsight[] {
     })
   }
 
-  // Recorrências previstas
   if (data.recCount > 0 && !candidatos.find(c => c.id === 'fatura-vencendo') && !candidatos.find(c => c.id === 'fatura-vencida')) {
     candidatos.push({
       id: 'recorrencias-previstas', prioridade: 2,
@@ -188,7 +178,6 @@ function gerarInsights(data: KalDizData): KalInsight[] {
 
   // ── PRIORIDADE 3 — Positivos ─────────────────────────────────────────────
 
-  // Saldo positivo + sem investimento
   if (data.saldoPrevisto > PISO_INVESTIMENTO && data.patrimonioInvestido === 0) {
     candidatos.push({
       id: 'sobra-sem-investimento', prioridade: 3,
@@ -199,7 +188,6 @@ function gerarInsights(data: KalDizData): KalInsight[] {
     })
   }
 
-  // Saldo positivo + com investimento
   if (data.saldoPrevisto > 0 && data.patrimonioInvestido > 0) {
     candidatos.push({
       id: 'saldo-positivo-investindo', prioridade: 3,
@@ -210,7 +198,6 @@ function gerarInsights(data: KalDizData): KalInsight[] {
     })
   }
 
-  // 3 meses consecutivos positivos
   if (data.mesesPositivos >= 3) {
     candidatos.push({
       id: 'tres-meses-positivos', prioridade: 3,
@@ -220,7 +207,6 @@ function gerarInsights(data: KalDizData): KalInsight[] {
     })
   }
 
-  // Receitas > despesas (sem outros positivos)
   if (data.recMes > data.despMes && data.recMes > 0) {
     candidatos.push({
       id: 'receita-maior', prioridade: 3,
@@ -230,7 +216,6 @@ function gerarInsights(data: KalDizData): KalInsight[] {
     })
   }
 
-  // Fallback
   if (candidatos.length === 0) {
     candidatos.push({
       id: 'tudo-ok', prioridade: 3,
@@ -240,7 +225,6 @@ function gerarInsights(data: KalDizData): KalInsight[] {
     })
   }
 
-  // Seleciona: 1 crítico + 1 ação + 1 positivo (máx 3)
   const critico  = candidatos.filter(c => c.prioridade === 1)[0]
   const acao     = candidatos.filter(c => c.prioridade === 2)[0]
   const positivo = candidatos.filter(c => c.prioridade === 3)[0]
@@ -256,25 +240,9 @@ function KalDiz({ data, enabled }: { data: KalDizData; enabled: boolean }) {
   return (
     <div className="bg-white border border-gray-100 rounded-xl p-4 mb-6">
       {/* Header */}
-<div className="flex items-center gap-3 mb-4">
-
-  // ─── Componente KalDiz ─────────────────────────────────────────────────────
-function KalDiz({ data, enabled }: { data: KalDizData; enabled: boolean }) {
-  if (!enabled) return null
-
-  const insights = gerarInsights(data)
-
-  if (insights.length === 0) return null
-
-  return (
-    <div className="bg-white border border-gray-100 rounded-xl p-4 mb-6">
-
-      {/* Header */}
       <div className="flex items-center gap-3 mb-4">
-
         {/* Avatar do Kal */}
         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-sm shrink-0 border border-indigo-400/20">
-
           <img
             src="/kal-avatar.png"
             alt="Kal"
@@ -282,16 +250,10 @@ function KalDiz({ data, enabled }: { data: KalDizData; enabled: boolean }) {
             onError={(e) => {
               const target = e.currentTarget as HTMLImageElement
               target.style.display = 'none'
-
               const fallback = target.nextElementSibling as HTMLElement
-
-              if (fallback) {
-                fallback.style.display = 'flex'
-              }
+              if (fallback) fallback.style.display = 'flex'
             }}
           />
-
-          {/* Fallback */}
           <div className="hidden w-8 h-8 items-center justify-center text-white text-xs font-bold">
             K
           </div>
@@ -299,75 +261,10 @@ function KalDiz({ data, enabled }: { data: KalDizData; enabled: boolean }) {
 
         {/* Texto */}
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-gray-800 leading-none">
-            Kal
-          </p>
-
-          <p className="text-[11px] text-gray-500 mt-1">
-            Insights financeiros inteligentes
-          </p>
+          <p className="text-sm font-semibold text-gray-800 leading-none">Kal</p>
+          <p className="text-[11px] text-gray-400 mt-1">Insights financeiros inteligentes</p>
         </div>
       </div>
-
-      {/* Insights */}
-      <div className="space-y-3">
-        {insights.map((insight) => (
-          <div
-            key={insight.id}
-            className={`rounded-xl px-4 py-3 border ${insight.bg}`}
-          >
-            <div className="flex items-start gap-2.5">
-
-              <span className="text-base shrink-0 mt-0.5">
-                {insight.icone}
-              </span>
-
-              <div className="flex-1 min-w-0">
-
-                <p className={`text-xs font-semibold mb-0.5 ${insight.cor}`}>
-                  {insight.titulo}
-                </p>
-
-                <p className="text-xs text-gray-600 leading-relaxed">
-                  {insight.texto}
-                </p>
-
-                {insight.acao && (
-                  <a
-                    href={insight.acao.href}
-                    className={`inline-flex items-center gap-1 text-[11px] font-medium mt-1.5 hover:underline ${insight.cor}`}
-                  >
-                    {insight.acao.label} →
-                  </a>
-                )}
-
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-    </div>
-  )
-}
-    
-    {/* Fallback */}
-    <div className="hidden w-7 h-7 items-center justify-center text-white text-xs font-bold">
-      K
-    </div>
-  </div>
-
-  {/* Texto */}
-  <div className="min-w-0">
-    <p className="text-sm font-semibold text-gray-800 leading-none">
-      Kal
-    </p>
-
-    <p className="text-[11px] text-gray-400 mt-1">
-      Insights financeiros inteligentes
-    </p>
-  </div>
-</div>
 
       {/* Insights */}
       <div className="space-y-3">
@@ -556,8 +453,7 @@ export default function DashboardPage() {
       const limit30   = new Date(now); limit30.setDate(limit30.getDate() + 30)
       const horizon30 = limit30.toISOString().split('T')[0]
       const inicio2m  = new Date(year, month - 1, 1).toISOString().split('T')[0]
-      const inicioMesAnterior = new Date(year, month - 1, 1).toISOString().slice(0, 7)
-      const fimMesAnterior    = new Date(year, month, 0).toISOString().split('T')[0]
+      const fimMesAnterior = new Date(year, month, 0).toISOString().split('T')[0]
 
       // Preferências do usuário
       const { data: prefs } = await supabase
@@ -615,7 +511,6 @@ export default function DashboardPage() {
       setRecMes(recMesVal)
       setDespMes(despMesVal)
 
-      // Sem categoria
       const uncategorized = txArr.filter(t => t.type === 'expense' && !t.category_id).length
 
       // Gráfico 6 meses
@@ -636,7 +531,7 @@ export default function DashboardPage() {
         }
       }))
 
-      // Meses consecutivos positivos (últimos 3)
+      // Meses consecutivos positivos
       let mesesPositivos = 0
       for (let i = 0; i < 3; i++) {
         const key = meses[5 - i]?.key
@@ -657,7 +552,7 @@ export default function DashboardPage() {
       })
       setCatSlices(Object.entries(catMap2).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 7))
 
-      // Categorias mês anterior (para comparar alta)
+      // Categorias mês anterior
       const { data: txAnt } = await supabase
         .from('transactions').select('amount, category_id').eq('user_id', user.id)
         .eq('type', 'expense').gte('date', fimMesAnterior.slice(0,7) + '-01').lte('date', fimMesAnterior)
@@ -689,14 +584,13 @@ export default function DashboardPage() {
       const parcelaReceitas = instArr.filter(i => i.type === 'income').reduce((s, i) => s + Number(i.amount), 0)
       setInstCount(instArr.length)
 
-      // Recorrência sugerida: transações normalizadas repetidas em 2+ meses
+      // Recorrência sugerida
       const { data: tx60 } = await supabase
         .from('transactions').select('description, amount, date')
         .eq('user_id', user.id).eq('type', 'expense')
         .gte('date', inicio2m).lte('date', fimMes)
       const tx60Arr = (tx60 ?? []) as { description: string; amount: number; date: string }[]
 
-      // Agrupa por descrição normalizada + mês
       const descMesMap: Record<string, Set<string>> = {}
       const descValMap: Record<string, number[]>    = {}
       tx60Arr.forEach(t => {
@@ -715,7 +609,6 @@ export default function DashboardPage() {
           const media = vals.reduce((a, b) => a + b, 0) / vals.length
           const maxV  = Math.max(...vals)
           const minV  = Math.min(...vals)
-          // Variação máxima de 20%
           if (maxV > 0 && (maxV - minV) / maxV <= 0.20) {
             sugeridas.push({ descricao: desc, valor: media })
           }
