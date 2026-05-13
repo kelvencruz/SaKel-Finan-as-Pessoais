@@ -141,6 +141,12 @@ export function getBadgeIconDef(badgeId: string): BadgeIconDef {
   return badge?.iconDef ?? { icon: Medal, color: 'var(--text-muted)', bg: 'var(--border)' }
 }
 
+/** Normaliza badges vindos do Supabase (jsonb pode chegar como {}, null, ou string[]) */
+function normalizeBadges(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw as string[]
+  return []
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // awardXP
 // ─────────────────────────────────────────────────────────────────────────────
@@ -163,14 +169,8 @@ export async function awardXP(
     console.error('[awardXP] fetch error:', fetchErr)
   }
 
-  const currentXP = current?.xp ?? 0
-
-  const rawBadges = current?.badges
-  const currentBadges: string[] = Array.isArray(rawBadges)
-    ? (rawBadges as string[])
-    : rawBadges
-      ? (JSON.parse(JSON.stringify(rawBadges)) as string[])
-      : []
+  const currentXP     = current?.xp ?? 0
+  const currentBadges = normalizeBadges(current?.badges)
 
   const newXP    = currentXP + xpAmount
   const newLevel = getLevelInfo(newXP).level
@@ -239,18 +239,11 @@ export async function getGamification(userId: string) {
 
   if (!data) return null
 
-  const rawBadges = data.badges
-  const badges: string[] = Array.isArray(rawBadges)
-    ? (rawBadges as string[])
-    : rawBadges
-      ? (JSON.parse(JSON.stringify(rawBadges)) as string[])
-      : []
-
   return {
     xp:           data.xp ?? 0,
     level:        getLevelInfo(data.xp ?? 0),
     streakDays:   data.streak_days ?? 0,
-    badges,
+    badges:       normalizeBadges(data.badges),
     lastActivity: data.last_activity,
   }
 }

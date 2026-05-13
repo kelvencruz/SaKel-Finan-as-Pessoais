@@ -193,13 +193,11 @@ export default function InvestimentosPage() {
       if (err) { setError(err.message); setSaving(false); return }
 
       // ── Gamificação ──────────────────────────────────────────────
-      // É o primeiro investimento se a lista em memória está vazia
-      const isFirstInvestment = investments.filter(i => i.is_active).length === 0
-      await awardXP(
-        user.id,
-        'first_investment',
-        isFirstInvestment ? 'first_investment' : undefined,
-      ).catch(() => { /* silencioso */ })
+      // ✅ Só concede XP e badge se for o primeiro investimento
+const isFirstInvestment = investments.filter(i => i.is_active).length === 0
+if (isFirstInvestment) {
+  await awardXP(user.id, 'first_investment', 'first_investment').catch(() => {})
+}
       // ─────────────────────────────────────────────────────────────
 
       showToast('Investimento cadastrado!')

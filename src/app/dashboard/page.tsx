@@ -8,6 +8,12 @@ import {
 } from 'recharts'
 import UserMenu from '@/components/UserMenu'
 import { awardXP, getGamification, BADGES } from '@/lib/gamification'
+import {
+  Bank, CreditCard, Tag, ListBullets, Receipt, TrendUp,
+  Wallet, Lightbulb, Star, Flame, Confetti, Warning,
+  SirenLight, CalendarCheck, ChartBar, ArrowsClockwise,
+  Package, CheckCircle, Target, SquaresFour,
+} from '@phosphor-icons/react'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -21,12 +27,12 @@ interface ProjecaoItem { label: string; value: number; color: string; sign: stri
 type KalSeverity = 'danger' | 'warning' | 'positive' | 'info' | 'gamification'
 
 interface KalInsight {
-  id:      string
+  id:       string
   severity: KalSeverity
-  icone:   string
-  titulo:  string
-  texto:   string
-  acao?:   { label: string; href: string }
+  icon:     React.ElementType
+  titulo:   string
+  texto:    string
+  acao?:    { label: string; href: string }
 }
 
 interface KalContext {
@@ -45,13 +51,13 @@ interface KalContext {
   catAnterior:         Record<string, number>
   recorrenteSugerida:  { descricao: string; valor: number }[]
   mesesPositivos:      number
-  xp:          number
-  level:       number
-  levelName:   string
-  streakDays:  number
-  badges:      string[]
-  newBadge:    string | null
-  leveledUp:   boolean
+  xp:        number
+  level:     number
+  levelName: string
+  streakDays: number
+  badges:    string[]
+  newBadge:  string | null
+  leveledUp: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -130,7 +136,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 
   if (ctx.saldoLiquido < 0) {
     danger.push({
-      id: 'saldo-negativo', severity: 'danger', icone: '⚠️',
+      id: 'saldo-negativo', severity: 'danger', icon: Warning,
       titulo: 'Saldo em risco',
       texto: `Suas faturas (${fmt(ctx.totalFaturas)}) estão acima do saldo em conta. Evite novos gastos até regularizar.`,
       acao: { label: 'Ver faturas', href: '/dashboard/faturas' },
@@ -140,7 +146,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
   const fatVencidas = ctx.invoicesDue.filter(i => i.days_until_due < 0)
   if (fatVencidas.length > 0) {
     danger.push({
-      id: 'fatura-vencida', severity: 'danger', icone: '🚨',
+      id: 'fatura-vencida', severity: 'danger', icon: SirenLight,
       titulo: fatVencidas.length === 1 ? 'Fatura vencida' : `${fatVencidas.length} faturas vencidas`,
       texto: `Você tem ${fatVencidas.length === 1 ? 'uma fatura em atraso' : `${fatVencidas.length} faturas em atraso`}. Regularize para evitar juros.`,
       acao: { label: 'Regularizar agora', href: '/dashboard/faturas' },
@@ -151,7 +157,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
   if (fatVencendo.length > 0) {
     const nomes = fatVencendo.map(f => f.card_name).join(', ')
     warning.push({
-      id: 'fatura-vencendo', severity: 'warning', icone: '📅',
+      id: 'fatura-vencendo', severity: 'warning', icon: CalendarCheck,
       titulo: fatVencendo.length === 1 ? 'Fatura vence em breve' : `${fatVencendo.length} faturas vencendo`,
       texto: `${nomes} vence${fatVencendo.length === 1 ? '' : 'm'} nos próximos 5 dias. Verifique se tem saldo disponível.`,
       acao: { label: 'Ver faturas', href: '/dashboard/faturas' },
@@ -168,7 +174,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
   }
   if (topCat) {
     warning.push({
-      id: 'alta-categoria', severity: 'warning', icone: '📈',
+      id: 'alta-categoria', severity: 'warning', icon: TrendUp,
       titulo: `${topCat} subiu ${topPct}% este mês`,
       texto: `Você gastou ${topPct}% a mais em ${topCat} do que no mês passado. Vale dar uma olhada.`,
       acao: { label: 'Ver transações', href: '/dashboard/transacoes' },
@@ -178,7 +184,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
   if (ctx.despMes > ctx.recMes && ctx.recMes > 0) {
     const pct = Math.round(((ctx.despMes - ctx.recMes) / ctx.recMes) * 100)
     warning.push({
-      id: 'despesa-maior', severity: 'warning', icone: '📊',
+      id: 'despesa-maior', severity: 'warning', icon: ChartBar,
       titulo: 'Despesas acima das receitas',
       texto: `Você gastou ${pct}% a mais do que recebeu este mês. Bom momento para revisar.`,
       acao: { label: 'Ver transações', href: '/dashboard/transacoes' },
@@ -187,7 +193,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 
   if (ctx.uncategorizedCount >= 3) {
     info.push({
-      id: 'sem-categoria', severity: 'info', icone: '🏷️',
+      id: 'sem-categoria', severity: 'info', icon: Tag,
       titulo: `${ctx.uncategorizedCount} lançamentos sem categoria`,
       texto: 'Categorizar transações melhora relatórios e deixa os insights do Kal mais precisos.',
       acao: { label: 'Organizar agora', href: '/dashboard/transacoes' },
@@ -197,7 +203,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
   if (ctx.recorrenteSugerida.length > 0) {
     const s = ctx.recorrenteSugerida[0]
     info.push({
-      id: 'recorrente-sugerida', severity: 'info', icone: '🔁',
+      id: 'recorrente-sugerida', severity: 'info', icon: ArrowsClockwise,
       titulo: 'Parece uma recorrência',
       texto: `"${s.descricao}" aparece todo mês (≈ ${fmt(s.valor)}). Cadastrar como recorrente facilita o controle.`,
       acao: { label: 'Cadastrar recorrência', href: '/dashboard/recorrencias' },
@@ -206,7 +212,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 
   if (ctx.instCount >= 6) {
     info.push({
-      id: 'parcelas-longas', severity: 'info', icone: '📦',
+      id: 'parcelas-longas', severity: 'info', icon: Package,
       titulo: `${ctx.instCount} parcelas pendentes`,
       texto: 'Você tem compromissos parcelados nos próximos meses — já considerados no saldo previsto.',
       acao: { label: 'Ver transações', href: '/dashboard/transacoes' },
@@ -215,7 +221,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 
   if (ctx.recCount > 0 && !warning.find(c => c.id === 'fatura-vencendo') && !danger.find(c => c.id === 'fatura-vencida')) {
     info.push({
-      id: 'recorrencias-previstas', severity: 'info', icone: '🔁',
+      id: 'recorrencias-previstas', severity: 'info', icon: ArrowsClockwise,
       titulo: `${ctx.recCount} recorrência(s) nos próximos 30 dias`,
       texto: 'Já estão refletidas no saldo previsto. Nenhuma surpresa por enquanto.',
     })
@@ -223,7 +229,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 
   if (ctx.mesesPositivos >= 3) {
     positive.push({
-      id: 'tres-meses-positivos', severity: 'positive', icone: '🌟',
+      id: 'tres-meses-positivos', severity: 'positive', icon: Star,
       titulo: `${ctx.mesesPositivos}º mês consecutivo no azul`,
       texto: 'Consistência é o hábito financeiro mais valioso. Continue assim.',
     })
@@ -231,7 +237,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 
   if (ctx.recMes > ctx.despMes && ctx.recMes > 0 && ctx.mesesPositivos < 3) {
     positive.push({
-      id: 'mes-no-azul', severity: 'positive', icone: '✅',
+      id: 'mes-no-azul', severity: 'positive', icon: CheckCircle,
       titulo: 'Mês no azul',
       texto: `Você está sobrando ${fmt(ctx.recMes - ctx.despMes)} este mês. Considere reforçar a reserva.`,
     })
@@ -239,7 +245,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 
   if (ctx.saldoPrevisto > PISO_INV && ctx.patrimonioInvestido === 0) {
     positive.push({
-      id: 'sobra-sem-investimento', severity: 'positive', icone: '💡',
+      id: 'sobra-sem-investimento', severity: 'positive', icon: Lightbulb,
       titulo: 'Vai sobrar esse mês',
       texto: `Saldo previsto de ${fmt(ctx.saldoPrevisto)}. Já pensou em investir uma parte?`,
       acao: { label: 'Ver investimentos', href: '/dashboard/investimentos' },
@@ -248,7 +254,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 
   if (ctx.saldoPrevisto > 0 && ctx.patrimonioInvestido > 0) {
     positive.push({
-      id: 'saldo-positivo-investindo', severity: 'positive', icone: '💚',
+      id: 'saldo-positivo-investindo', severity: 'positive', icon: CheckCircle,
       titulo: 'Boa consistência financeira',
       texto: `Saldo previsto positivo e ${fmt(ctx.patrimonioInvestido)} investidos. Continue assim.`,
       acao: { label: 'Ver investimentos', href: '/dashboard/investimentos' },
@@ -257,7 +263,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 
   if (ctx.leveledUp) {
     gamification.push({
-      id: 'level-up', severity: 'gamification', icone: '🎉',
+      id: 'level-up', severity: 'gamification', icon: Confetti,
       titulo: `Você subiu para o nível ${ctx.level}!`,
       texto: `Parabéns! Você agora é ${ctx.levelName}. Continue registrando para desbloquear mais conquistas.`,
       acao: { label: 'Ver conquistas', href: '/dashboard/conquistas' },
@@ -268,7 +274,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
     const badge = BADGES.find(b => b.id === ctx.newBadge)
     const nome  = badge?.name ?? ctx.newBadge
     gamification.push({
-      id: `badge-${ctx.newBadge}`, severity: 'gamification', icone: '⭐',
+      id: `badge-${ctx.newBadge}`, severity: 'gamification', icon: Star,
       titulo: `Nova conquista: ${nome}`,
       texto: 'Você desbloqueou um badge. Acesse conquistas para ver todos os seus marcos.',
       acao: { label: 'Ver conquistas', href: '/dashboard/conquistas' },
@@ -277,7 +283,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 
   if (ctx.streakDays >= 7 && !ctx.leveledUp && !ctx.newBadge) {
     gamification.push({
-      id: 'streak-ativo', severity: 'gamification', icone: '🔥',
+      id: 'streak-ativo', severity: 'gamification', icon: Flame,
       titulo: `${ctx.streakDays} dias seguidos`,
       texto: `Você está em sequência há ${ctx.streakDays} dia${ctx.streakDays > 1 ? 's' : ''}. Manter o hábito é o segredo.`,
       acao: { label: 'Ver conquistas', href: '/dashboard/conquistas' },
@@ -286,7 +292,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 
   if (gamification.length === 0 && ctx.xp > 0) {
     gamification.push({
-      id: 'xp-resumo', severity: 'gamification', icone: '⭐',
+      id: 'xp-resumo', severity: 'gamification', icon: Star,
       titulo: `${ctx.xp} XP · Nível ${ctx.level}`,
       texto: `Você é ${ctx.levelName}. Continue usando o app para ganhar XP e desbloquear conquistas.`,
       acao: { label: 'Ver conquistas', href: '/dashboard/conquistas' },
@@ -295,7 +301,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 
   if (danger.length === 0 && warning.length === 0 && positive.length === 0 && info.length === 0 && gamification.length === 0) {
     positive.push({
-      id: 'tudo-ok', severity: 'positive', icone: '🎯',
+      id: 'tudo-ok', severity: 'positive', icon: Target,
       titulo: 'Tudo equilibrado',
       texto: 'Nada de crítico nos próximos 30 dias. Continue acompanhando.',
     })
@@ -348,21 +354,24 @@ function KalDiz({ ctx, enabled }: { ctx: KalContext; enabled: boolean }) {
               <p className="text-[10px] font-medium mt-0.5" style={{ color: 'var(--primary)' }}>{ctx.xp} XP</p>
             </div>
             <a href="/dashboard/conquistas"
-              className="w-8 h-8 rounded-full flex items-center justify-center text-sm transition-colors"
+              className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
               style={{ background: 'var(--primary-light)', border: '1px solid var(--border)', color: 'var(--primary)' }}
-              title="Ver conquistas">⭐</a>
+              title="Ver conquistas">
+              <Star weight="duotone" size={14} />
+            </a>
           </div>
         )}
       </div>
 
       <div className="space-y-2.5">
         {insights.map(insight => {
-          const s = SEV_STYLE[insight.severity]
+          const s    = SEV_STYLE[insight.severity]
+          const Icon = insight.icon
           return (
             <div key={insight.id} className="rounded-xl px-4 py-3"
               style={{ background: s.bg, border: `1px solid ${s.border}30` }}>
               <div className="flex items-start gap-2.5">
-                <span className="text-base shrink-0 mt-0.5">{insight.icone}</span>
+                <Icon weight="duotone" size={16} style={{ color: s.cor, flexShrink: 0, marginTop: 2 }} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold mb-0.5" style={{ color: s.cor }}>{insight.titulo}</p>
                   <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{insight.texto}</p>
@@ -440,9 +449,12 @@ function InvestimentoCard({ valor }: { valor: number }) {
   return (
     <div className="rounded-xl px-5 py-4 mb-6 flex items-center justify-between"
       style={{ background: 'var(--primary-light)', border: '1px solid var(--primary)20' }}>
-      <div>
-        <p className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>📈 Patrimônio investido</p>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Não incluso no saldo operacional</p>
+      <div className="flex items-center gap-2">
+        <TrendUp weight="duotone" size={16} style={{ color: 'var(--primary)' }} />
+        <div>
+          <p className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Patrimônio investido</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Não incluso no saldo operacional</p>
+        </div>
       </div>
       <div className="text-right">
         <div className="flex items-center gap-2 justify-end mb-1">
@@ -482,8 +494,10 @@ function EmptyDashboard({ email: _ }: { email: string }) {
       </div>
       <div className="rounded-2xl p-10 text-center mb-6"
         style={{ background: 'var(--surface)', border: '2px dashed var(--border-md)' }}>
-        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl"
-          style={{ background: 'var(--primary-light)' }}>🏦</div>
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
+          style={{ background: 'var(--primary-light)' }}>
+          <Bank weight="duotone" size={28} style={{ color: 'var(--primary)' }} />
+        </div>
         <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--text)' }}>Sua central financeira começa aqui</h2>
         <p className="text-sm max-w-sm mx-auto mb-6" style={{ color: 'var(--text-muted)' }}>
           Adicione uma conta para acompanhar saldo, transações e investimentos.
@@ -497,9 +511,9 @@ function EmptyDashboard({ email: _ }: { email: string }) {
       <p className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)' }}>O que você pode fazer</p>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         {[
-          { emoji: '🏦', title: 'Adicionar contas',  desc: 'Cadastre banco, carteira ou poupança com saldo inicial.', href: '/dashboard/contas' },
-          { emoji: '💳', title: 'Cadastrar cartões', desc: 'Vincule seus cartões de crédito e acompanhe faturas.',     href: '/dashboard/cartoes' },
-          { emoji: '🏷️', title: 'Ver categorias',   desc: '14 categorias padrão já foram criadas para você.',         href: '/dashboard/categorias' },
+          { icon: Bank,       title: 'Adicionar contas',  desc: 'Cadastre banco, carteira ou poupança com saldo inicial.', href: '/dashboard/contas' },
+          { icon: CreditCard, title: 'Cadastrar cartões', desc: 'Vincule seus cartões de crédito e acompanhe faturas.',     href: '/dashboard/cartoes' },
+          { icon: Tag,        title: 'Ver categorias',    desc: '14 categorias padrão já foram criadas para você.',         href: '/dashboard/categorias' },
         ].map(item => (
           <a key={item.href} href={item.href}
             className="rounded-xl p-4 transition-colors group"
@@ -512,7 +526,7 @@ function EmptyDashboard({ email: _ }: { email: string }) {
               (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'
               ;(e.currentTarget as HTMLElement).style.background = 'var(--surface)'
             }}>
-            <span className="text-2xl mb-2 block">{item.emoji}</span>
+            <item.icon weight="duotone" size={24} style={{ color: 'var(--primary)' }} className="mb-2" />
             <p className="text-sm font-medium mb-1" style={{ color: 'var(--text)' }}>{item.title}</p>
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{item.desc}</p>
           </a>
@@ -520,7 +534,7 @@ function EmptyDashboard({ email: _ }: { email: string }) {
       </div>
       <div className="rounded-xl px-5 py-4 flex items-start gap-3"
         style={{ background: 'var(--primary-light)', border: '1px solid var(--primary)20' }}>
-        <span className="text-xl shrink-0">💡</span>
+        <Lightbulb weight="duotone" size={20} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: 2 }} />
         <div>
           <p className="text-sm font-medium mb-0.5" style={{ color: 'var(--primary)' }}>Dica rápida</p>
           <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
@@ -790,6 +804,22 @@ export default function DashboardPage() {
           gamCtx.xp = r.newXP
         }
 
+        // ── Streak badges ────────────────────────────────────────────────────
+        if (gam && gam.streakDays >= 7 && !gamCtx.badges.includes('streak_7')) {
+          const r = await awardXP(user.id, 'streak_7', 'streak_7')
+          if (r.newBadge && !gamCtx.newBadge) gamCtx.newBadge = r.newBadge
+          if (r.leveledUp) { gamCtx.leveledUp = true; gamCtx.level = r.newLevel }
+          gamCtx.xp = r.newXP
+        }
+
+        if (gam && gam.streakDays >= 30 && !gamCtx.badges.includes('streak_30')) {
+          const r = await awardXP(user.id, 'streak_30', 'streak_30')
+          if (r.newBadge && !gamCtx.newBadge) gamCtx.newBadge = r.newBadge
+          if (r.leveledUp) { gamCtx.leveledUp = true; gamCtx.level = r.newLevel }
+          gamCtx.xp = r.newXP
+        }
+        // ────────────────────────────────────────────────────────────────────
+
         const LEVEL_NAMES: Record<number, string> = {
           1: 'Novato Financeiro', 2: 'Poupador Consistente',
           3: 'Orçamentista Eficiente', 4: 'Estrategista Financeiro', 5: 'Mestre do Cofrinho',
@@ -892,9 +922,12 @@ export default function DashboardPage() {
           background:  saldoLiquido >= 0 ? 'var(--success-light)' : 'var(--danger-light)',
           border:      `1px solid ${saldoLiquido >= 0 ? 'var(--success)' : 'var(--danger)'}20`,
         }}>
-        <div>
-          <p className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>💰 Patrimônio líquido estimado</p>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Saldo em contas menos faturas em aberto</p>
+        <div className="flex items-center gap-2">
+          <Wallet weight="duotone" size={16} style={{ color: saldoLiquido >= 0 ? 'var(--success)' : 'var(--danger)' }} />
+          <div>
+            <p className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Patrimônio líquido estimado</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Saldo em contas menos faturas em aberto</p>
+          </div>
         </div>
         <p className="text-2xl font-bold" style={{ color: saldoLiquido >= 0 ? 'var(--success)' : 'var(--danger)' }}>
           {fmt(saldoLiquido)}
@@ -917,8 +950,10 @@ export default function DashboardPage() {
               <div key={inv.id} className="flex items-center justify-between py-2"
                 style={{ borderBottom: '1px solid var(--border)' }}>
                 <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs shrink-0"
-                    style={{ backgroundColor: inv.card_color }}>💳</div>
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: inv.card_color }}>
+                    <CreditCard weight="duotone" size={14} style={{ color: '#fff' }} />
+                  </div>
                   <div>
                     <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>{inv.card_name}</p>
                     <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -957,8 +992,8 @@ export default function DashboardPage() {
         <div className="lg:col-span-2 rounded-xl p-5" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
           <p className="text-sm font-medium mb-4" style={{ color: 'var(--text-secondary)' }}>Despesas por Categoria</p>
           {catSlices.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-44" style={{ color: 'var(--text-muted)' }}>
-              <span className="text-4xl mb-2">📂</span>
+            <div className="flex flex-col items-center justify-center h-44 gap-2" style={{ color: 'var(--text-muted)' }}>
+              <ChartBar weight="duotone" size={36} style={{ color: 'var(--border)' }} />
               <p className="text-xs">Sem dados este mês</p>
             </div>
           ) : (
@@ -981,11 +1016,11 @@ export default function DashboardPage() {
       {/* Links rápidos */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
-          { label: 'Transações',    href: '/dashboard/transacoes',    emoji: '📋' },
-          { label: 'Contas',        href: '/dashboard/contas',        emoji: '🏦' },
-          { label: 'Cartões',       href: '/dashboard/cartoes',       emoji: '💳' },
-          { label: 'Faturas',       href: '/dashboard/faturas',       emoji: '📄' },
-          { label: 'Investimentos', href: '/dashboard/investimentos', emoji: '📈' },
+          { label: 'Transações',    href: '/dashboard/transacoes',    icon: ListBullets },
+          { label: 'Contas',        href: '/dashboard/contas',        icon: Bank        },
+          { label: 'Cartões',       href: '/dashboard/cartoes',       icon: CreditCard  },
+          { label: 'Faturas',       href: '/dashboard/faturas',       icon: Receipt     },
+          { label: 'Investimentos', href: '/dashboard/investimentos', icon: TrendUp     },
         ].map(link => (
           <a key={link.href} href={link.href}
             className="rounded-xl px-4 py-3 text-sm font-medium transition-colors flex items-center gap-2"
@@ -1000,7 +1035,8 @@ export default function DashboardPage() {
               ;(e.currentTarget as HTMLElement).style.background = 'var(--surface)'
               ;(e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'
             }}>
-            <span>{link.emoji}</span> {link.label}
+            <link.icon weight="duotone" size={16} />
+            {link.label}
           </a>
         ))}
       </div>
