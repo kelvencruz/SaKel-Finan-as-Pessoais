@@ -115,7 +115,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       setCategories((cat ?? []) as Category[])
       setCreditCards((cards ?? []) as CreditCard[])
       setGoals((gls ?? []) as InvestmentGoal[])
-      setGamEnabled(prefs?.gamification_enabled ?? false)
+      setGamEnabled(prefs?.gamification_enabled ?? true)
       setForm(f => ({ ...f, account_id: accList[0]?.id ?? '' }))
       setLoaded(true)
     }
