@@ -80,7 +80,7 @@ export default function Sidebar() {
       <a
         href={item.href}
         onClick={() => setOpen(false)}
-        className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium relative transition-colors"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium relative transition-colors"
         style={{
           color:      active ? 'var(--color-brand)'       : 'var(--color-text-secondary)',
           background: active ? 'var(--color-brand-light)' : 'transparent',
@@ -116,7 +116,7 @@ export default function Sidebar() {
       }}
     >
       {/* Logo */}
-      <div className="px-5 py-4 mb-2 shrink-0" style={{ borderBottom: '1px solid var(--color-border)' }}>
+      <div className="px-5 py-3 mb-1 shrink-0" style={{ borderBottom: '1px solid var(--color-border)' }}>
         <img
           src={isDark ? '/sakel-logo-dark.png' : '/sakel-logo-ligth.png'}
           alt="SaKel Finanças"
@@ -146,7 +146,7 @@ export default function Sidebar() {
         <a
           href="/dashboard/conquistas"
           onClick={() => setOpen(false)}
-          className="mx-3 mb-3 px-3 py-2 rounded-xl block hover:opacity-90 transition-opacity shrink-0"
+          className="mx-3 mb-2 px-3 py-1.5 rounded-xl block hover:opacity-90 transition-opacity shrink-0"
           style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}
         >
           <div className="flex items-center justify-between mb-1.5">
@@ -169,23 +169,23 @@ export default function Sidebar() {
 
       {/* Nav label */}
       <p
-        className="px-5 mb-1.5 text-[10px] font-semibold tracking-widest uppercase shrink-0"
+        className="px-5 mb-1 text-[10px] font-semibold tracking-widest uppercase shrink-0"
         style={{ color: 'var(--color-text-muted)' }}
       >
         Menu
       </p>
 
       {/* Nav items — rola se necessário, não empurra o rodapé */}
-      <nav className="flex flex-col gap-0.5 px-2 overflow-y-auto flex-1 min-h-0">
+      <nav className="flex flex-col gap-0 px-2 overflow-y-auto flex-1 min-h-0">
         {navItems.map(item => <NavLink key={item.href} item={item} />)}
       </nav>
 
       {/* ── Rodapé SEMPRE visível ── */}
-      <div className="shrink-0 px-2 pb-4 pt-2" style={{ borderTop: '1px solid var(--color-border)' }}>
+      <div className="shrink-0 px-2 pb-3 pt-1" style={{ borderTop: '1px solid var(--color-border)' }}>
         <a
           href="/dashboard/settings"
           onClick={() => setOpen(false)}
-          className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
           style={{
             color:      isActive('/dashboard/settings') ? 'var(--color-brand)'       : 'var(--color-text-secondary)',
             background: isActive('/dashboard/settings') ? 'var(--color-brand-light)' : 'transparent',
@@ -204,7 +204,7 @@ export default function Sidebar() {
 
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
           style={{ color: 'var(--color-text-muted)' }}
           onMouseEnter={e => {
             const el = e.currentTarget as HTMLElement
