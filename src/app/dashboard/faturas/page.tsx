@@ -116,6 +116,9 @@ export default function FaturasPage() {
   }
 
   // ── navegação de mês — só BUSCA, nunca cria ─────────────────────────────────
+  // CORREÇÃO: trocado .single() por .maybeSingle() + filtro .gt('total_amount', 0)
+  // Motivo: .single() lançava erro quando havia fatura zerada (total_amount=0),
+  // fazendo data ficar null e apagando a fatura real da tela.
   async function loadCurrentMonthInvoice(cardId: string, month: number, year: number) {
     const { data } = await supabase
       .from('credit_card_invoices')
@@ -123,9 +126,11 @@ export default function FaturasPage() {
       .eq('credit_card_id', cardId)
       .eq('month', month)
       .eq('year',  year)
-      .single()
+      .gt('total_amount', 0)
+      .order('total_amount', { ascending: false })
+      .maybeSingle()
 
-    if (!data || Number(data.total_amount) === 0) {
+    if (!data) {
       setSelectedInvoice(null)
       setInvoiceTransactions([])
     } else {
@@ -169,16 +174,14 @@ export default function FaturasPage() {
   // ── effects ─────────────────────────────────────────────────────────────────
   useEffect(() => { loadCards() }, [])
 
+  // CORREÇÃO: os dois useEffects anteriores (selectedCard e viewMonth/viewYear)
+  // foram unificados em um só. selectedCard?.id evita loop infinito de re-render.
   useEffect(() => {
     if (selectedCard) {
       loadInvoices(selectedCard.id)
       loadCurrentMonthInvoice(selectedCard.id, viewMonth, viewYear)
     }
-  }, [selectedCard])
-
-  useEffect(() => {
-    if (selectedCard) loadCurrentMonthInvoice(selectedCard.id, viewMonth, viewYear)
-  }, [viewMonth, viewYear])
+  }, [selectedCard?.id, viewMonth, viewYear])
 
   // ── helpers de navegação ────────────────────────────────────────────────────
   function prevMonth() {
