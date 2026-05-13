@@ -5,22 +5,31 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import ThemeToggle from './ThemeToggle'
 import { getGamification, getLevelInfo } from '@/lib/gamification'
+import {
+  SquaresFour,
+  ArrowsClockwise,
+  Bank,
+  CreditCard,
+  Receipt,
+  TrendUp,
+  Tag,
+  Trophy,
+  DownloadSimple,
+  Gear,
+  SignOut,
+} from '@phosphor-icons/react'
 
 const navItems = [
-  { href: '/dashboard',               label: 'Dashboard',     emoji: '📊' },
-  { href: '/dashboard/transacoes',    label: 'Transações',    emoji: '💸' },
-  { href: '/dashboard/recorrencias',  label: 'Recorrências',  emoji: '🔁' },
-  { href: '/dashboard/contas',        label: 'Contas',        emoji: '🏦' },
-  { href: '/dashboard/cartoes',       label: 'Cartões',       emoji: '💳' },
-  { href: '/dashboard/faturas',       label: 'Faturas',       emoji: '📄' },
-  { href: '/dashboard/investimentos', label: 'Investimentos', emoji: '📈' },
-  { href: '/dashboard/categorias',    label: 'Categorias',    emoji: '🏷️' },
-  { href: '/dashboard/conquistas',    label: 'Conquistas',    emoji: '🏆' },
-  { href: '/dashboard/importar',      label: 'Importar CSV',  emoji: '📥' },
-]
-
-const bottomItems = [
-  { href: '/dashboard/settings', label: 'Configurações', emoji: '⚙️' },
+  { href: '/dashboard',               label: 'Dashboard',     Icon: SquaresFour },
+  { href: '/dashboard/transacoes',    label: 'Transações',    Icon: ArrowsClockwise },
+  { href: '/dashboard/recorrencias',  label: 'Recorrências',  Icon: ArrowsClockwise },
+  { href: '/dashboard/contas',        label: 'Contas',        Icon: Bank },
+  { href: '/dashboard/cartoes',       label: 'Cartões',       Icon: CreditCard },
+  { href: '/dashboard/faturas',       label: 'Faturas',       Icon: Receipt },
+  { href: '/dashboard/investimentos', label: 'Investimentos', Icon: TrendUp },
+  { href: '/dashboard/categorias',    label: 'Categorias',    Icon: Tag },
+  { href: '/dashboard/conquistas',    label: 'Conquistas',    Icon: Trophy },
+  { href: '/dashboard/importar',      label: 'Importar CSV',  Icon: DownloadSimple },
 ]
 
 export default function Sidebar() {
@@ -31,7 +40,6 @@ export default function Sidebar() {
   const [xp,         setXp]         = useState(0)
   const [streakDays, setStreakDays] = useState(0)
 
-  // CORRIGIDO: usa data-theme em vez de classList.contains('dark')
   useEffect(() => {
     const check = () => setIsDark(document.documentElement.getAttribute('data-theme') === 'dark')
     check()
@@ -66,7 +74,7 @@ export default function Sidebar() {
     return pathname.startsWith(href)
   }
 
-  const NavLink = ({ item }: { item: { href: string; label: string; emoji: string } }) => {
+  const NavLink = ({ item }: { item: { href: string; label: string; Icon: React.ElementType } }) => {
     const active = isActive(item.href)
     return (
       <a
@@ -80,10 +88,16 @@ export default function Sidebar() {
         }}
       >
         {active && (
-          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
-            style={{ background: 'var(--color-brand)' }} />
+          <span
+            className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
+            style={{ background: 'var(--color-brand)' }}
+          />
         )}
-        <span className="text-base">{item.emoji}</span>
+        <item.Icon
+          size={18}
+          weight={active ? 'duotone' : 'regular'}
+          style={{ color: active ? 'var(--color-brand)' : 'var(--color-text-secondary)', flexShrink: 0 }}
+        />
         <span style={{ letterSpacing: '-.01em' }}>{item.label}</span>
       </a>
     )
@@ -92,11 +106,17 @@ export default function Sidebar() {
   const levelInfo = getLevelInfo(xp)
 
   const SidebarContent = () => (
-    <aside className="flex flex-col w-56 h-full"
-      style={{ background: 'var(--color-surface)', borderRight: '1px solid var(--color-border)', fontFamily: 'var(--font-main)' }}>
-
+    <aside
+      className="flex flex-col w-56 h-full"
+      style={{
+        background:   'var(--color-surface)',
+        borderRight:  '1px solid var(--color-border)',
+        fontFamily:   'var(--font-main)',
+        overflow:     'hidden', // contém o layout interno
+      }}
+    >
       {/* Logo */}
-      <div className="px-5 py-4 mb-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
+      <div className="px-5 py-4 mb-2 shrink-0" style={{ borderBottom: '1px solid var(--color-border)' }}>
         <img
           src={isDark ? '/sakel-logo-dark.png' : '/sakel-logo-ligth.png'}
           alt="SaKel Finanças"
@@ -110,61 +130,94 @@ export default function Sidebar() {
           }}
         />
         <div style={{ display: 'none' }} className="items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold shrink-0"
-            style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}>S</div>
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold shrink-0"
+            style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}
+          >S</div>
           <div>
             <p className="text-sm font-bold" style={{ color: 'var(--color-text-primary)' }}>SaKel</p>
-            <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Finanças Pessoais</p>
+            <p className="text-[10px]"       style={{ color: 'var(--color-text-muted)' }}>Finanças Pessoais</p>
           </div>
         </div>
       </div>
 
       {/* Mini card XP — só se gamificação ativa */}
       {gamEnabled && (
-        <a href="/dashboard/conquistas" onClick={() => setOpen(false)}
-          className="mx-3 mb-3 px-3 py-2 rounded-xl block hover:opacity-90 transition-opacity"
+        <a
+          href="/dashboard/conquistas"
+          onClick={() => setOpen(false)}
+          className="mx-3 mb-3 px-3 py-2 rounded-xl block hover:opacity-90 transition-opacity shrink-0"
           style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}
         >
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-semibold text-white/80 uppercase tracking-wider">
-              {levelInfo.emoji} Nível {levelInfo.level}
+              Nível {levelInfo.level}
             </span>
             {streakDays > 0 && (
               <span className="text-[10px] text-white/70">🔥 {streakDays}d</span>
             )}
           </div>
           <div className="w-full bg-white/20 rounded-full h-1.5 mb-1">
-            <div className="bg-white rounded-full h-1.5 transition-all duration-500"
-              style={{ width: `${levelInfo.progress}%` }} />
+            <div
+              className="bg-white rounded-full h-1.5 transition-all duration-500"
+              style={{ width: `${levelInfo.progress}%` }}
+            />
           </div>
           <p className="text-[10px] text-white/50">{xp.toLocaleString('pt-BR')} XP · {levelInfo.name}</p>
         </a>
       )}
 
       {/* Nav label */}
-      <p className="px-5 mb-1.5 text-[10px] font-semibold tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
+      <p
+        className="px-5 mb-1.5 text-[10px] font-semibold tracking-widest uppercase shrink-0"
+        style={{ color: 'var(--color-text-muted)' }}
+      >
         Menu
       </p>
 
-      {/* Nav items */}
-      <nav className="flex flex-col gap-0.5 px-2 flex-1 overflow-y-auto">
+      {/* Nav items — rola se necessário, não empurra o rodapé */}
+      <nav className="flex flex-col gap-0.5 px-2 overflow-y-auto flex-1 min-h-0">
         {navItems.map(item => <NavLink key={item.href} item={item} />)}
       </nav>
 
-      {/* Divider */}
-      <div className="mx-4 my-2" style={{ borderTop: '1px solid var(--color-border)' }} />
+      {/* ── Rodapé SEMPRE visível ── */}
+      <div className="shrink-0 px-2 pb-4 pt-2" style={{ borderTop: '1px solid var(--color-border)' }}>
+        <a
+          href="/dashboard/settings"
+          onClick={() => setOpen(false)}
+          className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors"
+          style={{
+            color:      isActive('/dashboard/settings') ? 'var(--color-brand)'       : 'var(--color-text-secondary)',
+            background: isActive('/dashboard/settings') ? 'var(--color-brand-light)' : 'transparent',
+            fontWeight: isActive('/dashboard/settings') ? '600' : '500',
+          }}
+        >
+          <Gear
+            size={18}
+            weight={isActive('/dashboard/settings') ? 'duotone' : 'regular'}
+            style={{ flexShrink: 0 }}
+          />
+          <span style={{ letterSpacing: '-.01em' }}>Configurações</span>
+        </a>
 
-      {/* Bottom */}
-      <div className="px-2 pb-4 space-y-0.5">
-        {bottomItems.map(item => <NavLink key={item.href} item={item} />)}
         <ThemeToggle />
-        <button onClick={handleLogout}
+
+        <button
+          onClick={handleLogout}
           className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors"
           style={{ color: 'var(--color-text-muted)' }}
-          onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = '#fff1f0'; el.style.color = '#ef4444' }}
-          onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent'; el.style.color = 'var(--color-text-muted)' }}
+          onMouseEnter={e => {
+            const el = e.currentTarget as HTMLElement
+            el.style.background = isDark ? '#3f1010' : '#fff1f0'
+            el.style.color = '#ef4444'
+          }}
+          onMouseLeave={e => {
+            const el = e.currentTarget as HTMLElement
+            el.style.background = 'transparent'
+            el.style.color = 'var(--color-text-muted)'
+          }}
         >
-          <span className="text-base">🚪</span>
+          <SignOut size={18} weight="regular" style={{ flexShrink: 0 }} />
           <span style={{ letterSpacing: '-.01em' }}>Sair</span>
         </button>
       </div>
@@ -173,14 +226,18 @@ export default function Sidebar() {
 
   return (
     <>
+      {/* Desktop */}
       <div className="hidden md:flex w-56 min-h-screen shrink-0">
         <SidebarContent />
       </div>
 
-      <button onClick={() => setOpen(true)}
+      {/* Mobile — botão hambúrguer */}
+      <button
+        onClick={() => setOpen(true)}
         className="md:hidden fixed top-4 left-4 z-50 w-9 h-9 flex items-center justify-center rounded-lg shadow border"
         style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
-        aria-label="Abrir menu">
+        aria-label="Abrir menu"
+      >
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
           <rect y="2"  width="18" height="2" rx="1" fill="#475467"/>
           <rect y="8"  width="18" height="2" rx="1" fill="#475467"/>
@@ -188,9 +245,15 @@ export default function Sidebar() {
         </svg>
       </button>
 
-      {open && <div className="md:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setOpen(false)} />}
+      {/* Mobile — overlay */}
+      {open && (
+        <div className="md:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setOpen(false)} />
+      )}
 
-      <div className={`md:hidden fixed top-0 left-0 z-50 h-full transition-transform duration-300 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+      {/* Mobile — drawer */}
+      <div
+        className={`md:hidden fixed top-0 left-0 z-50 h-full transition-transform duration-300 ${open ? 'translate-x-0' : '-translate-x-full'}`}
+      >
         <SidebarContent />
       </div>
     </>
