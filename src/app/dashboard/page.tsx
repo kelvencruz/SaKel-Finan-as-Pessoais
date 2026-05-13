@@ -58,13 +58,13 @@ interface KalContext {
   leveledUp:   boolean
 }
 
-// severity → estilos visuais
-const SEV_STYLE: Record<KalSeverity, { bg: string; border: string; cor: string }> = {
-  danger:       { bg: 'bg-red-50',    border: 'border-red-100',    cor: 'text-red-700'    },
-  warning:      { bg: 'bg-orange-50', border: 'border-orange-100', cor: 'text-orange-700' },
-  positive:     { bg: 'bg-green-50',  border: 'border-green-100',  cor: 'text-green-700'  },
-  info:         { bg: 'bg-indigo-50', border: 'border-indigo-100', cor: 'text-indigo-700' },
-  gamification: { bg: 'bg-purple-50', border: 'border-purple-100', cor: 'text-purple-700' },
+// ── SEV_STYLE — tokens CSS em vez de classes Tailwind hard-coded ──────────────
+const SEV_STYLE: Record<KalSeverity, { bg: string; border: string; cor: string; label: string }> = {
+  danger:       { bg: 'var(--danger-light)',  border: 'var(--danger)',   cor: 'var(--danger)',   label: 'danger'       },
+  warning:      { bg: 'var(--warning-light)', border: 'var(--warning)',  cor: 'var(--warning)',  label: 'warning'      },
+  positive:     { bg: 'var(--success-light)', border: 'var(--success)',  cor: 'var(--success)',  label: 'positive'     },
+  info:         { bg: 'var(--primary-light)', border: 'var(--primary)',  cor: 'var(--primary)',  label: 'info'         },
+  gamification: { bg: 'var(--primary-light)', border: 'var(--primary)',  cor: 'var(--primary)',  label: 'gamification' },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,6 +103,7 @@ const BADGE_EMOJI: Record<string, string> = {
   all_categorized:    '🏷️',
   budget_goal:        '🎯',
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -377,20 +378,25 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
   return [critico, acao, positivo].filter(Boolean) as KalInsight[]
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Componente KalDiz v3
-// ─────────────────────────────────────────────────────────────────────────────
-
+/ ── KalDiz v3 — integrado ao sistema de tokens ────────────────────────────────
 function KalDiz({ ctx, enabled }: { ctx: KalContext; enabled: boolean }) {
   if (!enabled) return null
   const insights = gerarInsights(ctx)
   if (insights.length === 0) return null
 
   return (
-    <div className="bg-white border border-gray-100 rounded-xl p-4 mb-6">
-      {/* Header Kal */}
+    <div
+      className="rounded-xl p-4 mb-6"
+      style={{
+        background:   'var(--surface)',
+        border:       '1px solid var(--border)',
+        boxShadow:    'var(--card-shadow)',
+      }}
+    >
+      {/* ── Header Kal ── */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
+          {/* Avatar */}
           <div className="w-10 h-10 shrink-0 flex items-center justify-center">
             <img
               src="/kal-avatar.png"
@@ -405,44 +411,76 @@ function KalDiz({ ctx, enabled }: { ctx: KalContext; enabled: boolean }) {
             />
             <span
               style={{ display: 'none' }}
-              className="w-10 h-10 rounded-full items-center justify-center bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-sm font-bold"
+              className="w-10 h-10 rounded-full items-center justify-center text-white text-sm font-bold"
             >K</span>
           </div>
+
+          {/* Nome + subtítulo */}
           <div>
-            <p className="text-sm font-semibold text-gray-800 leading-none">Kal</p>
-            <p className="text-[11px] text-gray-400 mt-0.5">Seu copiloto financeiro</p>
+            <p className="text-sm font-semibold leading-none" style={{ color: 'var(--text)' }}>
+              Kal
+            </p>
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              Seu copiloto financeiro
+            </p>
           </div>
         </div>
+
         {/* Mini XP bar */}
         {ctx.xp > 0 && (
           <div className="flex items-center gap-2">
             <div className="text-right hidden sm:block">
-              <p className="text-[10px] text-gray-400 leading-none">Nível {ctx.level}</p>
-              <p className="text-[10px] text-purple-600 font-medium mt-0.5">{ctx.xp} XP</p>
+              <p className="text-[10px] leading-none" style={{ color: 'var(--text-muted)' }}>
+                Nível {ctx.level}
+              </p>
+              <p className="text-[10px] font-medium mt-0.5" style={{ color: 'var(--primary)' }}>
+                {ctx.xp} XP
+              </p>
             </div>
-            <a href="/dashboard/conquistas"
-              className="w-8 h-8 rounded-full bg-purple-50 border border-purple-100 flex items-center justify-center text-sm hover:bg-purple-100 transition-colors"
-              title="Ver conquistas">
+            <a
+              href="/dashboard/conquistas"
+              className="w-8 h-8 rounded-full flex items-center justify-center text-sm transition-colors"
+              style={{
+                background:  'var(--primary-light)',
+                border:      '1px solid var(--border)',
+                color:       'var(--primary)',
+              }}
+              title="Ver conquistas"
+            >
               ⭐
             </a>
           </div>
         )}
       </div>
 
-      {/* Insights */}
+      {/* ── Insights ── */}
       <div className="space-y-2.5">
         {insights.map(insight => {
           const s = SEV_STYLE[insight.severity]
           return (
-            <div key={insight.id} className={`rounded-xl px-4 py-3 border ${s.bg} ${s.border}`}>
+            <div
+              key={insight.id}
+              className="rounded-xl px-4 py-3"
+              style={{
+                background:   s.bg,
+                border:       `1px solid ${s.border}20`,
+              }}
+            >
               <div className="flex items-start gap-2.5">
                 <span className="text-base shrink-0 mt-0.5">{insight.icone}</span>
                 <div className="flex-1 min-w-0">
-                  <p className={`text-xs font-semibold mb-0.5 ${s.cor}`}>{insight.titulo}</p>
-                  <p className="text-xs text-gray-600 leading-relaxed">{insight.texto}</p>
+                  <p className="text-xs font-semibold mb-0.5" style={{ color: s.cor }}>
+                    {insight.titulo}
+                  </p>
+                  <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                    {insight.texto}
+                  </p>
                   {insight.acao && (
-                    <a href={insight.acao.href}
-                      className={`inline-flex items-center gap-1 text-[11px] font-medium mt-1.5 hover:underline ${s.cor}`}>
+                    <a
+                      href={insight.acao.href}
+                      className="inline-flex items-center gap-1 text-[11px] font-medium mt-1.5 hover:underline"
+                      style={{ color: s.cor }}
+                    >
                       {insight.acao.label} →
                     </a>
                   )}
@@ -455,6 +493,7 @@ function KalDiz({ ctx, enabled }: { ctx: KalContext; enabled: boolean }) {
     </div>
   )
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-componentes reutilizáveis
