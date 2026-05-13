@@ -74,6 +74,7 @@ function XPToast({ xp, badge, onDone }: { xp: number; badge?: string | null; onD
   )
 }
 
+// ─── Toggle ──────────────────────────────────────────────────────────────────
 function Toggle({ active, onChange }: { active: boolean; onChange: () => void }) {
   return (
     <button type="button" onClick={onChange}
@@ -83,26 +84,32 @@ function Toggle({ active, onChange }: { active: boolean; onChange: () => void })
   )
 }
 
+// ─── Modal principal ──────────────────────────────────────────────────────────
 export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
   const supabase = createClient()
 
-  const [accounts,     setAccounts]     = useState<Account[]>([])
-  const [categories,   setCategories]   = useState<Category[]>([])
-  const [creditCards,  setCreditCards]  = useState<CreditCard[]>([])
-  const [goals,        setGoals]        = useState<InvestmentGoal[]>([])
-  const [loaded,       setLoaded]       = useState(false)
-  const [saving,       setSaving]       = useState(false)
-  const [form,         setForm]         = useState(emptyForm)
-  const [error,        setError]        = useState<string | null>(null)
-  const [xpToast,      setXpToast]      = useState<{ xp: number; badge?: string | null } | null>(null)
-  const [gamEnabled,   setGamEnabled]   = useState(false)
+  const [accounts,    setAccounts]    = useState<Account[]>([])
+  const [categories,  setCategories]  = useState<Category[]>([])
+  const [creditCards, setCreditCards] = useState<CreditCard[]>([])
+  const [goals,       setGoals]       = useState<InvestmentGoal[]>([])
+  const [loaded,      setLoaded]      = useState(false)
+  const [saving,      setSaving]      = useState(false)
+  const [form,        setForm]        = useState(emptyForm)
+  const [error,       setError]       = useState<string | null>(null)
+  const [xpToast,     setXpToast]     = useState<{ xp: number; badge?: string | null } | null>(null)
+  const [gamEnabled,  setGamEnabled]  = useState(false)
 
-  // ─── Carrega dados ao abrir ───────────────────────────────────────────────
+  // ─── Carrega dados toda vez que o modal abre ──────────────────────────────
   useEffect(() => {
-    if (!open || loaded) return
+    if (!open) return
+    setForm({ ...emptyForm })
+    setError(null)
+    setLoaded(false)
+
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
+
       const [{ data: acc }, { data: cat }, { data: cards }, { data: prefs }, { data: gls }] = await Promise.all([
         supabase.from('accounts').select('id, name, color, current_balance').eq('user_id', user.id).order('name'),
         supabase.from('categories').select('id, name, type, icon').eq('user_id', user.id).order('name'),
@@ -110,6 +117,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         supabase.from('user_preferences').select('gamification_enabled').eq('user_id', user.id).single(),
         supabase.from('investment_goals').select('id, name, icon, color').eq('user_id', user.id).order('name'),
       ])
+
       const accList = (acc ?? []) as Account[]
       setAccounts(accList)
       setCategories((cat ?? []) as Category[])
@@ -119,16 +127,8 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       setForm(f => ({ ...f, account_id: accList[0]?.id ?? '' }))
       setLoaded(true)
     }
-    load()
-  }, [open, loaded])
 
-  // ─── Reset ao abrir/fechar ────────────────────────────────────────────────
-  useEffect(() => {
-    if (open) {
-      setForm(f => ({ ...emptyForm, account_id: accounts[0]?.id ?? '' }))
-      setError(null)
-      setLoaded(false)
-    }
+    load()
   }, [open])
 
   const amount = parseFloat(String(form.amount).replace(',', '.')) || 0
@@ -138,6 +138,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
   const selectedCategory = categories.find(c => c.id === form.category_id)
   const isInvestmentCategory = selectedCategory?.type === 'investment'
 
+  // ─── Helpers ─────────────────────────────────────────────────────────────
   async function getOrCreateInvoice(cardId: string, date: string, userId: string): Promise<string | null> {
     const d    = new Date(date + 'T12:00:00')
     const card = creditCards.find(c => c.id === cardId)
@@ -200,6 +201,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     setXpToast({ xp: totalXP, badge: badgeEarned })
   }
 
+  // ─── Save ─────────────────────────────────────────────────────────────────
   async function handleSave() {
     setError(null)
     if (!form.description.trim())     { setError('Descrição é obrigatória.'); return }
@@ -222,10 +224,9 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     const { count: txCount } = await supabase
       .from('transactions').select('*', { count: 'exact', head: true }).eq('user_id', user.id)
     const isFirstTx = (txCount ?? 0) === 0
-
     const goalId = isInvestmentCategory && form.goal_id ? form.goal_id : null
 
-    // ─── RECORRENTE ───────────────────────────────────────────────────────────
+    // ─── RECORRENTE ──────────────────────────────────────────────────────────
     if (form.is_recurring) {
       function calcNextDue(startDate: string, frequency: string): string {
         const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -255,10 +256,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       }
 
       const { data: recData, error: recErr } = await supabase
-        .from('recurrences')
-        .insert(recPayload)
-        .select('id')
-        .single()
+        .from('recurrences').insert(recPayload).select('id').single()
 
       if (recErr || !recData) {
         setError(recErr?.message ?? 'Erro ao criar recorrência.')
@@ -302,14 +300,18 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       return
     }
 
-    // ─── PARCELADO ────────────────────────────────────────────────────────────
+    // ─── PARCELADO ───────────────────────────────────────────────────────────
     if (form.is_installment) {
       const dates = getInstallmentDates()
       const { data: group, error: groupErr } = await supabase
         .from('installment_groups')
-        .insert({ user_id: user.id, description: form.description.trim(), total_amount: amount,
-          count: form.installment_count, category_id: form.category_id || null,
-          account_id: form.account_id || null, notes: form.notes?.trim() || null })
+        .insert({
+          user_id: user.id, description: form.description.trim(),
+          total_amount: amount, count: form.installment_count,
+          category_id: form.category_id || null,
+          account_id: form.account_id || null,
+          notes: form.notes?.trim() || null,
+        })
         .select('id').single()
 
       if (groupErr || !group) { setError(groupErr?.message ?? 'Erro ao criar parcelamento.'); setSaving(false); return }
@@ -326,15 +328,16 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
           description: `${form.description.trim()} (${i + 1}/${form.installment_count})`,
           amount: parseFloat(valorParcela.toFixed(2)), date: dates[i],
           account_id: accountId, category_id: form.category_id || null,
-          goal_id: goalId,
-          notes: form.notes?.trim() || null, status: i === 0 ? form.status : 'pending',
+          goal_id: goalId, notes: form.notes?.trim() || null,
+          status: i === 0 ? form.status : 'pending',
           credit_card_id: form.use_credit_card ? form.credit_card_id : null,
           invoice_id: invoiceId, is_installment: true,
           installment_group_id: group.id, installment_index: i + 1,
         }
         const { data: tx } = await supabase.from('transactions').insert(txPayload).select('id').single()
         await supabase.from('installments').insert({
-          user_id: user.id, transaction_id: tx?.id ?? null, installment_group_id: group.id,
+          user_id: user.id, transaction_id: tx?.id ?? null,
+          installment_group_id: group.id,
           amount: parseFloat(valorParcela.toFixed(2)), due_date: dates[i],
           status: i === 0 ? (form.status === 'paid' ? 'paid' : 'pending') : 'pending',
           installment_index: i + 1,
@@ -353,7 +356,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       return
     }
 
-    // ─── TRANSAÇÃO NORMAL ─────────────────────────────────────────────────────
+    // ─── TRANSAÇÃO NORMAL ────────────────────────────────────────────────────
     let invoiceId: string | null = null
     let accountId = form.account_id || null
     if (form.use_credit_card && form.type === 'expense') {
@@ -365,8 +368,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       user_id: user.id, type: form.type, description: form.description.trim(),
       amount, date: form.date, account_id: accountId,
       destination_account_id: form.type === 'transfer' ? form.destination_account_id : null,
-      category_id: form.category_id || null,
-      goal_id: goalId,
+      category_id: form.category_id || null, goal_id: goalId,
       notes: form.notes?.trim() || null,
       status: form.use_credit_card ? 'posted' : form.status,
       credit_card_id: form.use_credit_card ? form.credit_card_id : null,
@@ -395,6 +397,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     return false
   })
 
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <>
       {xpToast && (
@@ -407,6 +410,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
             <h2 className="text-lg font-semibold mb-5">Nova Transação</h2>
 
             <div className="space-y-4">
+
               {/* Tipo */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Tipo</label>
