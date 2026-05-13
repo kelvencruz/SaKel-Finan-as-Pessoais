@@ -11,7 +11,7 @@ import { awardXP, getGamification, BADGES } from '@/lib/gamification'
 import {
   Bank, CreditCard, Tag, ListBullets, Receipt, TrendUp,
   Wallet, Lightbulb, Star, Flame, Confetti, Warning,
-  SirenLight, CalendarCheck, ChartBar, ArrowsClockwise,
+  Siren, CalendarCheck, ChartBar, ArrowsClockwise,
   Package, CheckCircle, Target, SquaresFour,
 } from '@phosphor-icons/react'
 
@@ -146,7 +146,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
   const fatVencidas = ctx.invoicesDue.filter(i => i.days_until_due < 0)
   if (fatVencidas.length > 0) {
     danger.push({
-      id: 'fatura-vencida', severity: 'danger', icon: SirenLight,
+      id: 'fatura-vencida', severity: 'danger', icon: Siren,
       titulo: fatVencidas.length === 1 ? 'Fatura vencida' : `${fatVencidas.length} faturas vencidas`,
       texto: `Você tem ${fatVencidas.length === 1 ? 'uma fatura em atraso' : `${fatVencidas.length} faturas em atraso`}. Regularize para evitar juros.`,
       acao: { label: 'Regularizar agora', href: '/dashboard/faturas' },
