@@ -227,7 +227,7 @@ export default function Sidebar() {
   return (
     <>
       {/* Desktop */}
-      <div className="hidden md:flex w-56 min-h-screen shrink-0">
+      <div className="hidden md:flex w-56 h-screen sticky top-0 shrink-0">
         <SidebarContent />
       </div>
 
