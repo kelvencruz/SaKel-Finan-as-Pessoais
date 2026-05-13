@@ -1,48 +1,149 @@
 // src/lib/gamification.ts
 
 import { createClient } from '@/lib/supabase/client'
+import {
+  Medal, Flame, CalendarCheck, TrendUp, Tag, ChartLine,
+  ArrowsClockwise, Target, Star, Bank, Lightning, Crown,
+  Barbell, Bird, Seedling, CurrencyDollar, ChartBar,
+} from '@phosphor-icons/react'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Badge icon type
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface BadgeIconDef {
+  icon: React.ElementType   // componente Phosphor
+  color: string             // CSS token ou hex
+  bg: string                // CSS token para background
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEVELS
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const LEVELS = [
-  { level: 1, name: 'Novato Financeiro',      emoji: '🌱', minXP: 0,    maxXP: 500   },
-  { level: 2, name: 'Poupador Consistente',   emoji: '💰', minXP: 500,  maxXP: 1500  },
-  { level: 3, name: 'Orçamentista Eficiente', emoji: '📊', minXP: 1500, maxXP: 3000  },
-  { level: 4, name: 'Estrategista Financeiro',emoji: '⚡', minXP: 3000, maxXP: 6000  },
-  { level: 5, name: 'Mestre do Cofrinho',     emoji: '👑', minXP: 6000, maxXP: 99999 },
+  { level: 1, name: 'Novato Financeiro',       iconDef: { icon: Seedling,       color: 'var(--success)',  bg: 'var(--success-light)'  }, minXP: 0,    maxXP: 500   },
+  { level: 2, name: 'Poupador Consistente',    iconDef: { icon: CurrencyDollar, color: 'var(--warning)',  bg: 'var(--warning-light)'  }, minXP: 500,  maxXP: 1500  },
+  { level: 3, name: 'Orçamentista Eficiente',  iconDef: { icon: ChartBar,       color: 'var(--primary)',  bg: 'var(--primary-light)'  }, minXP: 1500, maxXP: 3000  },
+  { level: 4, name: 'Estrategista Financeiro', iconDef: { icon: Lightning,      color: 'var(--warning)',  bg: 'var(--warning-light)'  }, minXP: 3000, maxXP: 6000  },
+  { level: 5, name: 'Mestre do Cofrinho',      iconDef: { icon: Crown,          color: '#f59e0b',         bg: 'var(--warning-light)'  }, minXP: 6000, maxXP: 99999 },
 ]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BADGES
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const BADGES = [
-  { id: 'first_transaction',  name: 'Primeira Transação',     emoji: '🏅', desc: 'Registrou sua primeira transação'          },
-  { id: 'streak_7',           name: 'Fogo na Semana',         emoji: '🔥', desc: '7 dias seguidos usando o app'              },
-  { id: 'streak_30',          name: 'Mês Consistente',        emoji: '📅', desc: '30 dias seguidos usando o app'             },
-  { id: 'month_positive',     name: 'Mês no Azul',            emoji: '💚', desc: 'Terminou o mês com saldo positivo'         },
-  { id: 'all_categorized',    name: 'Tudo Organizado',        emoji: '🏷️', desc: 'Categorizou todas as transações do mês'   },
-  { id: 'first_investment',   name: 'Primeiro Investimento',  emoji: '📈', desc: 'Cadastrou seu primeiro investimento'       },
-  { id: 'first_recurring',    name: 'Automatizador',          emoji: '🔁', desc: 'Cadastrou sua primeira recorrência'        },
-  { id: 'budget_goal',        name: 'Meta Cumprida',          emoji: '🎯', desc: 'Cumpriu uma meta de orçamento'             },
-  { id: 'three_months_blue',  name: 'Trio Positivo',          emoji: '🌟', desc: '3 meses consecutivos no azul'              },
-  { id: 'first_account',      name: 'Bem-vindo!',             emoji: '🏦', desc: 'Cadastrou sua primeira conta'              },
-  { id: 'ten_transactions',   name: 'Em Ritmo',               emoji: '💪', desc: 'Registrou 10 transações'                  },
-  { id: 'fifty_transactions', name: 'Veterano',               emoji: '🦅', desc: 'Registrou 50 transações'                  },
+  {
+    id: 'first_transaction',
+    name: 'Primeira Transação',
+    desc: 'Registrou sua primeira transação',
+    iconDef: { icon: Medal,           color: 'var(--warning)',  bg: 'var(--warning-light)'  },
+  },
+  {
+    id: 'streak_7',
+    name: 'Fogo na Semana',
+    desc: '7 dias seguidos usando o app',
+    iconDef: { icon: Flame,           color: '#f97316',         bg: 'var(--warning-light)'  },
+  },
+  {
+    id: 'streak_30',
+    name: 'Mês Consistente',
+    desc: '30 dias seguidos usando o app',
+    iconDef: { icon: CalendarCheck,   color: 'var(--primary)',  bg: 'var(--primary-light)'  },
+  },
+  {
+    id: 'month_positive',
+    name: 'Mês no Azul',
+    desc: 'Terminou o mês com saldo positivo',
+    iconDef: { icon: TrendUp,         color: 'var(--success)',  bg: 'var(--success-light)'  },
+  },
+  {
+    id: 'all_categorized',
+    name: 'Tudo Organizado',
+    desc: 'Categorizou todas as transações do mês',
+    iconDef: { icon: Tag,             color: 'var(--primary)',  bg: 'var(--primary-light)'  },
+  },
+  {
+    id: 'first_investment',
+    name: 'Primeiro Investimento',
+    desc: 'Cadastrou seu primeiro investimento',
+    iconDef: { icon: ChartLine,       color: 'var(--success)',  bg: 'var(--success-light)'  },
+  },
+  {
+    id: 'first_recurring',
+    name: 'Automatizador',
+    desc: 'Cadastrou sua primeira recorrência',
+    iconDef: { icon: ArrowsClockwise, color: 'var(--primary)',  bg: 'var(--primary-light)'  },
+  },
+  {
+    id: 'budget_goal',
+    name: 'Meta Cumprida',
+    desc: 'Cumpriu uma meta de orçamento',
+    iconDef: { icon: Target,          color: 'var(--danger)',   bg: 'var(--danger-light)'   },
+  },
+  {
+    id: 'three_months_blue',
+    name: 'Trio Positivo',
+    desc: '3 meses consecutivos no azul',
+    iconDef: { icon: Star,            color: '#f59e0b',         bg: 'var(--warning-light)'  },
+  },
+  {
+    id: 'first_account',
+    name: 'Bem-vindo!',
+    desc: 'Cadastrou sua primeira conta',
+    iconDef: { icon: Bank,            color: 'var(--primary)',  bg: 'var(--primary-light)'  },
+  },
+  {
+    id: 'ten_transactions',
+    name: 'Em Ritmo',
+    desc: 'Registrou 10 transações',
+    iconDef: { icon: Barbell,         color: 'var(--success)',  bg: 'var(--success-light)'  },
+  },
+  {
+    id: 'fifty_transactions',
+    name: 'Veterano',
+    desc: 'Registrou 50 transações',
+    iconDef: { icon: Bird,            color: 'var(--primary)',  bg: 'var(--primary-light)'  },
+  },
 ]
 
+// ─────────────────────────────────────────────────────────────────────────────
+// XP ACTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const XP_ACTIONS = {
-  transaction_created:     10,
-  transaction_categorized:  5,
-  month_positive:         100,
-  streak_7:                50,
-  streak_30:              150,
-  first_investment:        80,
-  first_recurring:         20,
-  budget_goal:             80,
-  account_created:         30,
-  three_months_blue:      200,
+  transaction_created:      10,
+  transaction_categorized:   5,
+  month_positive:          100,
+  streak_7:                 50,
+  streak_30:               150,
+  first_investment:         80,
+  first_recurring:          20,
+  budget_goal:              80,
+  account_created:          30,
+  three_months_blue:       200,
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function getLevelInfo(xp: number) {
   const level = LEVELS.slice().reverse().find(l => xp >= l.minXP) ?? LEVELS[0]
   const progress = ((xp - level.minXP) / (level.maxXP - level.minXP)) * 100
   return { ...level, progress: Math.min(progress, 100), xp }
 }
+
+/** Retorna o iconDef de um badge pelo id, com fallback seguro */
+export function getBadgeIconDef(badgeId: string): BadgeIconDef {
+  const badge = BADGES.find(b => b.id === badgeId)
+  return badge?.iconDef ?? { icon: Medal, color: 'var(--text-muted)', bg: 'var(--border)' }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// awardXP
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function awardXP(
   userId: string,
@@ -52,7 +153,6 @@ export async function awardXP(
   const supabase = createClient()
   const xpAmount = XP_ACTIONS[action]
 
-  // Busca gamificação atual
   const { data: current, error: fetchErr } = await supabase
     .from('user_gamification')
     .select('*')
@@ -60,13 +160,11 @@ export async function awardXP(
     .single()
 
   if (fetchErr && fetchErr.code !== 'PGRST116') {
-    // PGRST116 = row not found, esperado na primeira chamada
     console.error('[awardXP] fetch error:', fetchErr)
   }
 
   const currentXP = current?.xp ?? 0
 
-  // Cast explícito: jsonb pode chegar como array ou como null
   const rawBadges = current?.badges
   const currentBadges: string[] = Array.isArray(rawBadges)
     ? (rawBadges as string[])
@@ -77,23 +175,21 @@ export async function awardXP(
   const newXP    = currentXP + xpAmount
   const newLevel = getLevelInfo(newXP).level
 
-  // Adiciona badge se fornecido e ainda não conquistado
   const newBadges: string[] =
     badgeId && !currentBadges.includes(badgeId)
       ? [...currentBadges, badgeId]
-      : [...currentBadges] // cópia explícita — nunca mutação direta
+      : [...currentBadges]
 
-  // Atualiza streak
   const today        = new Date().toISOString().split('T')[0]
   const lastActivity = current?.last_activity ?? null
   const yesterday    = new Date(Date.now() - 86400000).toISOString().split('T')[0]
 
   const streakDays =
     lastActivity === today
-      ? (current?.streak_days ?? 1)           // mesmo dia, mantém
+      ? (current?.streak_days ?? 1)
       : lastActivity === yesterday
-        ? (current?.streak_days ?? 0) + 1     // dia seguinte, incrementa
-        : 1                                   // quebrou streak, reinicia
+        ? (current?.streak_days ?? 0) + 1
+        : 1
 
   const payload = {
     user_id:       userId,
@@ -122,6 +218,10 @@ export async function awardXP(
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// getGamification
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function getGamification(userId: string) {
   const supabase = createClient()
   const { data, error } = await supabase
@@ -139,7 +239,6 @@ export async function getGamification(userId: string) {
 
   if (!data) return null
 
-  // Cast explícito igual ao awardXP
   const rawBadges = data.badges
   const badges: string[] = Array.isArray(rawBadges)
     ? (rawBadges as string[])
