@@ -365,7 +365,81 @@ export default function TransacoesPage() {
       return
     }
 
-    // ── TRANSACAO NORMAL / RECORRENTE ─────────────────────────
+    // ── RECORRENTE ────────────────────────────────────────────
+    if (form.is_recurring && !editingId) {
+      function calcNextDue(startDate: string, frequency: string): string {
+        const today = new Date(); today.setHours(0, 0, 0, 0)
+        const d = new Date(startDate + 'T12:00:00')
+        while (d < today) {
+          if (frequency === 'daily')        d.setDate(d.getDate() + 1)
+          else if (frequency === 'weekly')  d.setDate(d.getDate() + 7)
+          else if (frequency === 'monthly') d.setMonth(d.getMonth() + 1)
+          else if (frequency === 'yearly')  d.setFullYear(d.getFullYear() + 1)
+        }
+        return d.toISOString().split('T')[0]
+      }
+
+      const recPayload = {
+        user_id:        user.id,
+        type:           form.type,
+        description:    form.description.trim(),
+        amount,
+        frequency:      form.recurrence,
+        next_due_date:  calcNextDue(form.date, form.recurrence),
+        start_date:     form.date,
+        end_date:       form.recurrence_end || null,
+        account_id:     form.use_credit_card ? null : (form.account_id || null),
+        credit_card_id: form.use_credit_card ? form.credit_card_id : null,
+        category_id:    form.category_id || null,
+        is_active:      true,
+      }
+
+      const { data: recData, error: recErr } = await supabase
+        .from('recurrences')
+        .insert(recPayload)
+        .select('id')
+        .single()
+
+      if (recErr || !recData) {
+        setError(recErr?.message ?? 'Erro ao criar recorrencia.')
+        setSaving(false)
+        return
+      }
+
+      let invoiceId: string | null = null
+      const accountId = form.use_credit_card ? null : (form.account_id || null)
+      if (form.use_credit_card && form.type === 'expense') {
+        invoiceId = await getOrCreateInvoice(form.credit_card_id, form.date, user.id)
+      }
+
+      const { error: txErr } = await supabase.from('transactions').insert({
+        user_id:        user.id,
+        type:           form.type,
+        description:    form.description.trim(),
+        amount,
+        date:           form.date,
+        account_id:     accountId,
+        destination_account_id: null,
+        category_id:    form.category_id || null,
+        notes:          form.notes?.trim() || null,
+        status:         form.use_credit_card ? 'posted' : form.status,
+        credit_card_id: form.use_credit_card ? form.credit_card_id : null,
+        invoice_id:     invoiceId,
+        is_recurring:   true,
+        recurrence_id:  recData.id,
+      })
+
+      if (txErr) { setError(txErr.message); setSaving(false); return }
+      if (invoiceId) await updateInvoiceTotal(invoiceId)
+
+      showToast('Recorrencia criada!')
+      await loadAll()
+      setShowModal(false)
+      setSaving(false)
+      return
+    }
+
+    // ── TRANSACAO NORMAL (create ou edit) ─────────────────────
     let invoiceId: string | null = null
     let accountId = form.account_id || null
 
@@ -386,13 +460,7 @@ export default function TransacoesPage() {
       status:                 form.use_credit_card ? 'posted' : form.status,
       credit_card_id:         form.use_credit_card ? form.credit_card_id : null,
       invoice_id:             invoiceId,
-      is_recurring:           form.is_recurring,
-      recurrence:             form.is_recurring ? form.recurrence : null,
-      recurrence_start:       form.is_recurring ? form.date : null,
-      recurrence_end:         form.is_recurring && form.recurrence_end ? form.recurrence_end : null,
-      installment_total:      null,
-      installment_current:    null,
-      installment_group:      null,
+      is_recurring:           false,
     }
 
     if (editingId) {
@@ -606,9 +674,9 @@ export default function TransacoesPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-medium text-gray-800 truncate">{tx.description}</p>
-                    {tx.is_recurring && tx.recurrence && (
+                    {tx.is_recurring && tx.recurrence_id && (
                       <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 shrink-0">
-                        🔁 {RECURRENCE_LABELS[tx.recurrence] ?? tx.recurrence}
+                        🔁 Recorrente
                       </span>
                     )}
                     {tx.installment_total && tx.installment_current && (
@@ -857,7 +925,7 @@ export default function TransacoesPage() {
                   form.type === 'expense' ? 'bg-red-500 hover:bg-red-600'      :
                   'bg-indigo-600 hover:bg-indigo-700'
                 }`}>
-                {saving ? 'Salvando...' : form.is_installment ? `Criar ${form.installment_total || '?'} parcelas` : editingId ? 'Salvar alteracoes' : 'Salvar'}
+                {saving ? 'Salvando...' : form.is_installment ? `Criar ${form.installment_total || '?'} parcelas` : form.is_recurring ? 'Salvar recorrencia' : editingId ? 'Salvar alteracoes' : 'Salvar'}
               </button>
             </div>
           </div>
