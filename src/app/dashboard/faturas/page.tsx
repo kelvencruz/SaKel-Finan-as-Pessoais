@@ -136,7 +136,11 @@ export default function FaturasPage() {
 
     if (seq !== loadSeq.current) return
 
-    const transactions = (txData ?? []) as InvoiceTransaction[]
+    // Supabase retorna category como array em joins — normaliza para objeto único
+    const transactions: InvoiceTransaction[] = (txData ?? []).map((tx: any) => ({
+      ...tx,
+      category: Array.isArray(tx.category) ? (tx.category[0] ?? null) : tx.category,
+    }))
     const computedTotal = transactions.reduce((s, t) => s + Number(t.amount), 0)
 
     // 3. Comita tudo de uma vez — nunca estado parcial
