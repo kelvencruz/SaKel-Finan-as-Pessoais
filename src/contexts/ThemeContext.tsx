@@ -1,36 +1,48 @@
 'use client'
-
 import { createContext, useContext, useEffect, useState } from 'react'
 
-type Theme = 'light' | 'dark'
+export type Theme = 'light' | 'dark' | 'arcade'
 
 interface ThemeContextType {
   theme: Theme
   toggleTheme: () => void
+  setTheme: (t: Theme) => void
 }
+
+const THEME_ORDER: Theme[] = ['light', 'dark', 'arcade']
 
 const ThemeContext = createContext<ThemeContextType | null>(null)
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('light')
+  const [theme, setThemeState] = useState<Theme>('dark')
 
   useEffect(() => {
     const saved = localStorage.getItem('sakel-theme') as Theme | null
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
     const resolved: Theme = saved ?? (prefersDark ? 'dark' : 'light')
-    setTheme(resolved)
-    document.documentElement.setAttribute('data-theme', resolved)
+    applyTheme(resolved)
+    setThemeState(resolved)
   }, [])
 
+  function applyTheme(t: Theme) {
+    document.documentElement.setAttribute('data-theme', t)
+    localStorage.setItem('sakel-theme', t)
+  }
+
   function toggleTheme() {
-    const next: Theme = theme === 'dark' ? 'light' : 'dark'
-    setTheme(next)
-    document.documentElement.setAttribute('data-theme', next)
-    localStorage.setItem('sakel-theme', next)
+    const currentIndex = THEME_ORDER.indexOf(theme)
+    const next = THEME_ORDER[(currentIndex + 1) % THEME_ORDER.length]
+    setThemeState(next)
+    applyTheme(next)
+  }
+
+  function setTheme(t: Theme) {
+    setThemeState(t)
+    applyTheme(t)
   }
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
       {children}
     </ThemeContext.Provider>
   )
