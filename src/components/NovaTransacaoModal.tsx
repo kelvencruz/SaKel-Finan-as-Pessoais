@@ -221,7 +221,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
 
     const goalId = isInvestmentCategory && form.goal_id ? form.goal_id : null
 
-    // ─── RECORRENTE ───────────────────────────────────────────────────────
+    // ─── RECORRENTE ───────────────────────────────────────────────────────────
     if (form.is_recurring) {
       function calcNextDue(startDate: string, frequency: string): string {
         const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -250,7 +250,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         is_active:      true,
       }
 
-      // CORREÇÃO: captura o id da recorrência criada para vincular na transação
       const { data: recData, error: recErr } = await supabase
         .from('recurrences')
         .insert(recPayload)
@@ -263,27 +262,42 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         return
       }
 
-      // CORREÇÃO: vincula recurrence_id na transação
+      // Resolve invoice_id se for cartão de crédito
+      let invoiceId: string | null = null
+      const accountId = form.use_credit_card ? null : (form.account_id || null)
+      if (form.use_credit_card && form.type === 'expense') {
+        invoiceId = await getOrCreateInvoice(form.credit_card_id, form.date, user.id)
+      }
+
       await supabase.from('transactions').insert({
-        user_id:       user.id,
-        type:          form.type,
-        description:   form.description.trim(),
+        user_id:        user.id,
+        type:           form.type,
+        description:    form.description.trim(),
         amount,
-        date:          form.date,
-        account_id:    form.account_id || null,
-        category_id:   form.category_id || null,
-        goal_id:       goalId,
-        notes:         form.notes?.trim() || null,
-        status:        form.status,
-        is_recurring:  true,
-        recurrence_id: recData.id,
+        date:           form.date,
+        account_id:     accountId,
+        category_id:    form.category_id || null,
+        goal_id:        goalId,
+        notes:          form.notes?.trim() || null,
+        status:         form.use_credit_card ? 'posted' : form.status,
+        credit_card_id: form.use_credit_card ? form.credit_card_id : null,
+        invoice_id:     invoiceId,
+        is_recurring:   true,
+        recurrence_id:  recData.id,
       })
+
+      // Recalcula total da fatura se usou cartão
+      if (invoiceId) {
+        const { data } = await supabase.from('transactions').select('amount').eq('invoice_id', invoiceId)
+        const total = (data ?? []).reduce((s: number, t: any) => s + Number(t.amount), 0)
+        await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
+      }
 
       await handleXP(user.id, isFirstTx)
       setSaving(false); onSaved?.(); onClose(); return
     }
 
-    // ─── PARCELADO ────────────────────────────────────────────────────────
+    // ─── PARCELADO ────────────────────────────────────────────────────────────
     if (form.is_installment) {
       const dates = getInstallmentDates()
       const { data: group, error: groupErr } = await supabase
@@ -331,7 +345,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       setSaving(false); onSaved?.(); onClose(); return
     }
 
-    // ─── TRANSAÇÃO NORMAL ─────────────────────────────────────────────────
+    // ─── TRANSAÇÃO NORMAL ─────────────────────────────────────────────────────
     let invoiceId: string | null = null
     let accountId = form.account_id || null
     if (form.use_credit_card && form.type === 'expense') {
