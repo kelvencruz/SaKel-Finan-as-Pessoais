@@ -378,7 +378,7 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
   return [critico, acao, positivo].filter(Boolean) as KalInsight[]
 }
 
-/ ── KalDiz v3 — integrado ao sistema de tokens ────────────────────────────────
+// ── KalDiz v3 — integrado ao sistema de tokens ────────────────────────────────
 function KalDiz({ ctx, enabled }: { ctx: KalContext; enabled: boolean }) {
   if (!enabled) return null
   const insights = gerarInsights(ctx)
