@@ -13,6 +13,7 @@ import {
   Wallet, Lightbulb, Star, Flame, Confetti, Warning,
   Siren, CalendarCheck, ChartBar, ArrowsClockwise,
   Package, CheckCircle, Target, SquaresFour,
+  Eye, EyeSlash,
 } from '@phosphor-icons/react'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -462,9 +463,12 @@ function InvestimentoCard({ valor }: { valor: number }) {
             {visivel ? fmt(valor) : '••••••'}
           </p>
           <button onClick={toggle} title={visivel ? 'Ocultar' : 'Mostrar'}
-            className="text-sm transition-colors" style={{ color: 'var(--primary)' }}>
-            {visivel ? '👁️' : '🙈'}
-          </button>
+  className="flex items-center transition-colors" style={{ color: 'var(--primary)' }}>
+  {visivel
+    ? <Eye weight="duotone" size={16} />
+    : <EyeSlash weight="duotone" size={16} />
+  }
+</button>
         </div>
         <a href="/dashboard/investimentos" className="text-xs hover:underline" style={{ color: 'var(--primary)' }}>
           Ver investimentos →
