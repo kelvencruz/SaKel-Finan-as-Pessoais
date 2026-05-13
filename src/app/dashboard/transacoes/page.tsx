@@ -39,6 +39,12 @@ interface CreditCard { id: string; name: string; color: string; closing_day: num
 
 type Toast = { message: string; type: 'success' | 'error' }
 
+// Modal de exclusão de transação recorrente
+interface TxDeleteModal {
+  open: boolean
+  tx: Transaction | null
+}
+
 const fmt     = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtDate = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString('pt-BR')
 
@@ -46,13 +52,6 @@ const TYPE_LABELS: Record<TxType, string> = {
   income:   'Receita',
   expense:  'Despesa',
   transfer: 'Transferencia',
-}
-
-const RECURRENCE_LABELS: Record<string, string> = {
-  daily:   'Diaria',
-  weekly:  'Semanal',
-  monthly: 'Mensal',
-  yearly:  'Anual',
 }
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -116,16 +115,6 @@ function addYears(dateStr: string, years: number): string {
   return d.toISOString().split('T')[0]
 }
 
-function nextDate(dateStr: string, recurrence: string, i: number): string {
-  switch (recurrence) {
-    case 'daily':   return addDays(dateStr, i)
-    case 'weekly':  return addWeeks(dateStr, i)
-    case 'monthly': return addMonths(dateStr, i)
-    case 'yearly':  return addYears(dateStr, i)
-    default:        return addMonths(dateStr, i)
-  }
-}
-
 function SkeletonRow() {
   return (
     <div className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-4 animate-pulse">
@@ -174,16 +163,17 @@ export default function TransacoesPage() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   })
 
-  const [showModal, setShowModal] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [form,      setForm]      = useState(emptyForm)
-  const [error,     setError]     = useState<string | null>(null)
+  const [showModal,    setShowModal]    = useState(false)
+  const [editingId,    setEditingId]    = useState<string | null>(null)
+  const [form,         setForm]         = useState(emptyForm)
+  const [error,        setError]        = useState<string | null>(null)
+  const [txDeleteModal, setTxDeleteModal] = useState<TxDeleteModal>({ open: false, tx: null })
 
   const monthOptions = useMemo(() => getMonthOptions(), [])
 
   function showToast(message: string, type: Toast['type'] = 'success') {
     setToast({ message, type })
-    setTimeout(() => setToast(null), 3000)
+    setTimeout(() => setToast(null), 3500)
   }
 
   async function loadAll() {
@@ -480,45 +470,46 @@ export default function TransacoesPage() {
     setSaving(false)
   }
 
-  // ── CORREÇÃO: handleDelete com suporte a recorrências ──────────────────────
-  async function handleDelete(id: string) {
-    const tx = transactions.find(t => t.id === id)
-    setDeletingId(id)
-
-    if (tx?.is_recurring) {
-      const deleteAll = window.confirm(
-        'Esta transação é recorrente.\n\nOK → Excluir a recorrência inteira (para de gerar futuras)\nCancelar → Excluir só este lançamento'
-      )
-
-      if (deleteAll) {
-        // Busca o recurrence_id antes de deletar a transação
-        const { data: txData } = await supabase
-          .from('transactions')
-          .select('recurrence_id')
-          .eq('id', id)
-          .single()
-
-        // Deleta a transação atual
-        await supabase.from('transactions').delete().eq('id', id)
-
-        // Deleta a recorrência — ON DELETE SET NULL cuida das outras transactions
-        if (txData?.recurrence_id) {
-          await supabase.from('recurrences').delete().eq('id', txData.recurrence_id)
-        }
-
-        showToast('Recorrência excluída.')
-      } else {
-        // Só deleta este lançamento
-        const { error: err } = await supabase.from('transactions').delete().eq('id', id)
-        if (err) showToast('Erro ao excluir.', 'error')
-        else showToast('Lançamento excluído.')
-      }
+  // ── Clique no lixo da transação ────────────────────────────────────────────
+  function handleDeleteClick(tx: Transaction) {
+    if (tx.is_recurring && tx.recurrence_id) {
+      // Abre modal contextual
+      setTxDeleteModal({ open: true, tx })
     } else {
-      // Transação normal — comportamento original
-      if (!confirm('Excluir esta transacao?')) { setDeletingId(null); return }
+      // Transação normal — confirm simples
+      handleDeleteNormal(tx.id)
+    }
+  }
+
+  async function handleDeleteNormal(id: string) {
+    if (!confirm('Excluir esta transacao?')) return
+    setDeletingId(id)
+    const { error: err } = await supabase.from('transactions').delete().eq('id', id)
+    if (err) showToast('Erro ao excluir.', 'error')
+    else showToast('Transacao excluida.')
+    await loadAll()
+    setDeletingId(null)
+  }
+
+  // Executa exclusão a partir do modal de transação recorrente
+  async function executeTxDelete(mode: 'single' | 'all') {
+    if (!txDeleteModal.tx) return
+    const { id, recurrence_id } = txDeleteModal.tx
+    setDeletingId(id)
+    setTxDeleteModal({ open: false, tx: null })
+
+    if (mode === 'single') {
+      // Só este lançamento — recorrência continua ativa
       const { error: err } = await supabase.from('transactions').delete().eq('id', id)
       if (err) showToast('Erro ao excluir.', 'error')
-      else showToast('Transacao excluida.')
+      else showToast('Lançamento excluído. Recorrência mantida.')
+    } else {
+      // Este lançamento + desativa a recorrência inteira
+      await supabase.from('transactions').delete().eq('id', id)
+      if (recurrence_id) {
+        await supabase.from('recurrences').update({ is_active: false }).eq('id', recurrence_id)
+      }
+      showToast('Lançamento excluído e recorrência pausada.')
     }
 
     await loadAll()
@@ -700,7 +691,7 @@ export default function TransacoesPage() {
                 </div>
                 <div className="opacity-0 group-hover:opacity-100 transition-all flex gap-1 shrink-0">
                   <button onClick={() => openEdit(tx)} className="text-gray-300 hover:text-indigo-500 text-sm px-1.5 py-1 rounded hover:bg-indigo-50 transition-colors" title="Editar">✏️</button>
-                  <button onClick={() => handleDelete(tx.id)} disabled={deletingId === tx.id}
+                  <button onClick={() => handleDeleteClick(tx)} disabled={deletingId === tx.id}
                     className="text-gray-300 hover:text-red-400 text-sm px-1.5 py-1 rounded hover:bg-red-50 transition-colors disabled:opacity-30" title="Excluir">
                     {deletingId === tx.id ? '…' : '🗑️'}
                   </button>
@@ -711,14 +702,62 @@ export default function TransacoesPage() {
         </div>
       )}
 
-      {/* Modal */}
+      {/* ── Modal exclusão transação recorrente ───────────────────────────── */}
+      {txDeleteModal.open && txDeleteModal.tx && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0 text-lg">🔁</div>
+              <div>
+                <h3 className="font-semibold text-gray-800">Excluir lançamento recorrente</h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  <span className="font-medium text-gray-700">"{txDeleteModal.tx.description}"</span>
+                  {' · '}{fmtDate(txDeleteModal.tx.date)}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4 text-xs text-blue-800">
+              <p className="font-semibold mb-1">⚠️ Este lançamento faz parte de uma recorrência ativa.</p>
+              <p>Excluir apenas este lançamento não afeta os demais nem a automação futura.</p>
+              <p className="mt-1">Para gerenciar a recorrência completa, acesse <strong>Recorrências</strong>.</p>
+            </div>
+
+            <div className="space-y-2 mb-5">
+              <button
+                onClick={() => executeTxDelete('single')}
+                className="w-full text-left rounded-xl border-2 border-gray-100 hover:border-orange-200 hover:bg-orange-50 px-4 py-3 transition-colors"
+              >
+                <p className="text-sm font-semibold text-gray-800">🗑️ Excluir só este lançamento</p>
+                <p className="text-xs text-gray-500 mt-0.5">Remove {fmtDate(txDeleteModal.tx.date)}. Recorrência continua gerando normalmente.</p>
+              </button>
+
+              <button
+                onClick={() => executeTxDelete('all')}
+                className="w-full text-left rounded-xl border-2 border-gray-100 hover:border-red-200 hover:bg-red-50 px-4 py-3 transition-colors"
+              >
+                <p className="text-sm font-semibold text-red-600">⏸ Excluir e pausar recorrência</p>
+                <p className="text-xs text-gray-500 mt-0.5">Remove este lançamento e para de gerar novos. Histórico passado preservado.</p>
+              </button>
+            </div>
+
+            <button
+              onClick={() => setTxDeleteModal({ open: false, tx: null })}
+              className="w-full border border-gray-200 text-gray-500 rounded-lg py-2 text-sm hover:bg-gray-50 transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal criar/editar */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-semibold mb-5">{editingId ? 'Editar Transacao' : 'Nova Transacao'}</h2>
 
             <div className="space-y-4">
-              {/* Tipo */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Tipo</label>
                 <div className="flex gap-2">
@@ -735,7 +774,6 @@ export default function TransacoesPage() {
                 </div>
               </div>
 
-              {/* Toggle cartao */}
               {form.type === 'expense' && creditCards.length > 0 && (
                 <div className="flex items-center justify-between bg-purple-50 border border-purple-100 rounded-lg px-3 py-2.5">
                   <div className="flex items-center gap-2">
@@ -749,7 +787,6 @@ export default function TransacoesPage() {
                 </div>
               )}
 
-              {/* Descricao */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Descricao</label>
                 <input type="text" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
@@ -757,7 +794,6 @@ export default function TransacoesPage() {
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
 
-              {/* Valor + Data */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Valor (R$)</label>
@@ -772,7 +808,6 @@ export default function TransacoesPage() {
                 </div>
               </div>
 
-              {/* Cartao ou Conta */}
               {form.use_credit_card && form.type === 'expense' ? (
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Cartao</label>
@@ -820,7 +855,6 @@ export default function TransacoesPage() {
                 </>
               )}
 
-              {/* Categoria */}
               {form.type !== 'transfer' && (
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Categoria <span className="text-gray-400">(opcional)</span></label>
@@ -832,7 +866,6 @@ export default function TransacoesPage() {
                 </div>
               )}
 
-              {/* Recorrencia */}
               {form.type !== 'transfer' && !form.is_installment && (
                 <div className="border border-gray-100 rounded-xl p-3 space-y-3">
                   <div className="flex items-center justify-between">
@@ -840,10 +873,7 @@ export default function TransacoesPage() {
                       <span className="text-base">🔁</span>
                       <span className="text-sm font-medium text-gray-700">Recorrente</span>
                     </div>
-                    <Toggle
-                      checked={form.is_recurring}
-                      onChange={() => setForm({ ...form, is_recurring: !form.is_recurring })}
-                    />
+                    <Toggle checked={form.is_recurring} onChange={() => setForm({ ...form, is_recurring: !form.is_recurring })} />
                   </div>
                   {form.is_recurring && (
                     <div className="grid grid-cols-2 gap-3 pt-1">
@@ -867,7 +897,6 @@ export default function TransacoesPage() {
                 </div>
               )}
 
-              {/* Parcelamento */}
               {form.type !== 'transfer' && !form.is_recurring && !editingId && (
                 <div className="border border-gray-100 rounded-xl p-3 space-y-3">
                   <div className="flex items-center justify-between">
@@ -875,23 +904,15 @@ export default function TransacoesPage() {
                       <span className="text-base">📅</span>
                       <span className="text-sm font-medium text-gray-700">Parcelado</span>
                     </div>
-                    <Toggle
-                      checked={form.is_installment}
-                      onChange={() => setForm({ ...form, is_installment: !form.is_installment })}
-                    />
+                    <Toggle checked={form.is_installment} onChange={() => setForm({ ...form, is_installment: !form.is_installment })} />
                   </div>
                   {form.is_installment && (
                     <div className="pt-1">
                       <label className="block text-xs text-gray-500 mb-1">Numero de parcelas</label>
-                      <input
-                        type="number"
-                        min={2}
-                        max={48}
-                        value={form.installment_total}
+                      <input type="number" min={2} max={48} value={form.installment_total}
                         onChange={e => setForm({ ...form, installment_total: e.target.value })}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="Ex: 12"
-                      />
+                        placeholder="Ex: 12" />
                       {form.installment_total && parseInt(form.installment_total) >= 2 && (
                         <p className="text-xs text-gray-400 mt-1">
                           {parseInt(form.installment_total)}x de {fmt(parseFloat(String(form.amount).replace(',', '.')) || 0)} — total {fmt((parseFloat(String(form.amount).replace(',', '.')) || 0) * parseInt(form.installment_total))}
@@ -902,7 +923,6 @@ export default function TransacoesPage() {
                 </div>
               )}
 
-              {/* Observacao */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Observacao <span className="text-gray-400">(opcional)</span></label>
                 <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}

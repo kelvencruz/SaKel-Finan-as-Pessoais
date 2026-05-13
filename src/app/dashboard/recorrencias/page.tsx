@@ -22,7 +22,6 @@ interface Recorrencia {
   next_due_date: string
   is_active: boolean
   created_at: string
-  // joins em memória
   account_name?: string
   category_name?: string
   category_icon?: string
@@ -34,6 +33,14 @@ interface Category   { id: string; name: string; type: string; icon: string }
 interface CreditCard { id: string; name: string; closing_day: number; due_day: number }
 
 type Toast = { message: string; type: 'success' | 'error' }
+
+// Modal de confirmação de exclusão de recorrência
+interface DeleteModalState {
+  open: boolean
+  recorrencia: Recorrencia | null
+  txCount: number
+  futureTxCount: number
+}
 
 const fmt     = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtDate = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString('pt-BR')
@@ -95,10 +102,14 @@ export default function RecorrenciasPage() {
   const [form,         setForm]         = useState(emptyForm)
   const [error,        setError]        = useState<string | null>(null)
   const [generatingId, setGeneratingId] = useState<string | null>(null)
+  const [deleteModal,  setDeleteModal]  = useState<DeleteModalState>({
+    open: false, recorrencia: null, txCount: 0, futureTxCount: 0
+  })
+  const [deleting, setDeleting] = useState(false)
 
   function showToast(message: string, type: Toast['type'] = 'success') {
     setToast({ message, type })
-    setTimeout(() => setToast(null), 3000)
+    setTimeout(() => setToast(null), 3500)
   }
 
   async function loadAll() {
@@ -197,10 +208,7 @@ export default function RecorrenciasPage() {
       const { error: err } = await supabase
         .from('recurrences').insert({ ...payload, user_id: user.id, next_due_date: next })
       if (err) { setError(err.message); setSaving(false); return }
-
-      // Gamificação — silencioso se action não existir ainda
       await awardXP(user.id, 'transaction_created').catch(() => {})
-
       showToast('Recorrência criada!')
     }
 
@@ -211,17 +219,57 @@ export default function RecorrenciasPage() {
 
   async function toggleActive(r: Recorrencia) {
     await supabase.from('recurrences').update({ is_active: !r.is_active }).eq('id', r.id)
+    showToast(r.is_active ? 'Recorrência pausada.' : 'Recorrência reativada.')
     await loadAll()
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Excluir esta recorrência?')) return
-    await supabase.from('recurrences').delete().eq('id', id)
-    showToast('Recorrência excluída.')
+  // Abre modal de exclusão com contagem de transações vinculadas
+  async function handleDeleteClick(r: Recorrencia) {
+    const today = new Date().toISOString().split('T')[0]
+
+    const [{ count: total }, { count: future }] = await Promise.all([
+      supabase.from('transactions').select('*', { count: 'exact', head: true }).eq('recurrence_id', r.id),
+      supabase.from('transactions').select('*', { count: 'exact', head: true }).eq('recurrence_id', r.id).gte('date', today),
+    ])
+
+    setDeleteModal({
+      open: true,
+      recorrencia: r,
+      txCount: total ?? 0,
+      futureTxCount: future ?? 0,
+    })
+  }
+
+  // Executa a exclusão conforme opção escolhida
+  async function executeDelete(mode: 'pause' | 'future' | 'all') {
+    if (!deleteModal.recorrencia) return
+    setDeleting(true)
+    const { id } = deleteModal.recorrencia
+    const today = new Date().toISOString().split('T')[0]
+
+    if (mode === 'pause') {
+      // Apenas desativa — histórico intacto, automação para
+      await supabase.from('recurrences').update({ is_active: false }).eq('id', id)
+      showToast('Recorrência pausada. Histórico preservado.')
+
+    } else if (mode === 'future') {
+      // Desativa + remove transações futuras (>= hoje)
+      await supabase.from('transactions').delete().eq('recurrence_id', id).gte('date', today)
+      await supabase.from('recurrences').update({ is_active: false }).eq('id', id)
+      showToast(`Recorrência pausada e ${deleteModal.futureTxCount} lançamento(s) futuro(s) removido(s).`)
+
+    } else {
+      // Remove tudo: recorrência + todas as transações vinculadas
+      await supabase.from('transactions').delete().eq('recurrence_id', id)
+      await supabase.from('recurrences').delete().eq('id', id)
+      showToast('Recorrência e todos os lançamentos excluídos.')
+    }
+
+    setDeleteModal({ open: false, recorrencia: null, txCount: 0, futureTxCount: 0 })
+    setDeleting(false)
     await loadAll()
   }
 
-  // ─── Gera transação agora + fatura se for cartão ──────────────────────────
   async function generateNow(r: Recorrencia) {
     setGeneratingId(r.id)
     const { data: { user } } = await supabase.auth.getUser()
@@ -230,7 +278,6 @@ export default function RecorrenciasPage() {
     const today = new Date().toISOString().split('T')[0]
     let invoiceId: string | null = null
 
-    // Se tiver cartão, cria/busca fatura correta
     if (r.credit_card_id) {
       const card = creditCards.find(c => c.id === r.credit_card_id)
       if (card) {
@@ -260,7 +307,6 @@ export default function RecorrenciasPage() {
       }
     }
 
-    // Insere transação
     const { error: err } = await supabase.from('transactions').insert({
       user_id:        user.id,
       type:           r.type,
@@ -273,21 +319,19 @@ export default function RecorrenciasPage() {
       category_id:    r.category_id,
       status:         r.credit_card_id ? 'posted' : 'pending',
       is_recurring:   true,
+      recurrence_id:  r.id,
     })
 
     if (err) { showToast('Erro ao gerar transação.', 'error'); setGeneratingId(null); return }
 
-    // Recalcula total da fatura
     if (invoiceId) {
       const { data } = await supabase.from('transactions').select('amount').eq('invoice_id', invoiceId)
       const total = (data ?? []).reduce((s: number, t: any) => s + Number(t.amount), 0)
       await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
     }
 
-    // Gamificação
     await awardXP(user.id, 'transaction_created').catch(() => {})
 
-    // Avança next_due_date
     const next = nextDueDate(today, r.frequency)
     await supabase.from('recurrences').update({ next_due_date: next }).eq('id', r.id)
 
@@ -364,7 +408,7 @@ export default function RecorrenciasPage() {
                 {ativas.map(r => (
                   <RecorrenciaCard key={r.id} r={r}
                     onEdit={openEdit} onToggle={toggleActive}
-                    onDelete={handleDelete} onGenerate={generateNow}
+                    onDelete={handleDeleteClick} onGenerate={generateNow}
                     generatingId={generatingId} />
                 ))}
               </div>
@@ -380,7 +424,7 @@ export default function RecorrenciasPage() {
                 {inativas.map(r => (
                   <RecorrenciaCard key={r.id} r={r}
                     onEdit={openEdit} onToggle={toggleActive}
-                    onDelete={handleDelete} onGenerate={generateNow}
+                    onDelete={handleDeleteClick} onGenerate={generateNow}
                     generatingId={generatingId} />
                 ))}
               </div>
@@ -389,7 +433,85 @@ export default function RecorrenciasPage() {
         </div>
       )}
 
-      {/* ── Modal ─────────────────────────────────────────────────────────── */}
+      {/* ── Modal exclusão recorrência ─────────────────────────────────────── */}
+      {deleteModal.open && deleteModal.recorrencia && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
+            {/* Cabeçalho de aviso */}
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0 text-lg">⚠️</div>
+              <div>
+                <h3 className="font-semibold text-gray-800">Excluir recorrência</h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  <span className="font-medium text-gray-700">"{deleteModal.recorrencia.description}"</span>
+                  {' · '}{fmt(deleteModal.recorrencia.amount)}{' · '}{FREQ_LABELS[deleteModal.recorrencia.frequency]}
+                </p>
+              </div>
+            </div>
+
+            {/* Impacto */}
+            {deleteModal.txCount > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-xs text-amber-800 space-y-1">
+                <p className="font-semibold">⚠️ Esta recorrência possui lançamentos vinculados:</p>
+                <p>• <span className="font-medium">{deleteModal.txCount} transação(ões)</span> no total</p>
+                {deleteModal.futureTxCount > 0 && (
+                  <p>• <span className="font-medium">{deleteModal.futureTxCount} futura(s)</span> (data ≥ hoje)</p>
+                )}
+                <p className="mt-1 text-amber-700">Excluir pode afetar <strong>faturas, saldo e relatórios</strong>.</p>
+              </div>
+            )}
+
+            {/* Opções */}
+            <div className="space-y-2 mb-5">
+              {/* Opção 1: Só pausar */}
+              <button
+                onClick={() => executeDelete('pause')}
+                disabled={deleting}
+                className="w-full text-left rounded-xl border-2 border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 px-4 py-3 transition-colors disabled:opacity-40"
+              >
+                <p className="text-sm font-semibold text-gray-800">⏸ Pausar automação</p>
+                <p className="text-xs text-gray-500 mt-0.5">Para de gerar novas transações. Histórico completo preservado.</p>
+              </button>
+
+              {/* Opção 2: Pausar + remover futuras (só aparece se houver futuras) */}
+              {deleteModal.futureTxCount > 0 && (
+                <button
+                  onClick={() => executeDelete('future')}
+                  disabled={deleting}
+                  className="w-full text-left rounded-xl border-2 border-gray-100 hover:border-orange-200 hover:bg-orange-50 px-4 py-3 transition-colors disabled:opacity-40"
+                >
+                  <p className="text-sm font-semibold text-gray-800">🗓️ Pausar + remover futuras</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Remove {deleteModal.futureTxCount} lançamento(s) com data ≥ hoje. Histórico passado preservado.
+                  </p>
+                </button>
+              )}
+
+              {/* Opção 3: Excluir tudo */}
+              <button
+                onClick={() => executeDelete('all')}
+                disabled={deleting}
+                className="w-full text-left rounded-xl border-2 border-gray-100 hover:border-red-200 hover:bg-red-50 px-4 py-3 transition-colors disabled:opacity-40"
+              >
+                <p className="text-sm font-semibold text-red-600">🗑️ Excluir tudo</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Remove a recorrência e <strong>todos os {deleteModal.txCount} lançamento(s)</strong> vinculados. Irreversível.
+                </p>
+              </button>
+            </div>
+
+            <button
+              onClick={() => setDeleteModal({ open: false, recorrencia: null, txCount: 0, futureTxCount: 0 })}
+              disabled={deleting}
+              className="w-full border border-gray-200 text-gray-500 rounded-lg py-2 text-sm hover:bg-gray-50 transition-colors disabled:opacity-40"
+            >
+              {deleting ? 'Processando...' : 'Cancelar'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal criar/editar ─────────────────────────────────────────────── */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto"
@@ -555,7 +677,7 @@ function RecorrenciaCard({
   r: Recorrencia
   onEdit: (r: Recorrencia) => void
   onToggle: (r: Recorrencia) => void
-  onDelete: (id: string) => void
+  onDelete: (r: Recorrencia) => void
   onGenerate: (r: Recorrencia) => void
   generatingId: string | null
 }) {
@@ -628,7 +750,7 @@ function RecorrenciaCard({
         <button onClick={() => onEdit(r)} title="Editar"
           className="text-sm px-1.5 py-1 rounded transition-colors"
           style={{ color: 'var(--color-text-muted)' }}>✏️</button>
-        <button onClick={() => onDelete(r.id)} title="Excluir"
+        <button onClick={() => onDelete(r)} title="Excluir"
           className="text-sm px-1.5 py-1 rounded transition-colors"
           style={{ color: 'var(--color-text-muted)' }}>🗑️</button>
       </div>
