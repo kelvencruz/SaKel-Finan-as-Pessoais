@@ -7,9 +7,9 @@ import { awardXP } from '@/lib/gamification'
 type TxType = 'income' | 'expense' | 'transfer'
 type Frequency = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
-interface Account       { id: string; name: string; color: string; current_balance: number }
-interface Category      { id: string; name: string; type: string; icon: string }
-interface CreditCard    { id: string; name: string; color: string; closing_day: number; due_day: number }
+interface Account        { id: string; name: string; color: string; current_balance: number }
+interface Category       { id: string; name: string; type: string; icon: string }
+interface CreditCard     { id: string; name: string; color: string; closing_day: number; due_day: number }
 interface InvestmentGoal { id: string; name: string; icon: string; color: string }
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -127,7 +127,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     if (open) {
       setForm(f => ({ ...emptyForm, account_id: accounts[0]?.id ?? '' }))
       setError(null)
-      setLoaded(false) // força reload para pegar dados frescos (ex: nova conta criada)
+      setLoaded(false)
     }
   }, [open])
 
@@ -135,7 +135,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
   const valorParcela = form.is_installment && form.installment_count > 1
     ? amount / form.installment_count : amount
 
-  // Detecta se a categoria selecionada é do tipo investment
   const selectedCategory = categories.find(c => c.id === form.category_id)
   const isInvestmentCategory = selectedCategory?.type === 'investment'
 
@@ -174,18 +173,15 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     return dates
   }
 
-  // ─── XP: só usa actions que existem em XP_ACTIONS ────────────────────────
   async function handleXP(userId: string, isFirstTx: boolean) {
     if (!gamEnabled) return
     let totalXP = 0
     let badgeEarned: string | null = null
 
-    // +10 XP por criar transação (action válida)
     const r1 = await awardXP(userId, 'transaction_created', isFirstTx ? 'first_transaction' : undefined)
     totalXP += 10
     if (r1.newBadge) badgeEarned = r1.newBadge
 
-    // Milestone: 10 transações
     const { count } = await supabase
       .from('transactions').select('*', { count: 'exact', head: true }).eq('user_id', userId)
     if (count === 10) {
@@ -223,17 +219,15 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       .from('transactions').select('*', { count: 'exact', head: true }).eq('user_id', user.id)
     const isFirstTx = (txCount ?? 0) === 0
 
-    // goal_id só vai se a categoria for do tipo investment
     const goalId = isInvestmentCategory && form.goal_id ? form.goal_id : null
 
     // ─── RECORRENTE ───────────────────────────────────────────────────────
     if (form.is_recurring) {
-      // Calcula próxima data de vencimento
       function calcNextDue(startDate: string, frequency: string): string {
         const today = new Date(); today.setHours(0, 0, 0, 0)
         const d = new Date(startDate + 'T12:00:00')
         while (d < today) {
-          if (frequency === 'daily')   d.setDate(d.getDate() + 1)
+          if (frequency === 'daily')        d.setDate(d.getDate() + 1)
           else if (frequency === 'weekly')  d.setDate(d.getDate() + 7)
           else if (frequency === 'monthly') d.setMonth(d.getMonth() + 1)
           else if (frequency === 'yearly')  d.setFullYear(d.getFullYear() + 1)
@@ -255,14 +249,34 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         category_id:    form.category_id || null,
         is_active:      true,
       }
-      const { error: recErr } = await supabase.from('recurrences').insert(recPayload)
-      if (recErr) { setError(recErr.message); setSaving(false); return }
 
+      // CORREÇÃO: captura o id da recorrência criada para vincular na transação
+      const { data: recData, error: recErr } = await supabase
+        .from('recurrences')
+        .insert(recPayload)
+        .select('id')
+        .single()
+
+      if (recErr || !recData) {
+        setError(recErr?.message ?? 'Erro ao criar recorrência.')
+        setSaving(false)
+        return
+      }
+
+      // CORREÇÃO: vincula recurrence_id na transação
       await supabase.from('transactions').insert({
-        user_id: user.id, type: form.type, description: form.description.trim(),
-        amount, date: form.date, account_id: form.account_id || null,
-        category_id: form.category_id || null, goal_id: goalId,
-        notes: form.notes?.trim() || null, status: form.status, is_recurring: true,
+        user_id:       user.id,
+        type:          form.type,
+        description:   form.description.trim(),
+        amount,
+        date:          form.date,
+        account_id:    form.account_id || null,
+        category_id:   form.category_id || null,
+        goal_id:       goalId,
+        notes:         form.notes?.trim() || null,
+        status:        form.status,
+        is_recurring:  true,
+        recurrence_id: recData.id,
       })
 
       await handleXP(user.id, isFirstTx)
@@ -350,7 +364,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     setSaving(false); onSaved?.(); onClose()
   }
 
-  // Filtra categorias por tipo de transação
   const catsFiltradas = categories.filter(c => {
     if (form.type === 'transfer') return false
     if (form.type === 'income')   return c.type === 'income'   || c.type === 'both'
@@ -502,7 +515,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
               </div>
             )}
 
-            {/* Objetivo — aparece só quando categoria é do tipo investment */}
+            {/* Objetivo */}
             {isInvestmentCategory && goals.length > 0 && (
               <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-3">
                 <label className="block text-sm text-indigo-700 font-medium mb-1">

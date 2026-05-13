@@ -19,6 +19,7 @@ interface Transaction {
   credit_card_id?: string | null
   invoice_id?: string | null
   is_recurring?: boolean
+  recurrence_id?: string | null
   recurrence?: string | null
   recurrence_start?: string | null
   recurrence_end?: string | null
@@ -74,11 +75,9 @@ const emptyForm = {
   status: 'paid',
   use_credit_card: false,
   credit_card_id: '',
-  // recorrencia
   is_recurring: false,
   recurrence: 'monthly',
   recurrence_end: '',
-  // parcelamento
   is_installment: false,
   installment_total: '2',
 }
@@ -194,7 +193,7 @@ export default function TransacoesPage() {
     const [{ data: tx }, { data: acc }, { data: cat }, { data: cards }] = await Promise.all([
       supabase
         .from('transactions')
-        .select('id, type, description, amount, date, account_id, destination_account_id, category_id, notes, status, credit_card_id, invoice_id, is_recurring, recurrence, recurrence_start, recurrence_end, installment_total, installment_current, installment_group')
+        .select('id, type, description, amount, date, account_id, destination_account_id, category_id, notes, status, credit_card_id, invoice_id, is_recurring, recurrence_id, recurrence, recurrence_start, recurrence_end, installment_total, installment_current, installment_group')
         .eq('user_id', user.id)
         .order('date', { ascending: false })
         .limit(500),
@@ -356,7 +355,6 @@ export default function TransacoesPage() {
       const { error: err } = await supabase.from('transactions').insert(rows)
       if (err) { setError(err.message); setSaving(false); return }
 
-      // atualiza faturas
       const invoiceIds = [...new Set(rows.map(r => r.invoice_id).filter(Boolean))]
       for (const iid of invoiceIds) { if (iid) await updateInvoiceTotal(iid) }
 
@@ -414,12 +412,47 @@ export default function TransacoesPage() {
     setSaving(false)
   }
 
+  // ── CORREÇÃO: handleDelete com suporte a recorrências ──────────────────────
   async function handleDelete(id: string) {
-    if (!confirm('Excluir esta transacao?')) return
+    const tx = transactions.find(t => t.id === id)
     setDeletingId(id)
-    const { error: err } = await supabase.from('transactions').delete().eq('id', id)
-    if (err) showToast('Erro ao excluir.', 'error')
-    else showToast('Transacao excluida.')
+
+    if (tx?.is_recurring) {
+      const deleteAll = window.confirm(
+        'Esta transação é recorrente.\n\nOK → Excluir a recorrência inteira (para de gerar futuras)\nCancelar → Excluir só este lançamento'
+      )
+
+      if (deleteAll) {
+        // Busca o recurrence_id antes de deletar a transação
+        const { data: txData } = await supabase
+          .from('transactions')
+          .select('recurrence_id')
+          .eq('id', id)
+          .single()
+
+        // Deleta a transação atual
+        await supabase.from('transactions').delete().eq('id', id)
+
+        // Deleta a recorrência — ON DELETE SET NULL cuida das outras transactions
+        if (txData?.recurrence_id) {
+          await supabase.from('recurrences').delete().eq('id', txData.recurrence_id)
+        }
+
+        showToast('Recorrência excluída.')
+      } else {
+        // Só deleta este lançamento
+        const { error: err } = await supabase.from('transactions').delete().eq('id', id)
+        if (err) showToast('Erro ao excluir.', 'error')
+        else showToast('Lançamento excluído.')
+      }
+    } else {
+      // Transação normal — comportamento original
+      if (!confirm('Excluir esta transacao?')) { setDeletingId(null); return }
+      const { error: err } = await supabase.from('transactions').delete().eq('id', id)
+      if (err) showToast('Erro ao excluir.', 'error')
+      else showToast('Transacao excluida.')
+    }
+
     await loadAll()
     setDeletingId(null)
   }
@@ -731,7 +764,7 @@ export default function TransacoesPage() {
                 </div>
               )}
 
-              {/* Recorrencia — so para income/expense, nao parcelado */}
+              {/* Recorrencia */}
               {form.type !== 'transfer' && !form.is_installment && (
                 <div className="border border-gray-100 rounded-xl p-3 space-y-3">
                   <div className="flex items-center justify-between">
@@ -766,7 +799,7 @@ export default function TransacoesPage() {
                 </div>
               )}
 
-              {/* Parcelamento — so para income/expense, nao recorrente */}
+              {/* Parcelamento */}
               {form.type !== 'transfer' && !form.is_recurring && !editingId && (
                 <div className="border border-gray-100 rounded-xl p-3 space-y-3">
                   <div className="flex items-center justify-between">
