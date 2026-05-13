@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { awardXP, getGamification } from '@/lib/gamification'
 
 type TxType = 'income' | 'expense' | 'transfer'
 
@@ -141,6 +142,54 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
     </button>
   )
 }
+
+// ── Gamificação: centraliza toda a lógica pós-criação de transação ────────────
+async function handleTransactionGamification(
+  userId: string,
+  txCount: number,       // total de transações APÓS a criação (já inclui a nova)
+  hasCategoryId: boolean,
+) {
+  try {
+    const gam = await getGamification(userId)
+    const earned = gam?.badges ?? []
+
+    // 1. Primeira transação
+    if (txCount === 1 && !earned.includes('first_transaction')) {
+      await awardXP(userId, 'transaction_created', 'first_transaction')
+    }
+    // 2. Marco de 10 transações
+    else if (txCount === 10 && !earned.includes('ten_transactions')) {
+      await awardXP(userId, 'transaction_created', 'ten_transactions')
+    }
+    // 3. Marco de 50 transações
+    else if (txCount === 50 && !earned.includes('fifty_transactions')) {
+      await awardXP(userId, 'transaction_created', 'fifty_transactions')
+    }
+    // 4. Transação comum (sem badge especial)
+    else {
+      await awardXP(userId, 'transaction_created')
+    }
+
+    // 5. Bônus por categorizar (idempotente via XP simples — sem badge)
+    if (hasCategoryId) {
+      await awardXP(userId, 'transaction_categorized')
+    }
+
+    // 6. Verificar badges de streak após qualquer ação
+    const gamAfter = await getGamification(userId)
+    const streakDays = gamAfter?.streakDays ?? 0
+    const earnedAfter = gamAfter?.badges ?? []
+
+    if (streakDays >= 30 && !earnedAfter.includes('streak_30')) {
+      await awardXP(userId, 'streak_30', 'streak_30')
+    } else if (streakDays >= 7 && !earnedAfter.includes('streak_7')) {
+      await awardXP(userId, 'streak_7', 'streak_7')
+    }
+  } catch {
+    // Gamificação nunca bloqueia o fluxo principal
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function TransacoesPage() {
   const supabase = createClient()
@@ -348,6 +397,19 @@ export default function TransacoesPage() {
       const invoiceIds = [...new Set(rows.map(r => r.invoice_id).filter(Boolean))]
       for (const iid of invoiceIds) { if (iid) await updateInvoiceTotal(iid) }
 
+      // ── Gamificação: parcelamento ──────────────────────────
+      // Conta total de transações após inserção para checar marcos
+      const { count: txCount } = await supabase
+        .from('transactions')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+      await handleTransactionGamification(
+        user.id,
+        txCount ?? 0,
+        !!form.category_id,
+      )
+      // ──────────────────────────────────────────────────────
+
       showToast(`${total} parcelas criadas!`)
       await loadAll()
       setShowModal(false)
@@ -422,6 +484,20 @@ export default function TransacoesPage() {
       if (txErr) { setError(txErr.message); setSaving(false); return }
       if (invoiceId) await updateInvoiceTotal(invoiceId)
 
+      // ── Gamificação: recorrência criada via transações ─────
+      // XP de recorrência fica em recorrencias/page.tsx.
+      // Aqui contabilizamos apenas o lançamento inicial como transação.
+      const { count: txCount } = await supabase
+        .from('transactions')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+      await handleTransactionGamification(
+        user.id,
+        txCount ?? 0,
+        !!form.category_id,
+      )
+      // ──────────────────────────────────────────────────────
+
       showToast('Recorrencia criada!')
       await loadAll()
       setShowModal(false)
@@ -457,11 +533,25 @@ export default function TransacoesPage() {
       const { error: err } = await supabase.from('transactions').update(payload).eq('id', editingId)
       if (err) { setError(err.message); setSaving(false); return }
       if (invoiceId) await updateInvoiceTotal(invoiceId)
+      // Edição não concede XP — evita farm infinito
       showToast('Transacao atualizada!')
     } else {
       const { error: err } = await supabase.from('transactions').insert({ ...payload, user_id: user.id })
       if (err) { setError(err.message); setSaving(false); return }
       if (invoiceId) await updateInvoiceTotal(invoiceId)
+
+      // ── Gamificação: nova transação comum ─────────────────
+      const { count: txCount } = await supabase
+        .from('transactions')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+      await handleTransactionGamification(
+        user.id,
+        txCount ?? 0,
+        !!form.category_id,
+      )
+      // ──────────────────────────────────────────────────────
+
       showToast('Transacao criada!')
     }
 
@@ -473,10 +563,8 @@ export default function TransacoesPage() {
   // ── Clique no lixo da transação ────────────────────────────────────────────
   function handleDeleteClick(tx: Transaction) {
     if (tx.is_recurring && tx.recurrence_id) {
-      // Abre modal contextual
       setTxDeleteModal({ open: true, tx })
     } else {
-      // Transação normal — confirm simples
       handleDeleteNormal(tx.id)
     }
   }
@@ -491,7 +579,6 @@ export default function TransacoesPage() {
     setDeletingId(null)
   }
 
-  // Executa exclusão a partir do modal de transação recorrente
   async function executeTxDelete(mode: 'single' | 'all') {
     if (!txDeleteModal.tx) return
     const { id, recurrence_id } = txDeleteModal.tx
@@ -499,12 +586,10 @@ export default function TransacoesPage() {
     setTxDeleteModal({ open: false, tx: null })
 
     if (mode === 'single') {
-      // Só este lançamento — recorrência continua ativa
       const { error: err } = await supabase.from('transactions').delete().eq('id', id)
       if (err) showToast('Erro ao excluir.', 'error')
       else showToast('Lançamento excluído. Recorrência mantida.')
     } else {
-      // Este lançamento + desativa a recorrência inteira
       await supabase.from('transactions').delete().eq('id', id)
       if (recurrence_id) {
         await supabase.from('recurrences').update({ is_active: false }).eq('id', recurrence_id)
