@@ -26,16 +26,16 @@ export const BADGES = [
 ]
 
 export const XP_ACTIONS = {
-  transaction_created:   10,
-  transaction_categorized: 5,
-  month_positive:       100,
-  streak_7:              50,
-  streak_30:            150,
-  first_investment:      80,
-  first_recurring:       20,
-  budget_goal:           80,
-  account_created:       30,
-  three_months_blue:    200,
+  transaction_created:     10,
+  transaction_categorized:  5,
+  month_positive:         100,
+  streak_7:                50,
+  streak_30:              150,
+  first_investment:        80,
+  first_recurring:         20,
+  budget_goal:             80,
+  account_created:         30,
+  three_months_blue:      200,
 }
 
 export function getLevelInfo(xp: number) {
@@ -44,37 +44,58 @@ export function getLevelInfo(xp: number) {
   return { ...level, progress: Math.min(progress, 100), xp }
 }
 
-export async function awardXP(userId: string, action: keyof typeof XP_ACTIONS, badgeId?: string) {
+export async function awardXP(
+  userId: string,
+  action: keyof typeof XP_ACTIONS,
+  badgeId?: string,
+) {
   const supabase = createClient()
   const xpAmount = XP_ACTIONS[action]
 
   // Busca gamificação atual
-  const { data: current } = await supabase
+  const { data: current, error: fetchErr } = await supabase
     .from('user_gamification')
     .select('*')
     .eq('user_id', userId)
     .single()
 
-  const currentXP     = current?.xp ?? 0
-  const currentBadges = (current?.badges ?? []) as string[]
-  const newXP         = currentXP + xpAmount
-  const newLevel      = getLevelInfo(newXP).level
+  if (fetchErr && fetchErr.code !== 'PGRST116') {
+    // PGRST116 = row not found, esperado na primeira chamada
+    console.error('[awardXP] fetch error:', fetchErr)
+  }
 
-  // Adiciona badge se fornecido e ainda não tem
-  const newBadges = badgeId && !currentBadges.includes(badgeId)
-    ? [...currentBadges, badgeId]
-    : currentBadges
+  const currentXP = current?.xp ?? 0
+
+  // Cast explícito: jsonb pode chegar como array ou como null
+  const rawBadges = current?.badges
+  const currentBadges: string[] = Array.isArray(rawBadges)
+    ? (rawBadges as string[])
+    : rawBadges
+      ? (JSON.parse(JSON.stringify(rawBadges)) as string[])
+      : []
+
+  const newXP    = currentXP + xpAmount
+  const newLevel = getLevelInfo(newXP).level
+
+  // Adiciona badge se fornecido e ainda não conquistado
+  const newBadges: string[] =
+    badgeId && !currentBadges.includes(badgeId)
+      ? [...currentBadges, badgeId]
+      : [...currentBadges] // cópia explícita — nunca mutação direta
 
   // Atualiza streak
-  const today      = new Date().toISOString().split('T')[0]
-  const lastActivity = current?.last_activity
-  const streakDays = lastActivity === today
-    ? current?.streak_days ?? 1
-    : lastActivity === new Date(Date.now() - 86400000).toISOString().split('T')[0]
-      ? (current?.streak_days ?? 0) + 1
-      : 1
+  const today        = new Date().toISOString().split('T')[0]
+  const lastActivity = current?.last_activity ?? null
+  const yesterday    = new Date(Date.now() - 86400000).toISOString().split('T')[0]
 
-  await supabase.from('user_gamification').upsert({
+  const streakDays =
+    lastActivity === today
+      ? (current?.streak_days ?? 1)           // mesmo dia, mantém
+      : lastActivity === yesterday
+        ? (current?.streak_days ?? 0) + 1     // dia seguinte, incrementa
+        : 1                                   // quebrou streak, reinicia
+
+  const payload = {
     user_id:       userId,
     xp:            newXP,
     level:         newLevel,
@@ -82,26 +103,55 @@ export async function awardXP(userId: string, action: keyof typeof XP_ACTIONS, b
     last_activity: today,
     badges:        newBadges,
     updated_at:    new Date().toISOString(),
-  }, { onConflict: 'user_id' })
+  }
 
-  return { newXP, newLevel, leveledUp: newLevel > (current?.level ?? 1), newBadge: badgeId && !currentBadges.includes(badgeId) ? badgeId : null }
+  const { error: upsertErr } = await supabase
+    .from('user_gamification')
+    .upsert(payload, { onConflict: 'user_id' })
+
+  if (upsertErr) {
+    console.error('[awardXP] upsert error:', upsertErr)
+  }
+
+  return {
+    newXP,
+    newLevel,
+    leveledUp:  newLevel > (current?.level ?? 1),
+    newBadge:   badgeId && !currentBadges.includes(badgeId) ? badgeId : null,
+    streakDays,
+  }
 }
 
 export async function getGamification(userId: string) {
   const supabase = createClient()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('user_gamification')
     .select('*')
     .eq('user_id', userId)
     .single()
 
+  if (error) {
+    if (error.code !== 'PGRST116') {
+      console.error('[getGamification] error:', error)
+    }
+    return null
+  }
+
   if (!data) return null
 
+  // Cast explícito igual ao awardXP
+  const rawBadges = data.badges
+  const badges: string[] = Array.isArray(rawBadges)
+    ? (rawBadges as string[])
+    : rawBadges
+      ? (JSON.parse(JSON.stringify(rawBadges)) as string[])
+      : []
+
   return {
-    xp:          data.xp ?? 0,
-    level:       getLevelInfo(data.xp ?? 0),
-    streakDays:  data.streak_days ?? 0,
-    badges:      (data.badges ?? []) as string[],
+    xp:           data.xp ?? 0,
+    level:        getLevelInfo(data.xp ?? 0),
+    streakDays:   data.streak_days ?? 0,
+    badges,
     lastActivity: data.last_activity,
   }
 }
