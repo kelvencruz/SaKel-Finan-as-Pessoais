@@ -64,6 +64,29 @@ function normalizeDesc(desc: string): string {
     .slice(0, 30)
 }
 
+// ─── Calcula quantas ocorrências de uma recorrência caem nos próximos 30 dias
+function occurrencesInWindow(nextDueDate: string, frequency: string, horizonDate: Date): number {
+  const start = new Date(nextDueDate + 'T12:00:00')
+  const today = new Date(); today.setHours(0,0,0,0)
+  if (start > horizonDate) return 0
+
+  let count = 0
+  let current = new Date(start)
+
+  while (current <= horizonDate && count < 60) {
+    if (current >= today) count++
+    switch (frequency) {
+      case 'daily':   current.setDate(current.getDate() + 1); break
+      case 'weekly':  current.setDate(current.getDate() + 7); break
+      case 'monthly': current.setMonth(current.getMonth() + 1); break
+      case 'yearly':  current.setFullYear(current.getFullYear() + 1); break
+      default:        return count // frequência desconhecida: conta só 1
+    }
+    if (frequency === 'monthly' || frequency === 'yearly') break // mensal/anual: máx 1 no janela de 30d
+  }
+  return count
+}
+
 // ─── Motor de regras KalDiz v2 ─────────────────────────────────────────────
 function gerarInsights(data: KalDizData): KalInsight[] {
   const candidatos: KalInsight[] = []
@@ -239,9 +262,7 @@ function KalDiz({ data, enabled }: { data: KalDizData; enabled: boolean }) {
 
   return (
     <div className="bg-white border border-gray-100 rounded-xl p-4 mb-6">
-      {/* Header */}
       <div className="flex items-center gap-3 mb-4">
-        {/* Avatar do Kal */}
         <div className="w-12 h-12 shrink-0 flex items-center justify-center" style={{ minWidth: 48 }}>
           <img
             src="/kal-avatar.png"
@@ -261,31 +282,21 @@ function KalDiz({ data, enabled }: { data: KalDizData; enabled: boolean }) {
             K
           </span>
         </div>
-
-        {/* Texto */}
         <div className="min-w-0">
           <p className="text-sm font-semibold text-gray-800 leading-none">Kal</p>
           <p className="text-[11px] text-gray-400 mt-1">Insights financeiros inteligentes</p>
         </div>
       </div>
-
-      {/* Insights */}
       <div className="space-y-3">
         {insights.map(insight => (
-          <div
-            key={insight.id}
-            className={`rounded-xl px-4 py-3 border ${insight.bg}`}
-          >
+          <div key={insight.id} className={`rounded-xl px-4 py-3 border ${insight.bg}`}>
             <div className="flex items-start gap-2.5">
               <span className="text-base shrink-0 mt-0.5">{insight.icone}</span>
               <div className="flex-1 min-w-0">
                 <p className={`text-xs font-semibold mb-0.5 ${insight.cor}`}>{insight.titulo}</p>
                 <p className="text-xs text-gray-600 leading-relaxed">{insight.texto}</p>
                 {insight.acao && (
-                  <a
-                    href={insight.acao.href}
-                    className={`inline-flex items-center gap-1 text-[11px] font-medium mt-1.5 hover:underline ${insight.cor}`}
-                  >
+                  <a href={insight.acao.href} className={`inline-flex items-center gap-1 text-[11px] font-medium mt-1.5 hover:underline ${insight.cor}`}>
                     {insight.acao.label} →
                   </a>
                 )}
@@ -473,7 +484,7 @@ export default function DashboardPage() {
       const saldo = accList.reduce((s, a) => s + Number(a.current_balance), 0)
       setSaldoContas(saldo)
 
-      // Faturas
+      // Faturas abertas
       const { data: openInv } = await supabase
         .from('credit_card_invoices').select('total_amount')
         .eq('user_id', user.id).in('status', ['open','overdue'])
@@ -486,7 +497,7 @@ export default function DashboardPage() {
       const totalInv = ((invData ?? []) as { current_amount: number }[]).reduce((s, i) => s + Number(i.current_amount), 0)
       setPatrimonioInvestido(totalInv)
 
-      // Faturas próximas
+      // Faturas próximas do vencimento
       const { data: dueInv } = await supabase
         .from('credit_card_invoices').select('id, total_amount, status, due_date, credit_card_id')
         .eq('user_id', user.id).in('status', ['open','overdue'])
@@ -565,18 +576,83 @@ export default function DashboardPage() {
         catAntMap[k] = (catAntMap[k] ?? 0) + Number(t.amount)
       })
 
-      // Recorrências previstas 30d
-      const { data: recData } = await supabase
-        .from('transactions').select('type, amount')
-        .eq('user_id', user.id).eq('is_recurring', true)
-        .in('status', ['pending','overdue'])
-        .gte('date', hoje).lte('date', horizon30).in('type', ['income','expense'])
-      const recArr2 = (recData ?? []) as { type: string; amount: number }[]
-      const recEntradas = recArr2.filter(r => r.type === 'income').reduce((s, r) => s + Number(r.amount), 0)
-      const recSaidas   = recArr2.filter(r => r.type === 'expense').reduce((s, r) => s + Number(r.amount), 0)
-      setRecCount(recArr2.length)
+      // ─────────────────────────────────────────────────────────────────────
+      // SALDO PREVISTO — fonte correta: tabela `recurrences`
+      // Busca todas as recorrências ativas do usuário que têm next_due_date
+      // dentro dos próximos 30 dias OU que são mensais/semanais/diárias e
+      // ainda estão dentro do end_date (ou sem end_date).
+      // ─────────────────────────────────────────────────────────────────────
+      const { data: recRules } = await supabase
+        .from('recurrences')
+        .select('type, amount, frequency, next_due_date, end_date, is_active')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .or(`next_due_date.lte.${horizon30},end_date.is.null,end_date.gte.${hoje}`)
 
-      // Parcelas pendentes 30d
+      const recRulesArr = (recRules ?? []) as {
+        type: string
+        amount: number
+        frequency: string
+        next_due_date: string | null
+        end_date: string | null
+        is_active: boolean
+      }[]
+
+      let recEntradas = 0
+      let recSaidas   = 0
+      let recCountVal = 0
+
+      for (const rule of recRulesArr) {
+        if (!rule.next_due_date) continue
+        // Ignora se já passou do end_date
+        if (rule.end_date && rule.end_date < hoje) continue
+
+        const ocorrencias = occurrencesInWindow(rule.next_due_date, rule.frequency, limit30)
+        if (ocorrencias === 0) continue
+
+        const total = Number(rule.amount) * ocorrencias
+        recCountVal += ocorrencias
+
+        if (rule.type === 'income') recEntradas += total
+        else recSaidas += total
+      }
+
+      // Fallback: se recurrences estiver vazio, tenta recurring_transactions
+      if (recRulesArr.length === 0) {
+        const { data: rtData } = await supabase
+          .from('recurring_transactions')
+          .select('type, amount, frequency, next_execution, end_date, active')
+          .eq('user_id', user.id)
+          .eq('active', true)
+          .or(`next_execution.lte.${horizon30},end_date.is.null,end_date.gte.${hoje}`)
+
+        const rtArr = (rtData ?? []) as {
+          type: string
+          amount: number
+          frequency: string
+          next_execution: string | null
+          end_date: string | null
+          active: boolean
+        }[]
+
+        for (const rule of rtArr) {
+          if (!rule.next_execution) continue
+          if (rule.end_date && rule.end_date < hoje) continue
+
+          const ocorrencias = occurrencesInWindow(rule.next_execution, rule.frequency, limit30)
+          if (ocorrencias === 0) continue
+
+          const total = Number(rule.amount) * ocorrencias
+          recCountVal += ocorrencias
+
+          if (rule.type === 'income') recEntradas += total
+          else recSaidas += total
+        }
+      }
+
+      setRecCount(recCountVal)
+
+      // Parcelas pendentes nos próximos 30 dias (transações com installment_total)
       const { data: instData } = await supabase
         .from('transactions').select('type, amount')
         .eq('user_id', user.id).not('installment_total', 'is', null)
@@ -587,7 +663,7 @@ export default function DashboardPage() {
       const parcelaReceitas = instArr.filter(i => i.type === 'income').reduce((s, i) => s + Number(i.amount), 0)
       setInstCount(instArr.length)
 
-      // Recorrência sugerida
+      // Recorrência sugerida (heurística sobre histórico de transações)
       const { data: tx60 } = await supabase
         .from('transactions').select('description, amount, date')
         .eq('user_id', user.id).eq('type', 'expense')
@@ -618,6 +694,8 @@ export default function DashboardPage() {
         }
       }
 
+      // Cálculo final do saldo previsto
+      // saldo + recorrências_receita + parcelas_receita - recorrências_despesa - parcelas_despesa - faturas_abertas
       const previsto = saldo + recEntradas + parcelaReceitas - recSaidas - totalParcelas - faturas
       setSaldoPrevisto(previsto)
       setProjecaoItens([
@@ -634,7 +712,7 @@ export default function DashboardPage() {
         saldoPrevisto:       previsto,
         recMes:              recMesVal,
         despMes:             despMesVal,
-        recCount:            recArr2.length,
+        recCount:            recCountVal,
         instCount:           instArr.length,
         invoicesDue:         invoicesFormatted,
         totalFaturas:        faturas,
