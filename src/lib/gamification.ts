@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   Medal, Flame, CalendarCheck, TrendUp, Tag, ChartLine,
   ArrowsClockwise, Target, Star, Bank, Lightning, Crown,
-  Barbell, Bird, Seedling, CurrencyDollar, ChartBar,
+  Barbell, Bird, Plant, CurrencyDollar, ChartBar,
 } from '@phosphor-icons/react'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@ export interface BadgeIconDef {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const LEVELS = [
-  { level: 1, name: 'Novato Financeiro',       iconDef: { icon: Seedling,       color: 'var(--success)',  bg: 'var(--success-light)'  }, minXP: 0,    maxXP: 500   },
+  { level: 1, name: 'Novato Financeiro',       iconDef: { icon: Plant,          color: 'var(--success)',  bg: 'var(--success-light)'  }, minXP: 0,    maxXP: 500   },
   { level: 2, name: 'Poupador Consistente',    iconDef: { icon: CurrencyDollar, color: 'var(--warning)',  bg: 'var(--warning-light)'  }, minXP: 500,  maxXP: 1500  },
   { level: 3, name: 'Orçamentista Eficiente',  iconDef: { icon: ChartBar,       color: 'var(--primary)',  bg: 'var(--primary-light)'  }, minXP: 1500, maxXP: 3000  },
   { level: 4, name: 'Estrategista Financeiro', iconDef: { icon: Lightning,      color: 'var(--warning)',  bg: 'var(--warning-light)'  }, minXP: 3000, maxXP: 6000  },
