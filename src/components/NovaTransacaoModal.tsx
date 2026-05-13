@@ -677,3 +677,4 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     </>
   )
 }
+ 
