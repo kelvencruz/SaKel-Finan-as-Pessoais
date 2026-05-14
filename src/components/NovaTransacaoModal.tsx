@@ -103,10 +103,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       setCategories((cat ?? []) as Category[])
       setCreditCards((cards ?? []) as CreditCard[])
       setGoals((gls ?? []) as InvestmentGoal[])
-
-      console.log('[DEBUG] prefs do Supabase:', prefs)
-      console.log('[DEBUG] gamification_enabled:', prefs?.gamification_enabled)
-
       setGamEnabled(prefs?.gamification_enabled ?? true)
       setForm(f => ({ ...f, account_id: accList[0]?.id ?? '' }))
       setLoaded(true)
@@ -158,20 +154,15 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     return dates
   }
 
-  async function handleXP(userId: string, isFirstTx: boolean) {
-    console.log('[XP] 1. handleXP chamado — gamEnabled:', gamEnabled)
-    if (!gamEnabled) {
-      console.log('[XP] gamEnabled é false — abortando')
-      return
-    }
-    let totalXP = 0
+  // ─── XP — chamado ANTES do onClose para garantir que o push chega na fila ─
+  async function pushXPToast(userId: string, isFirstTx: boolean) {
+    if (!gamEnabled) return
+
+    let totalXP = 10
     let badgeEarned: string | null = null
 
     try {
-      console.log('[XP] 2. chamando awardXP...')
       const r1 = await awardXP(userId, 'transaction_created', isFirstTx ? 'first_transaction' : undefined)
-      console.log('[XP] 3. awardXP retornou:', r1)
-      totalXP += 10
       if (r1.newBadge) badgeEarned = r1.newBadge
 
       const { count } = await supabase
@@ -188,9 +179,23 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       console.error('[XP] ERRO em awardXP:', e)
     }
 
-    console.log('[XP] 4. chamando toastManager.push — totalXP:', totalXP, '| badge:', badgeEarned)
+    // push na fila ANTES de fechar o modal — o Provider está no layout e
+    // não desmonta junto com o modal, então a fila é consumida normalmente
     toastManager.push({ kind: 'xp', xp: totalXP, badge: badgeEarned })
-    console.log('[XP] 5. push feito')
+  }
+
+  // ─── Finaliza após salvar — ordem garantida ───────────────────────────────
+  // 1. push confirm  (síncrono — entra na fila imediatamente)
+  // 2. push xp       (após await — também na fila antes do onClose)
+  // 3. onSaved       (callback externo)
+  // 4. onClose       (desmonta o modal — mas o Provider no layout continua vivo)
+  // 5. setSaving     (limpeza)
+  async function finish(userId: string, isFirstTx: boolean, confirmMessage: string) {
+    toastManager.push({ kind: 'confirm', message: confirmMessage })
+    await pushXPToast(userId, isFirstTx)
+    onSaved?.()
+    onClose()
+    setSaving(false)
   }
 
   // ─── Save ─────────────────────────────────────────────────────────────────
@@ -285,11 +290,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
       }
 
-      toastManager.push({ kind: 'confirm', message: 'Recorrência salva ✓' })
-      await handleXP(user.id, isFirstTx)
-      onSaved?.()
-      onClose()
-      setSaving(false)
+      await finish(user.id, isFirstTx, 'Recorrência salva ✓')
       return
     }
 
@@ -342,11 +343,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         }
       }
 
-      toastManager.push({ kind: 'confirm', message: `${form.installment_count}x parcelas salvas ✓` })
-      await handleXP(user.id, isFirstTx)
-      onSaved?.()
-      onClose()
-      setSaving(false)
+      await finish(user.id, isFirstTx, `${form.installment_count}x parcelas salvas ✓`)
       return
     }
 
@@ -378,11 +375,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
     }
 
-    toastManager.push({ kind: 'confirm', message: 'Transação salva ✓' })
-    await handleXP(user.id, isFirstTx)
-    onSaved?.()
-    onClose()
-    setSaving(false)
+    await finish(user.id, isFirstTx, 'Transação salva ✓')
   }
 
   const catsFiltradas = categories.filter(c => {

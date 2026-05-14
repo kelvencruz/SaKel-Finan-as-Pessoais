@@ -7,8 +7,8 @@ export type ToastItem =
   | { kind: 'xp';      xp: number; badge?: string | null }
 
 interface ToastManagerState {
-  queue:    ToastItem[]
-  current:  ToastItem | null
+  queue:   ToastItem[]
+  current: ToastItem | null
 }
 
 // ─── Store global (singleton fora do React) ───────────────────────────────────
@@ -17,7 +17,7 @@ let _state: ToastManagerState = { queue: [], current: null }
 const _listeners = new Set<Listener>()
 
 function notify() {
-  _listeners.forEach(fn => fn({ ..._state }))
+  _listeners.forEach(fn => fn({ ..._state, queue: [..._state.queue] }))
 }
 
 export const toastManager = {
@@ -25,7 +25,8 @@ export const toastManager = {
     _state = { ..._state, queue: [..._state.queue, item] }
     notify()
   },
-  next() {
+  // Chamado apenas quando o toast atual termina — avança para o próximo
+  advance() {
     const [next, ...rest] = _state.queue
     _state = { queue: rest, current: next ?? null }
     notify()
@@ -74,26 +75,36 @@ function XPToast({ xp, badge, onDone }: { xp: number; badge?: string | null; onD
 }
 
 // ─── Provider — montar UMA VEZ no layout ─────────────────────────────────────
+//
+// Lógica da fila:
+//   1. push() adiciona à fila — nunca toca em `current`
+//   2. useEffect detecta que a fila tem itens e current é null → chama advance()
+//   3. advance() move o primeiro da fila para `current`
+//   4. O toast renderiza e, ao terminar seu timer, chama handleDone()
+//   5. handleDone() chama advance() → limpa current e pega o próximo da fila
+//   6. Volta ao passo 2 se ainda houver itens
+//
+// Nunca dois toasts em paralelo. Nunca um toast perdido.
 
 export function ToastManagerProvider() {
-  const [state, setState] = useState<ToastManagerState>(_state)
+  const [state, setState] = useState<ToastManagerState>(() => ({ ..._state, queue: [..._state.queue] }))
 
   useEffect(() => {
     _listeners.add(setState)
     return () => { _listeners.delete(setState) }
   }, [])
 
-  // Avança a fila somente quando não há toast ativo
-  // O setTimeout de 50ms garante que o React renderiza o "null" entre um toast e o próximo
+  // Só avança quando não há nada sendo exibido
   useEffect(() => {
     if (state.current === null && state.queue.length > 0) {
-      const t = setTimeout(() => toastManager.next(), 50)
+      // Pequeno delay para o React processar o unmount do toast anterior
+      const t = setTimeout(() => toastManager.advance(), 80)
       return () => clearTimeout(t)
     }
   }, [state.current, state.queue.length])
 
   function handleDone() {
-    toastManager.next()
+    toastManager.advance()
   }
 
   if (!state.current) return null
@@ -101,10 +112,10 @@ export function ToastManagerProvider() {
   const item = state.current
 
   if (item.kind === 'confirm') {
-    return <ConfirmToast message={item.message} onDone={handleDone} />
+    return <ConfirmToast key={item.message + Date.now()} message={item.message} onDone={handleDone} />
   }
   if (item.kind === 'xp') {
-    return <XPToast xp={item.xp} badge={item.badge} onDone={handleDone} />
+    return <XPToast key={'xp-' + Date.now()} xp={item.xp} badge={item.badge} onDone={handleDone} />
   }
   return null
 }
