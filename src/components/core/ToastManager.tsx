@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export type ToastItem =
   | { kind: 'confirm'; message: string }
@@ -77,21 +77,20 @@ function XPToast({ xp, badge, onDone }: { xp: number; badge?: string | null; onD
 
 export function ToastManagerProvider() {
   const [state, setState] = useState<ToastManagerState>(_state)
-  const processingRef     = useRef(false)
 
   useEffect(() => {
     _listeners.add(setState)
     return () => { _listeners.delete(setState) }
   }, [])
 
-  // Avança a fila quando não há toast ativo
+  // Avança a fila somente quando não há toast ativo
+  // O setTimeout de 50ms garante que o React renderiza o "null" entre um toast e o próximo
   useEffect(() => {
-    if (!state.current && state.queue.length > 0 && !processingRef.current) {
-      processingRef.current = true
-      toastManager.next()
-      processingRef.current = false
+    if (state.current === null && state.queue.length > 0) {
+      const t = setTimeout(() => toastManager.next(), 50)
+      return () => clearTimeout(t)
     }
-  }, [state])
+  }, [state.current, state.queue.length])
 
   function handleDone() {
     toastManager.next()
