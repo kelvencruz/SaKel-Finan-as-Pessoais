@@ -5,10 +5,6 @@ import { createClient } from '@/lib/supabase/client'
 import { awardXP } from '@/lib/gamification'
 import type { Account, Category, CreditCard, Recorrencia, Frequency } from '@/types'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Local types (só o que não pertence ao domínio global)
-// ─────────────────────────────────────────────────────────────────────────────
-
 type TxType = 'income' | 'expense'
 type Toast  = { message: string; type: 'success' | 'error' }
 
@@ -18,10 +14,6 @@ interface DeleteModalState {
   txCount: number
   futureTxCount: number
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 const fmt     = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtDate = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString('pt-BR')
@@ -55,10 +47,6 @@ function nextDueDate(startDate: string, frequency: Frequency): string {
   return d.toISOString().split('T')[0]
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Form state
-// ─────────────────────────────────────────────────────────────────────────────
-
 const emptyForm = {
   type:            'expense' as TxType,
   description:     '',
@@ -73,8 +61,31 @@ const emptyForm = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Page
+// S1-007 — Error state
 // ─────────────────────────────────────────────────────────────────────────────
+function RecorrenciasError({ message, onRetry }: { message?: string; onRetry: () => void }) {
+  return (
+    <div className="min-h-screen p-6 max-w-4xl mx-auto" style={{ background: 'var(--color-bg)' }}>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <a href="/dashboard" className="text-sm hover:underline" style={{ color: 'var(--color-text-muted)' }}>← Dashboard</a>
+          <h1 className="text-xl font-semibold mt-1" style={{ color: 'var(--color-text-primary)' }}>Recorrências</h1>
+        </div>
+      </div>
+      <div className="rounded-2xl p-10 text-center"
+        style={{ background: 'var(--color-surface)', border: '1px dashed #fca5a5' }}>
+        <p className="text-2xl mb-2">⚠️</p>
+        <p className="text-sm font-medium mb-1" style={{ color: 'var(--color-text-primary)' }}>Erro ao carregar recorrências</p>
+        <p className="text-xs mb-5" style={{ color: 'var(--color-text-muted)' }}>
+          {message ?? 'Não foi possível buscar os dados. Verifique sua conexão.'}
+        </p>
+        <button onClick={onRetry} className="text-sm font-medium" style={{ color: 'var(--color-brand)' }}>
+          Tentar novamente
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export default function RecorrenciasPage() {
   const supabase = createClient()
@@ -83,13 +94,17 @@ export default function RecorrenciasPage() {
   const [accounts,     setAccounts]     = useState<Account[]>([])
   const [categories,   setCategories]   = useState<Category[]>([])
   const [creditCards,  setCreditCards]  = useState<CreditCard[]>([])
+
+  // S1-007: três estados explícitos
   const [loading,      setLoading]      = useState(true)
+  const [loadError,    setLoadError]    = useState<string | null>(null)
+
   const [saving,       setSaving]       = useState(false)
   const [toast,        setToast]        = useState<Toast | null>(null)
   const [showModal,    setShowModal]    = useState(false)
   const [editingId,    setEditingId]    = useState<string | null>(null)
   const [form,         setForm]         = useState(emptyForm)
-  const [error,        setError]        = useState<string | null>(null)
+  const [formError,    setFormError]    = useState<string | null>(null)
   const [generatingId, setGeneratingId] = useState<string | null>(null)
   const [deleteModal,  setDeleteModal]  = useState<DeleteModalState>({
     open: false, recorrencia: null, txCount: 0, futureTxCount: 0,
@@ -101,47 +116,56 @@ export default function RecorrenciasPage() {
     setTimeout(() => setToast(null), 3500)
   }
 
+  // S1-007: loadAll com try/catch/finally
   async function loadAll() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { window.location.href = '/auth/login'; return }
+    setLoading(true)
+    setLoadError(null)
 
-    const [{ data: rec }, { data: acc }, { data: cat }, { data: cards }] = await Promise.all([
-      supabase.from('recurrences').select('*').eq('user_id', user.id).order('next_due_date'),
-      supabase.from('accounts').select('id, name, current_balance').eq('user_id', user.id).order('name'),
-      supabase.from('categories').select('id, name, type, icon').eq('user_id', user.id).order('name'),
-      supabase.from('credit_cards').select('id, name, closing_day, due_day').eq('user_id', user.id).eq('is_active', true).order('name'),
-    ])
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { window.location.href = '/auth/login'; return }
 
-    const accList  = (acc   ?? []) as Account[]
-    const catList  = (cat   ?? []) as Category[]
-    const cardList = (cards ?? []) as CreditCard[]
-    const recList  = (rec   ?? []) as Recorrencia[]
+      const [{ data: rec, error: recErr }, { data: acc }, { data: cat }, { data: cards }] = await Promise.all([
+        supabase.from('recurrences').select('*').eq('user_id', user.id).order('next_due_date'),
+        supabase.from('accounts').select('id, name, current_balance').eq('user_id', user.id).order('name'),
+        supabase.from('categories').select('id, name, type, icon').eq('user_id', user.id).order('name'),
+        supabase.from('credit_cards').select('id, name, closing_day, due_day').eq('user_id', user.id).eq('is_active', true).order('name'),
+      ])
 
-    const accMap  = Object.fromEntries(accList.map(a  => [a.id,  a]))
-    const catMap  = Object.fromEntries(catList.map(c  => [c.id,  c]))
-    const cardMap = Object.fromEntries(cardList.map(c => [c.id,  c]))
+      if (recErr) { setLoadError(recErr.message); return }
 
-    setRecorrencias(recList.map(r => ({
-      ...r,
-      account_name:     r.account_id     ? accMap[r.account_id]?.name      : undefined,
-      category_name:    r.category_id    ? catMap[r.category_id]?.name     : undefined,
-      category_icon:    r.category_id    ? catMap[r.category_id]?.icon     : undefined,
-      credit_card_name: r.credit_card_id ? cardMap[r.credit_card_id]?.name : undefined,
-    })))
-    setAccounts(accList)
-    setCategories(catList)
-    setCreditCards(cardList)
-    setLoading(false)
+      const accList  = (acc   ?? []) as Account[]
+      const catList  = (cat   ?? []) as Category[]
+      const cardList = (cards ?? []) as CreditCard[]
+      const recList  = (rec   ?? []) as Recorrencia[]
+
+      const accMap  = Object.fromEntries(accList.map(a  => [a.id, a]))
+      const catMap  = Object.fromEntries(catList.map(c  => [c.id, c]))
+      const cardMap = Object.fromEntries(cardList.map(c => [c.id, c]))
+
+      setRecorrencias(recList.map(r => ({
+        ...r,
+        account_name:     r.account_id     ? accMap[r.account_id]?.name      : undefined,
+        category_name:    r.category_id    ? catMap[r.category_id]?.name     : undefined,
+        category_icon:    r.category_id    ? catMap[r.category_id]?.icon     : undefined,
+        credit_card_name: r.credit_card_id ? cardMap[r.credit_card_id]?.name : undefined,
+      })))
+      setAccounts(accList)
+      setCategories(catList)
+      setCreditCards(cardList)
+    } catch (e: any) {
+      setLoadError(e?.message ?? 'Erro inesperado ao carregar dados.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { loadAll() }, [])
 
-  // ── Modal handlers ──────────────────────────────────────────────────────────
-
   function openCreate() {
     setForm({ ...emptyForm, account_id: accounts[0]?.id ?? '' })
     setEditingId(null)
-    setError(null)
+    setFormError(null)
     setShowModal(true)
   }
 
@@ -159,26 +183,23 @@ export default function RecorrenciasPage() {
       end_date:        r.end_date ?? '',
     })
     setEditingId(r.id)
-    setError(null)
+    setFormError(null)
     setShowModal(true)
   }
 
-  // ── Save ────────────────────────────────────────────────────────────────────
-
   async function handleSave() {
-    setError(null)
+    setFormError(null)
     const amount = parseFloat(String(form.amount).replace(',', '.'))
-    if (!form.description.trim())                          { setError('Descrição é obrigatória.'); return }
-    if (isNaN(amount) || amount <= 0)                      { setError('Valor deve ser maior que zero.'); return }
-    if (!form.use_credit_card && !form.account_id)         { setError('Selecione uma conta.'); return }
-    if (form.use_credit_card  && !form.credit_card_id)     { setError('Selecione um cartão.'); return }
+    if (!form.description.trim())                      { setFormError('Descrição é obrigatória.'); return }
+    if (isNaN(amount) || amount <= 0)                  { setFormError('Valor deve ser maior que zero.'); return }
+    if (!form.use_credit_card && !form.account_id)     { setFormError('Selecione uma conta.'); return }
+    if (form.use_credit_card  && !form.credit_card_id) { setFormError('Selecione um cartão.'); return }
 
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setError('Não autenticado.'); setSaving(false); return }
+    if (!user) { setFormError('Não autenticado.'); setSaving(false); return }
 
     const next = nextDueDate(form.start_date, form.frequency)
-
     const payload = {
       type:           form.type,
       description:    form.description.trim(),
@@ -193,24 +214,18 @@ export default function RecorrenciasPage() {
     }
 
     if (editingId) {
-      // Edição: sem XP (evita farm)
-      const { error: err } = await supabase
-        .from('recurrences').update(payload).eq('id', editingId)
-      if (err) { setError(err.message); setSaving(false); return }
+      const { error: err } = await supabase.from('recurrences').update(payload).eq('id', editingId)
+      if (err) { setFormError(err.message); setSaving(false); return }
       showToast('Recorrência atualizada!')
     } else {
-      // Criação: XP + badge first_recurring (idempotente)
       const { error: err } = await supabase
         .from('recurrences').insert({ ...payload, user_id: user.id, next_due_date: next })
-      if (err) { setError(err.message); setSaving(false); return }
+      if (err) { setFormError(err.message); setSaving(false); return }
 
       try {
         const result = await awardXP(user.id, 'first_recurring', 'first_recurring')
-        if (result.newBadge) {
-          showToast('🔁 Badge desbloqueado: Automatizador! +20 XP')
-        } else {
-          showToast('Recorrência criada! +20 XP 🎉')
-        }
+        if (result.newBadge) showToast('🔁 Badge desbloqueado: Automatizador! +20 XP')
+        else showToast('Recorrência criada! +20 XP 🎉')
       } catch {
         showToast('Recorrência criada!')
       }
@@ -221,24 +236,18 @@ export default function RecorrenciasPage() {
     setSaving(false)
   }
 
-  // ── Toggle active ───────────────────────────────────────────────────────────
-
   async function toggleActive(r: Recorrencia) {
     await supabase.from('recurrences').update({ is_active: !r.is_active }).eq('id', r.id)
     showToast(r.is_active ? 'Recorrência pausada.' : 'Recorrência reativada.')
     await loadAll()
   }
 
-  // ── Delete flow ─────────────────────────────────────────────────────────────
-
   async function handleDeleteClick(r: Recorrencia) {
     const today = new Date().toISOString().split('T')[0]
-
     const [{ count: total }, { count: future }] = await Promise.all([
       supabase.from('transactions').select('*', { count: 'exact', head: true }).eq('recurrence_id', r.id),
       supabase.from('transactions').select('*', { count: 'exact', head: true }).eq('recurrence_id', r.id).gte('date', today),
     ])
-
     setDeleteModal({ open: true, recorrencia: r, txCount: total ?? 0, futureTxCount: future ?? 0 })
   }
 
@@ -265,8 +274,6 @@ export default function RecorrenciasPage() {
     setDeleting(false)
     await loadAll()
   }
-
-  // ── Generate transaction now ────────────────────────────────────────────────
 
   async function generateNow(r: Recorrencia) {
     setGeneratingId(r.id)
@@ -328,7 +335,6 @@ export default function RecorrenciasPage() {
       await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
     }
 
-    // Geração manual conta como transaction_created (sem badge — badge é só no cadastro)
     await awardXP(user.id, 'transaction_created').catch(() => {})
 
     const next = nextDueDate(today, r.frequency)
@@ -339,17 +345,12 @@ export default function RecorrenciasPage() {
     setGeneratingId(null)
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Derived state
-  // ─────────────────────────────────────────────────────────────────────────────
-
   const catsFiltradas = categories.filter(c => c.type === form.type || c.type === 'both')
   const ativas        = recorrencias.filter(r =>  r.is_active)
   const inativas      = recorrencias.filter(r => !r.is_active)
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────────────────────────────────────
+  // S1-007: error state — antes do render principal
+  if (loadError) return <RecorrenciasError message={loadError} onRetry={loadAll} />
 
   return (
     <div className="min-h-screen p-6 max-w-4xl mx-auto" style={{ background: 'var(--color-bg)' }}>
@@ -364,7 +365,6 @@ export default function RecorrenciasPage() {
         </div>
       )}
 
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <a href="/dashboard" className="text-sm hover:underline" style={{ color: 'var(--color-text-muted)' }}>← Dashboard</a>
@@ -380,7 +380,7 @@ export default function RecorrenciasPage() {
         </button>
       </div>
 
-      {/* List */}
+      {/* S1-007: loading → skeleton | empty → empty state */}
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map(i => (
@@ -441,7 +441,7 @@ export default function RecorrenciasPage() {
         </div>
       )}
 
-      {/* ── Modal exclusão ──────────────────────────────────────────────────── */}
+      {/* Modal exclusão */}
       {deleteModal.open && deleteModal.recorrencia && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
@@ -473,7 +473,6 @@ export default function RecorrenciasPage() {
                 <p className="text-sm font-semibold text-gray-800">⏸ Pausar automação</p>
                 <p className="text-xs text-gray-500 mt-0.5">Para de gerar novas transações. Histórico completo preservado.</p>
               </button>
-
               {deleteModal.futureTxCount > 0 && (
                 <button onClick={() => executeDelete('future')} disabled={deleting}
                   className="w-full text-left rounded-xl border-2 border-gray-100 hover:border-orange-200 hover:bg-orange-50 px-4 py-3 transition-colors disabled:opacity-40">
@@ -483,7 +482,6 @@ export default function RecorrenciasPage() {
                   </p>
                 </button>
               )}
-
               <button onClick={() => executeDelete('all')} disabled={deleting}
                 className="w-full text-left rounded-xl border-2 border-gray-100 hover:border-red-200 hover:bg-red-50 px-4 py-3 transition-colors disabled:opacity-40">
                 <p className="text-sm font-semibold text-red-600">🗑️ Excluir tudo</p>
@@ -503,7 +501,7 @@ export default function RecorrenciasPage() {
         </div>
       )}
 
-      {/* ── Modal criar/editar ───────────────────────────────────────────────── */}
+      {/* Modal criar/editar */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto"
@@ -513,7 +511,6 @@ export default function RecorrenciasPage() {
             </h2>
 
             <div className="space-y-4">
-              {/* Tipo */}
               <div>
                 <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Tipo</label>
                 <div className="flex gap-2">
@@ -531,7 +528,6 @@ export default function RecorrenciasPage() {
                 </div>
               </div>
 
-              {/* Descrição */}
               <div>
                 <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Descrição</label>
                 <input type="text" value={form.description}
@@ -541,7 +537,6 @@ export default function RecorrenciasPage() {
                   style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} />
               </div>
 
-              {/* Valor */}
               <div>
                 <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Valor (R$)</label>
                 <input type="text" inputMode="decimal" value={form.amount}
@@ -551,7 +546,6 @@ export default function RecorrenciasPage() {
                   style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} />
               </div>
 
-              {/* Frequência + Data início */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Frequência</label>
@@ -573,7 +567,6 @@ export default function RecorrenciasPage() {
                 </div>
               </div>
 
-              {/* Data fim */}
               <div>
                 <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>
                   Data fim <span style={{ color: 'var(--color-text-muted)' }}>(opcional)</span>
@@ -584,7 +577,6 @@ export default function RecorrenciasPage() {
                   style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} />
               </div>
 
-              {/* Toggle cartão */}
               {form.type === 'expense' && creditCards.length > 0 && (
                 <div className="flex items-center justify-between rounded-lg px-3 py-2.5"
                   style={{ background: '#f5f3ff', border: '1px solid #e9d5ff' }}>
@@ -601,7 +593,6 @@ export default function RecorrenciasPage() {
                 </div>
               )}
 
-              {/* Conta ou Cartão */}
               {form.use_credit_card && form.type === 'expense' ? (
                 <div>
                   <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Cartão</label>
@@ -611,9 +602,6 @@ export default function RecorrenciasPage() {
                     <option value="">Selecione...</option>
                     {creditCards.map(c => <option key={c.id} value={c.id}>💳 {c.name}</option>)}
                   </select>
-                  <p className="text-xs mt-1" style={{ color: '#8b5cf6' }}>
-                    Ao gerar, a transação será lançada na fatura do cartão automaticamente.
-                  </p>
                 </div>
               ) : (
                 <div>
@@ -627,7 +615,6 @@ export default function RecorrenciasPage() {
                 </div>
               )}
 
-              {/* Categoria */}
               <div>
                 <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>
                   Categoria <span style={{ color: 'var(--color-text-muted)' }}>(opcional)</span>
@@ -640,7 +627,7 @@ export default function RecorrenciasPage() {
                 </select>
               </div>
 
-              {error && <p className="text-sm text-red-500">{error}</p>}
+              {formError && <p className="text-sm text-red-500">{formError}</p>}
             </div>
 
             <div className="flex gap-3 mt-6">
@@ -663,7 +650,7 @@ export default function RecorrenciasPage() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RecorrenciaCard
+// RecorrenciaCard — sem alterações
 // ─────────────────────────────────────────────────────────────────────────────
 
 function RecorrenciaCard({
@@ -685,12 +672,10 @@ function RecorrenciaCard({
   return (
     <div className="rounded-xl px-4 py-3 flex items-center gap-4 group transition-colors"
       style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-
       <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
         style={{ background: r.type === 'income' ? '#dcfce7' : '#fee2e2' }}>
         {r.category_icon ?? FREQ_ICONS[r.frequency]}
       </div>
-
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
@@ -722,14 +707,12 @@ function RecorrenciaCard({
           {' · Próxima: '}{fmtDate(r.next_due_date)}
         </p>
       </div>
-
       <div className="text-right shrink-0">
         <p className="text-sm font-semibold"
           style={{ color: r.type === 'income' ? '#16a34a' : '#ef4444' }}>
           {r.type === 'income' ? '+' : '−'} {fmt(r.amount)}
         </p>
       </div>
-
       <div className="opacity-0 group-hover:opacity-100 transition-all flex gap-1 shrink-0">
         <button onClick={() => onGenerate(r)} disabled={generatingId === r.id}
           title="Gerar transação agora"

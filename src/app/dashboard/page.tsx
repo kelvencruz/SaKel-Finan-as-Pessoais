@@ -13,7 +13,7 @@ import {
   Wallet, Lightbulb, Star, Flame, Confetti, Warning,
   Siren, CalendarCheck, ChartBar, ArrowsClockwise,
   Package, CheckCircle, Target, SquaresFour,
-  Eye, EyeSlash,
+  Eye, EyeSlash, ArrowClockwise,
 } from '@phosphor-icons/react'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -318,6 +318,41 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// S1-007 — Estado de erro do dashboard
+// ─────────────────────────────────────────────────────────────────────────────
+
+function DashboardError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="min-h-screen p-6 max-w-5xl mx-auto" style={{ background: 'var(--bg)' }}>
+      <div className="flex items-center justify-between mb-10">
+        <div>
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>Dashboard</h1>
+        </div>
+        <UserMenu />
+      </div>
+      <div className="rounded-2xl p-10 text-center"
+        style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
+        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+          style={{ background: 'var(--danger-light)' }}>
+          <Warning weight="duotone" size={26} style={{ color: 'var(--danger)' }} />
+        </div>
+        <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text)' }}>
+          Erro ao carregar o dashboard
+        </p>
+        <p className="text-xs mb-6 max-w-xs mx-auto" style={{ color: 'var(--text-muted)' }}>{message}</p>
+        <button
+          onClick={onRetry}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white"
+          style={{ background: 'var(--primary)' }}>
+          <ArrowClockwise size={14} weight="bold" />
+          Tentar novamente
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // KalDiz v3
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -463,12 +498,12 @@ function InvestimentoCard({ valor }: { valor: number }) {
             {visivel ? fmt(valor) : '••••••'}
           </p>
           <button onClick={toggle} title={visivel ? 'Ocultar' : 'Mostrar'}
-  className="flex items-center transition-colors" style={{ color: 'var(--primary)' }}>
-  {visivel
-    ? <Eye weight="duotone" size={16} />
-    : <EyeSlash weight="duotone" size={16} />
-  }
-</button>
+            className="flex items-center transition-colors" style={{ color: 'var(--primary)' }}>
+            {visivel
+              ? <Eye weight="duotone" size={16} />
+              : <EyeSlash weight="duotone" size={16} />
+            }
+          </button>
         </div>
         <a href="/dashboard/investimentos" className="text-xs hover:underline" style={{ color: 'var(--primary)' }}>
           Ver investimentos →
@@ -567,6 +602,7 @@ export default function DashboardPage() {
   const [catSlices,           setCatSlices]           = useState<CatSlice[]>([])
   const [invoicesDue,         setInvoicesDue]         = useState<InvoiceDue[]>([])
   const [loading,             setLoading]             = useState(true)
+  const [loadError,           setLoadError]           = useState<string | null>(null)   // S1-007
   const [hasAccounts,         setHasAccounts]         = useState(true)
   const [projecaoItens,       setProjecaoItens]       = useState<ProjecaoItem[]>([])
   const [saldoPrevisto,       setSaldoPrevisto]       = useState(0)
@@ -575,8 +611,12 @@ export default function DashboardPage() {
   const [kalEnabled,          setKalEnabled]          = useState(true)
   const [kalCtx,              setKalCtx]              = useState<KalContext | null>(null)
 
-  useEffect(() => {
-    async function load() {
+  // S1-007 — função nomeada para permitir retry
+  async function load() {
+    setLoadError(null)
+    setLoading(true)
+
+    try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/auth/login'; return }
       setEmail(user.email ?? '')
@@ -596,18 +636,21 @@ export default function DashboardPage() {
         .from('user_preferences').select('kaldiz_enabled').eq('user_id', user.id).single()
       if (prefs) setKalEnabled(prefs.kaldiz_enabled ?? true)
 
-      const { data: acc } = await supabase
+      const { data: acc, error: accErr } = await supabase
         .from('accounts').select('current_balance')
         .eq('user_id', user.id).eq('is_active', true).neq('type', 'credit')
+      if (accErr) throw accErr
+
       const accList = (acc ?? []) as { current_balance: number }[]
-      if (accList.length === 0) { setHasAccounts(false); setLoading(false); return }
+      if (accList.length === 0) { setHasAccounts(false); return }
       setHasAccounts(true)
       const saldo = accList.reduce((s, a) => s + Number(a.current_balance), 0)
       setSaldoContas(saldo)
 
-      const { data: openInv } = await supabase
+      const { data: openInv, error: invErr } = await supabase
         .from('credit_card_invoices').select('total_amount')
         .eq('user_id', user.id).in('status', ['open','overdue'])
+      if (invErr) throw invErr
       const faturas = ((openInv ?? []) as { total_amount: number }[]).reduce((s, i) => s + Number(i.total_amount), 0)
       setTotalFaturas(faturas)
 
@@ -632,10 +675,11 @@ export default function DashboardPage() {
       }))
       setInvoicesDue(invoicesFormatted)
 
-      const { data: txMes } = await supabase
+      const { data: txMes, error: txErr } = await supabase
         .from('transactions').select('type, amount, category_id, description, status')
         .eq('user_id', user.id).gte('date', inicioMes).lte('date', fimMes)
         .in('type', ['income','expense'])
+      if (txErr) throw txErr
       const txArr = (txMes ?? []) as { type: string; amount: number; category_id: string | null; description: string; status: string }[]
       const recMesVal  = txArr.filter(t => t.type === 'income').reduce((s, t)  => s + Number(t.amount), 0)
       const despMesVal = txArr.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
@@ -808,7 +852,6 @@ export default function DashboardPage() {
           gamCtx.xp = r.newXP
         }
 
-        // ── Streak badges ────────────────────────────────────────────────────
         if (gam && gam.streakDays >= 7 && !gamCtx.badges.includes('streak_7')) {
           const r = await awardXP(user.id, 'streak_7', 'streak_7')
           if (r.newBadge && !gamCtx.newBadge) gamCtx.newBadge = r.newBadge
@@ -822,7 +865,6 @@ export default function DashboardPage() {
           if (r.leveledUp) { gamCtx.leveledUp = true; gamCtx.level = r.newLevel }
           gamCtx.xp = r.newXP
         }
-        // ────────────────────────────────────────────────────────────────────
 
         const LEVEL_NAMES: Record<number, string> = {
           1: 'Novato Financeiro', 2: 'Poupador Consistente',
@@ -830,6 +872,7 @@ export default function DashboardPage() {
         }
         gamCtx.levelName = LEVEL_NAMES[gamCtx.level] ?? gamCtx.levelName
       } catch (e) {
+        // gamificação nunca trava o dashboard — swallow silently
         console.error('[dashboard] gamification error:', e)
       }
 
@@ -852,13 +895,20 @@ export default function DashboardPage() {
         ...gamCtx,
       })
 
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao carregar dados financeiros.'
+      setLoadError(msg)
+    } finally {
       setLoading(false)
     }
-    load()
-  }, [])
+  }
+
+  useEffect(() => { load() }, [])
 
   const saldoLiquido = saldoContas - totalFaturas
   const now = new Date()
+
+  // ── Estados de controle ──────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -870,7 +920,14 @@ export default function DashboardPage() {
     )
   }
 
+  // S1-007 — error state com retry
+  if (loadError) {
+    return <DashboardError message={loadError} onRetry={load} />
+  }
+
   if (!hasAccounts) return <EmptyDashboard email={email} />
+
+  // ── Render principal ─────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen p-6 max-w-5xl mx-auto" style={{ background: 'var(--bg)' }}>

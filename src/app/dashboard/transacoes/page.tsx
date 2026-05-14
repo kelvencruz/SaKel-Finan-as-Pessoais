@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+
+// TODO S1-005: mover handleTransactionGamification para useGamification
 import { awardXP, getGamification } from '@/lib/gamification'
 
 type TxType = 'income' | 'expense' | 'transfer'
@@ -40,7 +42,6 @@ interface CreditCard { id: string; name: string; color: string; closing_day: num
 
 type Toast = { message: string; type: 'success' | 'error' }
 
-// Modal de exclusão de transação recorrente
 interface TxDeleteModal {
   open: boolean
   tx: Transaction | null
@@ -116,6 +117,10 @@ function addYears(dateStr: string, years: number): string {
   return d.toISOString().split('T')[0]
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PADRÃO S1-007 — Loading skeleton
+// Replicar para cada página: ajustar número de colunas/linhas conforme o layout
+// ─────────────────────────────────────────────────────────────────────────────
 function SkeletonRow() {
   return (
     <div className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-4 animate-pulse">
@@ -132,6 +137,65 @@ function SkeletonRow() {
   )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PADRÃO S1-007 — Empty state
+// Props: icon, title, description, action (opcional)
+// Uso: <PageEmptyState icon="📭" title="Sem transações" description="..." />
+// ─────────────────────────────────────────────────────────────────────────────
+interface PageEmptyStateProps {
+  icon: string
+  title: string
+  description?: string
+  action?: { label: string; onClick: () => void }
+}
+
+function PageEmptyState({ icon, title, description, action }: PageEmptyStateProps) {
+  return (
+    <div className="bg-white border border-dashed border-gray-200 rounded-xl p-10 text-center">
+      <p className="text-2xl mb-2">{icon}</p>
+      <p className="text-gray-600 text-sm font-medium">{title}</p>
+      {description && <p className="text-gray-400 text-xs mt-1 mb-4">{description}</p>}
+      {action && (
+        <button
+          onClick={action.onClick}
+          className="text-indigo-600 text-sm hover:underline mt-2"
+        >
+          {action.label}
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PADRÃO S1-007 — Error state
+// Uso: <PageErrorState onRetry={loadAll} />
+// ─────────────────────────────────────────────────────────────────────────────
+interface PageErrorStateProps {
+  message?: string
+  onRetry: () => void
+}
+
+function PageErrorState({ message, onRetry }: PageErrorStateProps) {
+  return (
+    <div className="bg-white border border-dashed border-red-100 rounded-xl p-10 text-center">
+      <p className="text-2xl mb-2">⚠️</p>
+      <p className="text-gray-600 text-sm font-medium">Erro ao carregar</p>
+      <p className="text-gray-400 text-xs mt-1 mb-4">
+        {message ?? 'Não foi possível buscar os dados. Verifique sua conexão.'}
+      </p>
+      <button
+        onClick={onRetry}
+        className="text-sm font-medium text-indigo-600 hover:underline"
+      >
+        Tentar novamente
+      </button>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
   return (
     <button
@@ -143,39 +207,30 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
   )
 }
 
-// ── Gamificação: centraliza toda a lógica pós-criação de transação ────────────
+// TODO S1-005: extrair para useGamification().pushXPToast()
 async function handleTransactionGamification(
   userId: string,
-  txCount: number,       // total de transações APÓS a criação (já inclui a nova)
+  txCount: number,
   hasCategoryId: boolean,
 ) {
   try {
     const gam = await getGamification(userId)
     const earned = gam?.badges ?? []
 
-    // 1. Primeira transação
     if (txCount === 1 && !earned.includes('first_transaction')) {
       await awardXP(userId, 'transaction_created', 'first_transaction')
-    }
-    // 2. Marco de 10 transações
-    else if (txCount === 10 && !earned.includes('ten_transactions')) {
+    } else if (txCount === 10 && !earned.includes('ten_transactions')) {
       await awardXP(userId, 'transaction_created', 'ten_transactions')
-    }
-    // 3. Marco de 50 transações
-    else if (txCount === 50 && !earned.includes('fifty_transactions')) {
+    } else if (txCount === 50 && !earned.includes('fifty_transactions')) {
       await awardXP(userId, 'transaction_created', 'fifty_transactions')
-    }
-    // 4. Transação comum (sem badge especial)
-    else {
+    } else {
       await awardXP(userId, 'transaction_created')
     }
 
-    // 5. Bônus por categorizar (idempotente via XP simples — sem badge)
     if (hasCategoryId) {
       await awardXP(userId, 'transaction_categorized')
     }
 
-    // 6. Verificar badges de streak após qualquer ação
     const gamAfter = await getGamification(userId)
     const streakDays = gamAfter?.streakDays ?? 0
     const earnedAfter = gamAfter?.badges ?? []
@@ -189,7 +244,6 @@ async function handleTransactionGamification(
     // Gamificação nunca bloqueia o fluxo principal
   }
 }
-// ─────────────────────────────────────────────────────────────────────────────
 
 export default function TransacoesPage() {
   const supabase = createClient()
@@ -198,7 +252,11 @@ export default function TransacoesPage() {
   const [accounts,     setAccounts]     = useState<Account[]>([])
   const [categories,   setCategories]   = useState<Category[]>([])
   const [creditCards,  setCreditCards]  = useState<CreditCard[]>([])
+
+  // S1-007: três estados explícitos — nunca undefined implícito
   const [loading,      setLoading]      = useState(true)
+  const [loadError,    setLoadError]    = useState<string | null>(null)
+
   const [saving,       setSaving]       = useState(false)
   const [deletingId,   setDeletingId]   = useState<string | null>(null)
   const [toast,        setToast]        = useState<Toast | null>(null)
@@ -212,10 +270,10 @@ export default function TransacoesPage() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   })
 
-  const [showModal,    setShowModal]    = useState(false)
-  const [editingId,    setEditingId]    = useState<string | null>(null)
-  const [form,         setForm]         = useState(emptyForm)
-  const [error,        setError]        = useState<string | null>(null)
+  const [showModal,     setShowModal]     = useState(false)
+  const [editingId,     setEditingId]     = useState<string | null>(null)
+  const [form,          setForm]          = useState(emptyForm)
+  const [formError,     setFormError]     = useState<string | null>(null)
   const [txDeleteModal, setTxDeleteModal] = useState<TxDeleteModal>({ open: false, tx: null })
 
   const monthOptions = useMemo(() => getMonthOptions(), [])
@@ -225,53 +283,69 @@ export default function TransacoesPage() {
     setTimeout(() => setToast(null), 3500)
   }
 
+  // S1-007: loadAll agora captura erros e expõe via loadError
   async function loadAll() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { window.location.href = '/auth/login'; return }
+    setLoading(true)
+    setLoadError(null)
 
-    const [{ data: tx }, { data: acc }, { data: cat }, { data: cards }] = await Promise.all([
-      supabase
-        .from('transactions')
-        .select('id, type, description, amount, date, account_id, destination_account_id, category_id, notes, status, credit_card_id, invoice_id, is_recurring, recurrence_id, recurrence, recurrence_start, recurrence_end, installment_total, installment_current, installment_group')
-        .eq('user_id', user.id)
-        .order('date', { ascending: false })
-        .limit(500),
-      supabase.from('accounts').select('id, name, color, current_balance').eq('user_id', user.id).order('name'),
-      supabase.from('categories').select('id, name, type, icon').eq('user_id', user.id).order('name'),
-      supabase.from('credit_cards').select('id, name, color, closing_day, due_day').eq('user_id', user.id).eq('is_active', true).order('name'),
-    ])
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { window.location.href = '/auth/login'; return }
 
-    const accList  = (acc   ?? []) as Account[]
-    const catList  = (cat   ?? []) as Category[]
-    const cardList = (cards ?? []) as CreditCard[]
-    const txRaw    = (tx    ?? []) as any[]
+      const [{ data: tx, error: txErr }, { data: acc }, { data: cat }, { data: cards }] = await Promise.all([
+        supabase
+          .from('transactions')
+          .select('id, type, description, amount, date, account_id, destination_account_id, category_id, notes, status, credit_card_id, invoice_id, is_recurring, recurrence_id, recurrence, recurrence_start, recurrence_end, installment_total, installment_current, installment_group')
+          .eq('user_id', user.id)
+          .order('date', { ascending: false })
+          .limit(500),
+        supabase.from('accounts').select('id, name, color, current_balance').eq('user_id', user.id).order('name'),
+        supabase.from('categories').select('id, name, type, icon').eq('user_id', user.id).order('name'),
+        supabase.from('credit_cards').select('id, name, color, closing_day, due_day').eq('user_id', user.id).eq('is_active', true).order('name'),
+      ])
 
-    const accMap  = Object.fromEntries(accList.map(a  => [a.id, a]))
-    const catMap  = Object.fromEntries(catList.map(c  => [c.id, c]))
-    const cardMap = Object.fromEntries(cardList.map(c => [c.id, c]))
+      // S1-007: propaga erro do fetch principal para o estado de erro
+      if (txErr) {
+        setLoadError(txErr.message)
+        return
+      }
 
-    setTransactions(txRaw.map(t => ({
-      ...t,
-      type: t.type as TxType,
-      account_name:             accMap[t.account_id]?.name ?? '-',
-      destination_account_name: t.destination_account_id ? (accMap[t.destination_account_id]?.name ?? '-') : undefined,
-      category_name:            t.category_id    ? catMap[t.category_id]?.name    : undefined,
-      category_icon:            t.category_id    ? catMap[t.category_id]?.icon    : undefined,
-      credit_card_name:         t.credit_card_id ? cardMap[t.credit_card_id]?.name : undefined,
-    })))
-    setAccounts(accList)
-    setCategories(catList)
-    setCreditCards(cardList)
-    setLoading(false)
+      const accList  = (acc   ?? []) as Account[]
+      const catList  = (cat   ?? []) as Category[]
+      const cardList = (cards ?? []) as CreditCard[]
+      const txRaw    = (tx    ?? []) as any[]
+
+      const accMap  = Object.fromEntries(accList.map(a  => [a.id, a]))
+      const catMap  = Object.fromEntries(catList.map(c  => [c.id, c]))
+      const cardMap = Object.fromEntries(cardList.map(c => [c.id, c]))
+
+      setTransactions(txRaw.map(t => ({
+        ...t,
+        type: t.type as TxType,
+        account_name:             accMap[t.account_id]?.name ?? '-',
+        destination_account_name: t.destination_account_id ? (accMap[t.destination_account_id]?.name ?? '-') : undefined,
+        category_name:            t.category_id    ? catMap[t.category_id]?.name    : undefined,
+        category_icon:            t.category_id    ? catMap[t.category_id]?.icon    : undefined,
+        credit_card_name:         t.credit_card_id ? cardMap[t.credit_card_id]?.name : undefined,
+      })))
+      setAccounts(accList)
+      setCategories(catList)
+      setCreditCards(cardList)
+    } catch (e: any) {
+      // S1-007: catch para erros de rede ou exceções inesperadas
+      setLoadError(e?.message ?? 'Erro inesperado ao carregar dados.')
+    } finally {
+      setLoading(false)
+    }
   }
 
- useEffect(() => {
-  loadAll()
-  
-  const handler = () => loadAll()
-  window.addEventListener('transacao-criada', handler)
-  return () => window.removeEventListener('transacao-criada', handler)
-}, [])
+  useEffect(() => {
+    loadAll()
+
+    const handler = () => loadAll()
+    window.addEventListener('transacao-criada', handler)
+    return () => window.removeEventListener('transacao-criada', handler)
+  }, [])
 
   function openEdit(tx: Transaction) {
     setForm({
@@ -293,7 +367,7 @@ export default function TransacoesPage() {
       installment_total:      String(tx.installment_total ?? '2'),
     })
     setEditingId(tx.id)
-    setError(null)
+    setFormError(null)
     setShowModal(true)
   }
 
@@ -332,27 +406,27 @@ export default function TransacoesPage() {
   }
 
   async function handleSave() {
-    setError(null)
+    setFormError(null)
     const amount = parseFloat(String(form.amount).replace(',', '.'))
-    if (!form.description.trim())     { setError('Descricao e obrigatoria.'); return }
-    if (isNaN(amount) || amount <= 0) { setError('Valor deve ser maior que zero.'); return }
+    if (!form.description.trim())     { setFormError('Descricao e obrigatoria.'); return }
+    if (isNaN(amount) || amount <= 0) { setFormError('Valor deve ser maior que zero.'); return }
 
     if (form.use_credit_card && form.type === 'expense') {
-      if (!form.credit_card_id) { setError('Selecione um cartao.'); return }
+      if (!form.credit_card_id) { setFormError('Selecione um cartao.'); return }
     } else {
-      if (!form.account_id) { setError('Selecione uma conta.'); return }
-      if (form.type === 'transfer' && !form.destination_account_id) { setError('Selecione a conta de destino.'); return }
-      if (form.type === 'transfer' && form.account_id === form.destination_account_id) { setError('Contas devem ser diferentes.'); return }
+      if (!form.account_id) { setFormError('Selecione uma conta.'); return }
+      if (form.type === 'transfer' && !form.destination_account_id) { setFormError('Selecione a conta de destino.'); return }
+      if (form.type === 'transfer' && form.account_id === form.destination_account_id) { setFormError('Contas devem ser diferentes.'); return }
     }
 
     if (form.is_installment && form.type !== 'transfer') {
       const total = parseInt(form.installment_total)
-      if (isNaN(total) || total < 2 || total > 48) { setError('Parcelas: entre 2 e 48.'); return }
+      if (isNaN(total) || total < 2 || total > 48) { setFormError('Parcelas: entre 2 e 48.'); return }
     }
 
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setError('Nao autenticado.'); setSaving(false); return }
+    if (!user) { setFormError('Nao autenticado.'); setSaving(false); return }
 
     // ── PARCELAMENTO ──────────────────────────────────────────
     if (form.is_installment && !editingId && form.type !== 'transfer') {
@@ -391,23 +465,16 @@ export default function TransacoesPage() {
       }
 
       const { error: err } = await supabase.from('transactions').insert(rows)
-      if (err) { setError(err.message); setSaving(false); return }
+      if (err) { setFormError(err.message); setSaving(false); return }
 
       const invoiceIds = [...new Set(rows.map(r => r.invoice_id).filter(Boolean))]
       for (const iid of invoiceIds) { if (iid) await updateInvoiceTotal(iid) }
 
-      // ── Gamificação: parcelamento ──────────────────────────
-      // Conta total de transações após inserção para checar marcos
       const { count: txCount } = await supabase
         .from('transactions')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', user.id)
-      await handleTransactionGamification(
-        user.id,
-        txCount ?? 0,
-        !!form.category_id,
-      )
-      // ──────────────────────────────────────────────────────
+      await handleTransactionGamification(user.id, txCount ?? 0, !!form.category_id)
 
       showToast(`${total} parcelas criadas!`)
       await loadAll()
@@ -452,7 +519,7 @@ export default function TransacoesPage() {
         .single()
 
       if (recErr || !recData) {
-        setError(recErr?.message ?? 'Erro ao criar recorrencia.')
+        setFormError(recErr?.message ?? 'Erro ao criar recorrencia.')
         setSaving(false)
         return
       }
@@ -480,22 +547,14 @@ export default function TransacoesPage() {
         recurrence_id:  recData.id,
       })
 
-      if (txErr) { setError(txErr.message); setSaving(false); return }
+      if (txErr) { setFormError(txErr.message); setSaving(false); return }
       if (invoiceId) await updateInvoiceTotal(invoiceId)
 
-      // ── Gamificação: recorrência criada via transações ─────
-      // XP de recorrência fica em recorrencias/page.tsx.
-      // Aqui contabilizamos apenas o lançamento inicial como transação.
       const { count: txCount } = await supabase
         .from('transactions')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', user.id)
-      await handleTransactionGamification(
-        user.id,
-        txCount ?? 0,
-        !!form.category_id,
-      )
-      // ──────────────────────────────────────────────────────
+      await handleTransactionGamification(user.id, txCount ?? 0, !!form.category_id)
 
       showToast('Recorrencia criada!')
       await loadAll()
@@ -530,26 +589,20 @@ export default function TransacoesPage() {
 
     if (editingId) {
       const { error: err } = await supabase.from('transactions').update(payload).eq('id', editingId)
-      if (err) { setError(err.message); setSaving(false); return }
+      if (err) { setFormError(err.message); setSaving(false); return }
       if (invoiceId) await updateInvoiceTotal(invoiceId)
       // Edição não concede XP — evita farm infinito
       showToast('Transacao atualizada!')
     } else {
       const { error: err } = await supabase.from('transactions').insert({ ...payload, user_id: user.id })
-      if (err) { setError(err.message); setSaving(false); return }
+      if (err) { setFormError(err.message); setSaving(false); return }
       if (invoiceId) await updateInvoiceTotal(invoiceId)
 
-      // ── Gamificação: nova transação comum ─────────────────
       const { count: txCount } = await supabase
         .from('transactions')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', user.id)
-      await handleTransactionGamification(
-        user.id,
-        txCount ?? 0,
-        !!form.category_id,
-      )
-      // ──────────────────────────────────────────────────────
+      await handleTransactionGamification(user.id, txCount ?? 0, !!form.category_id)
 
       showToast('Transacao criada!')
     }
@@ -559,7 +612,6 @@ export default function TransacoesPage() {
     setSaving(false)
   }
 
-  // ── Clique no lixo da transação ────────────────────────────────────────────
   function handleDeleteClick(tx: Transaction) {
     if (tx.is_recurring && tx.recurrence_id) {
       setTxDeleteModal({ open: true, tx })
@@ -632,6 +684,99 @@ export default function TransacoesPage() {
   const amountPrefix = (type: TxType) => type === 'income' ? '+' : type === 'expense' ? '-' : ''
   const catsFiltradas = categories.filter(c => form.type !== 'transfer' && (c.type === form.type || c.type === 'both'))
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // S1-007: lógica de renderização dos três estados — isolada e clara
+  // loading → skeleton | error → PageErrorState | vazio → PageEmptyState
+  // ─────────────────────────────────────────────────────────────────────────
+  function renderContent() {
+    if (loading) {
+      return (
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}
+        </div>
+      )
+    }
+
+    if (loadError) {
+      return <PageErrorState message={loadError} onRetry={loadAll} />
+    }
+
+    if (filtered.length === 0) {
+      if (transactions.length === 0) {
+        return (
+          <PageEmptyState
+            icon="📭"
+            title="Nenhuma transacao ainda"
+            description="Registre sua primeira receita ou despesa para comecar."
+          />
+        )
+      }
+      return (
+        <PageEmptyState
+          icon="🔍"
+          title="Nenhum resultado"
+          action={{ label: 'Limpar filtros', onClick: clearFilters }}
+        />
+      )
+    }
+
+    return (
+      <div className="space-y-2">
+        <p className="text-xs text-gray-400 mb-2">
+          {filtered.length} transacao{filtered.length !== 1 ? 'oes' : ''}
+        </p>
+        {filtered.map(tx => {
+          const statusInfo = tx.status ? STATUS_LABELS[tx.status] : null
+          return (
+            <div key={tx.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-4 group hover:border-gray-200 transition-colors">
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+                tx.type === 'income' ? 'bg-green-50 text-green-600' : tx.type === 'expense' ? 'bg-red-50 text-red-500' : 'bg-indigo-50 text-indigo-600'
+              }`}>
+                {tx.category_icon ?? (tx.type === 'income' ? '↑' : tx.type === 'expense' ? '↓' : '⇄')}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-medium text-gray-800 truncate">{tx.description}</p>
+                  {tx.is_recurring && tx.recurrence_id && (
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 shrink-0">
+                      🔁 Recorrente
+                    </span>
+                  )}
+                  {tx.installment_total && tx.installment_current && (
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600 shrink-0">
+                      {tx.installment_current}/{tx.installment_total}x
+                    </span>
+                  )}
+                  {statusInfo && tx.status !== 'paid' && (
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${statusInfo.className}`}>
+                      {statusInfo.label}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 mt-0.5 truncate">
+                  {tx.credit_card_name ? `💳 ${tx.credit_card_name}` : tx.account_name}
+                  {tx.type === 'transfer' && tx.destination_account_name ? ` → ${tx.destination_account_name}` : ''}
+                  {tx.category_name ? ` · ${tx.category_name}` : ''}
+                </p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className={`text-sm font-semibold ${amountColor(tx.type)}`}>{amountPrefix(tx.type)} {fmt(tx.amount)}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{fmtDate(tx.date)}</p>
+              </div>
+              <div className="opacity-0 group-hover:opacity-100 transition-all flex gap-1 shrink-0">
+                <button onClick={() => openEdit(tx)} className="text-gray-300 hover:text-indigo-500 text-sm px-1.5 py-1 rounded hover:bg-indigo-50 transition-colors" title="Editar">✏️</button>
+                <button onClick={() => handleDeleteClick(tx)} disabled={deletingId === tx.id}
+                  className="text-gray-300 hover:text-red-400 text-sm px-1.5 py-1 rounded hover:bg-red-50 transition-colors disabled:opacity-30" title="Excluir">
+                  {deletingId === tx.id ? '…' : '🗑️'}
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-6 max-w-4xl mx-auto">
 
@@ -643,12 +788,12 @@ export default function TransacoesPage() {
         </div>
       )}
 
-    <div className="flex items-center justify-between mb-6">
-  <div>
-    <a href="/dashboard" className="text-sm text-gray-400 hover:text-gray-600">Dashboard</a>
-    <h1 className="text-xl font-semibold mt-1">Transacoes</h1>
-  </div>
-</div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <a href="/dashboard" className="text-sm text-gray-400 hover:text-gray-600">Dashboard</a>
+          <h1 className="text-xl font-semibold mt-1">Transacoes</h1>
+        </div>
+      </div>
 
       {/* Filtros */}
       <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 space-y-3">
@@ -693,7 +838,8 @@ export default function TransacoesPage() {
         </div>
       </div>
 
-      {!loading && filtered.length > 0 && (
+      {/* Summary cards — só aparece quando há dados */}
+      {!loading && !loadError && filtered.length > 0 && (
         <div className="grid grid-cols-3 gap-3 mb-4">
           <div className="bg-white border border-gray-100 rounded-xl px-4 py-3">
             <p className="text-xs text-gray-400">Receitas</p>
@@ -710,77 +856,10 @@ export default function TransacoesPage() {
         </div>
       )}
 
-      {loading ? (
-        <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}</div>
-      ) : filtered.length === 0 ? (
-        <div className="bg-white border border-dashed border-gray-200 rounded-xl p-10 text-center">
-          {transactions.length === 0 ? (
-            <>
-              <p className="text-2xl mb-2">📭</p>
-              <p className="text-gray-600 text-sm font-medium">Nenhuma transacao ainda</p>
-              <p className="text-gray-400 text-xs mt-1 mb-4">Registre sua primeira receita ou despesa para comecar.</p>
-                          </>
-          ) : (
-            <>
-              <p className="text-2xl mb-2">🔍</p>
-              <p className="text-gray-600 text-sm font-medium">Nenhum resultado</p>
-              <button onClick={clearFilters} className="text-indigo-600 text-sm hover:underline mt-2">Limpar filtros</button>
-            </>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-xs text-gray-400 mb-2">{filtered.length} transacao{filtered.length !== 1 ? 'oes' : ''}</p>
-          {filtered.map(tx => {
-            const statusInfo = tx.status ? STATUS_LABELS[tx.status] : null
-            return (
-              <div key={tx.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-4 group hover:border-gray-200 transition-colors">
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
-                  tx.type === 'income' ? 'bg-green-50 text-green-600' : tx.type === 'expense' ? 'bg-red-50 text-red-500' : 'bg-indigo-50 text-indigo-600'
-                }`}>
-                  {tx.category_icon ?? (tx.type === 'income' ? '↑' : tx.type === 'expense' ? '↓' : '⇄')}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-medium text-gray-800 truncate">{tx.description}</p>
-                    {tx.is_recurring && tx.recurrence_id && (
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 shrink-0">
-                        🔁 Recorrente
-                      </span>
-                    )}
-                    {tx.installment_total && tx.installment_current && (
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600 shrink-0">
-                        {tx.installment_current}/{tx.installment_total}x
-                      </span>
-                    )}
-                    {statusInfo && tx.status !== 'paid' && (
-                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${statusInfo.className}`}>{statusInfo.label}</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-400 mt-0.5 truncate">
-                    {tx.credit_card_name ? `💳 ${tx.credit_card_name}` : tx.account_name}
-                    {tx.type === 'transfer' && tx.destination_account_name ? ` → ${tx.destination_account_name}` : ''}
-                    {tx.category_name ? ` · ${tx.category_name}` : ''}
-                  </p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className={`text-sm font-semibold ${amountColor(tx.type)}`}>{amountPrefix(tx.type)} {fmt(tx.amount)}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{fmtDate(tx.date)}</p>
-                </div>
-                <div className="opacity-0 group-hover:opacity-100 transition-all flex gap-1 shrink-0">
-                  <button onClick={() => openEdit(tx)} className="text-gray-300 hover:text-indigo-500 text-sm px-1.5 py-1 rounded hover:bg-indigo-50 transition-colors" title="Editar">✏️</button>
-                  <button onClick={() => handleDeleteClick(tx)} disabled={deletingId === tx.id}
-                    className="text-gray-300 hover:text-red-400 text-sm px-1.5 py-1 rounded hover:bg-red-50 transition-colors disabled:opacity-30" title="Excluir">
-                    {deletingId === tx.id ? '…' : '🗑️'}
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      {/* S1-007: ponto único de decisão de render */}
+      {renderContent()}
 
-      {/* ── Modal exclusão transação recorrente ───────────────────────────── */}
+      {/* Modal exclusão transação recorrente */}
       {txDeleteModal.open && txDeleteModal.tx && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
@@ -794,35 +873,25 @@ export default function TransacoesPage() {
                 </p>
               </div>
             </div>
-
             <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4 text-xs text-blue-800">
               <p className="font-semibold mb-1">⚠️ Este lançamento faz parte de uma recorrência ativa.</p>
               <p>Excluir apenas este lançamento não afeta os demais nem a automação futura.</p>
               <p className="mt-1">Para gerenciar a recorrência completa, acesse <strong>Recorrências</strong>.</p>
             </div>
-
             <div className="space-y-2 mb-5">
-              <button
-                onClick={() => executeTxDelete('single')}
-                className="w-full text-left rounded-xl border-2 border-gray-100 hover:border-orange-200 hover:bg-orange-50 px-4 py-3 transition-colors"
-              >
+              <button onClick={() => executeTxDelete('single')}
+                className="w-full text-left rounded-xl border-2 border-gray-100 hover:border-orange-200 hover:bg-orange-50 px-4 py-3 transition-colors">
                 <p className="text-sm font-semibold text-gray-800">🗑️ Excluir só este lançamento</p>
                 <p className="text-xs text-gray-500 mt-0.5">Remove {fmtDate(txDeleteModal.tx.date)}. Recorrência continua gerando normalmente.</p>
               </button>
-
-              <button
-                onClick={() => executeTxDelete('all')}
-                className="w-full text-left rounded-xl border-2 border-gray-100 hover:border-red-200 hover:bg-red-50 px-4 py-3 transition-colors"
-              >
+              <button onClick={() => executeTxDelete('all')}
+                className="w-full text-left rounded-xl border-2 border-gray-100 hover:border-red-200 hover:bg-red-50 px-4 py-3 transition-colors">
                 <p className="text-sm font-semibold text-red-600">⏸ Excluir e pausar recorrência</p>
                 <p className="text-xs text-gray-500 mt-0.5">Remove este lançamento e para de gerar novos. Histórico passado preservado.</p>
               </button>
             </div>
-
-            <button
-              onClick={() => setTxDeleteModal({ open: false, tx: null })}
-              className="w-full border border-gray-200 text-gray-500 rounded-lg py-2 text-sm hover:bg-gray-50 transition-colors"
-            >
+            <button onClick={() => setTxDeleteModal({ open: false, tx: null })}
+              className="w-full border border-gray-200 text-gray-500 rounded-lg py-2 text-sm hover:bg-gray-50 transition-colors">
               Cancelar
             </button>
           </div>
@@ -834,7 +903,6 @@ export default function TransacoesPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-semibold mb-5">{editingId ? 'Editar Transacao' : 'Nova Transacao'}</h2>
-
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Tipo</label>
@@ -858,10 +926,7 @@ export default function TransacoesPage() {
                     <span className="text-base">💳</span>
                     <span className="text-sm text-purple-700 font-medium">Pagar com cartao de credito</span>
                   </div>
-                  <Toggle
-                    checked={form.use_credit_card}
-                    onChange={() => setForm({ ...form, use_credit_card: !form.use_credit_card, credit_card_id: creditCards[0]?.id ?? '' })}
-                  />
+                  <Toggle checked={form.use_credit_card} onChange={() => setForm({ ...form, use_credit_card: !form.use_credit_card, credit_card_id: creditCards[0]?.id ?? '' })} />
                 </div>
               )}
 
@@ -1008,7 +1073,7 @@ export default function TransacoesPage() {
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none" />
               </div>
 
-              {error && <p className="text-sm text-red-500">{error}</p>}
+              {formError && <p className="text-sm text-red-500">{formError}</p>}
             </div>
 
             <div className="flex gap-3 mt-6">

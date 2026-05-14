@@ -9,6 +9,11 @@ import {
   ArrowRight, GameController,
 } from '@phosphor-icons/react'
 
+import {
+  PencilSimple, Tag, Bank, ArrowsClockwise,
+  ChartLine, TrendUp, Star, CalendarCheck, Target,
+} from '@phosphor-icons/react'
+
 // ─── Badge Icon Component ────────────────────────────────────────────────────
 
 function BadgeIcon({
@@ -74,11 +79,6 @@ function LevelIcon({
 
 // ─── XP Actions ──────────────────────────────────────────────────────────────
 
-import {
-  PencilSimple, Tag, Bank, ArrowsClockwise,
-  ChartLine, TrendUp, Star, CalendarCheck, Target,
-} from '@phosphor-icons/react'
-
 const XP_ACTIONS_DISPLAY = [
   { action: 'Registrar uma transação',      xp: '+10 XP',  icon: PencilSimple,    color: 'var(--primary)' },
   { action: 'Categorizar uma transação',    xp: '+5 XP',   icon: Tag,             color: 'var(--primary)' },
@@ -93,28 +93,82 @@ const XP_ACTIONS_DISPLAY = [
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
+// S1-007 — Loading skeleton
+// ─────────────────────────────────────────────────────────────────────────────
+function ConquistasSkeleton() {
+  return (
+    <div className="min-h-screen p-6 max-w-4xl mx-auto space-y-4" style={{ background: 'var(--bg)' }}>
+      <div className="h-6 w-32 rounded-lg skeleton mb-6" />
+      <div className="h-48 rounded-2xl skeleton" />
+      <div className="h-64 rounded-xl skeleton" />
+      <div className="h-48 rounded-xl skeleton" />
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S1-007 — Error state
+// ─────────────────────────────────────────────────────────────────────────────
+function ConquistasError({ message, onRetry }: { message?: string; onRetry: () => void }) {
+  return (
+    <div className="min-h-screen p-6 max-w-4xl mx-auto" style={{ background: 'var(--bg)' }}>
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>Conquistas</h1>
+        <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Sua jornada financeira com o Kal</p>
+      </div>
+      <div className="card p-10 text-center">
+        <p className="text-2xl mb-2">⚠️</p>
+        <p className="text-sm font-medium mb-1" style={{ color: 'var(--text)' }}>Erro ao carregar conquistas</p>
+        <p className="text-xs mb-5" style={{ color: 'var(--text-muted)' }}>
+          {message ?? 'Não foi possível buscar os dados. Verifique sua conexão.'}
+        </p>
+        <button
+          onClick={onRetry}
+          className="text-sm font-medium"
+          style={{ color: 'var(--primary)' }}
+        >
+          Tentar novamente
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ConquistasPage() {
   const supabase = createClient()
+
   const [loading,      setLoading]      = useState(true)
+  const [loadError,    setLoadError]    = useState<string | null>(null)   // S1-007
   const [enabled,      setEnabled]      = useState(true)
   const [hasData,      setHasData]      = useState(false)
   const [xp,           setXp]           = useState(0)
   const [streakDays,   setStreakDays]   = useState(0)
   const [earnedBadges, setEarnedBadges] = useState<string[]>([])
 
-  useEffect(() => {
-    async function load() {
+  async function load() {
+    setLoading(true)
+    setLoadError(null)
+
+    try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/auth/login'; return }
 
-      const { data: prefs } = await supabase
+      const { data: prefs, error: prefsErr } = await supabase
         .from('user_preferences')
         .select('gamification_enabled')
         .eq('user_id', user.id)
         .single()
+
+      // S1-007: erro de rede/Supabase exposto — PGRST116 (row not found) é ok, não é erro
+      if (prefsErr && prefsErr.code !== 'PGRST116') {
+        setLoadError(prefsErr.message)
+        return
+      }
+
       setEnabled(prefs?.gamification_enabled ?? true)
 
       const gam = await getGamification(user.id)
@@ -124,21 +178,21 @@ export default function ConquistasPage() {
         setStreakDays(gam.streakDays)
         setEarnedBadges(gam.badges)
       }
+    } catch (e: any) {
+      // S1-007: catch para erros de rede ou exceções inesperadas
+      setLoadError(e?.message ?? 'Erro inesperado ao carregar dados.')
+    } finally {
       setLoading(false)
     }
-    load()
-  }, [])
-
-  // ── Loading ──────────────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div className="min-h-screen p-6 max-w-4xl mx-auto space-y-4" style={{ background: 'var(--bg)' }}>
-        {[1, 2, 3].map(i => (
-          <div key={i} className="h-24 rounded-xl skeleton" />
-        ))}
-      </div>
-    )
   }
+
+  useEffect(() => { load() }, [])
+
+  // ── S1-007: loading ───────────────────────────────────────────────────────
+  if (loading) return <ConquistasSkeleton />
+
+  // ── S1-007: error ─────────────────────────────────────────────────────────
+  if (loadError) return <ConquistasError message={loadError} onRetry={load} />
 
   // ── Gamificação desativada ────────────────────────────────────────────────
   if (!enabled) {
@@ -173,7 +227,7 @@ export default function ConquistasPage() {
     )
   }
 
-  // ── Sem dados ─────────────────────────────────────────────────────────────
+  // ── S1-007: empty (sem dados de gamificação) ──────────────────────────────
   if (!hasData) {
     return (
       <div className="min-h-screen p-6 max-w-4xl mx-auto" style={{ background: 'var(--bg)' }}>
@@ -211,13 +265,12 @@ export default function ConquistasPage() {
   return (
     <div className="min-h-screen p-4 sm:p-6 max-w-4xl mx-auto" style={{ background: 'var(--bg)' }}>
 
-      {/* Header */}
       <div className="mb-6">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>Conquistas</h1>
         <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Sua jornada financeira com o Kal</p>
       </div>
 
-      {/* Card de nível — gradiente brand */}
+      {/* Card de nível */}
       <div
         className="rounded-2xl p-6 mb-6 text-white"
         style={{
@@ -226,7 +279,6 @@ export default function ConquistasPage() {
         }}
       >
         <div className="flex items-center gap-4 mb-4">
-          {/* Avatar Kal */}
           <div className="w-16 h-16 shrink-0">
             <img src={kalAvatar} alt="Kal" className="w-full h-full object-contain drop-shadow-lg" />
           </div>
@@ -244,7 +296,6 @@ export default function ConquistasPage() {
           </div>
         </div>
 
-        {/* Barra XP */}
         <div className="mb-2">
           <div className="flex justify-between text-xs mb-1" style={{ opacity: 0.7 }}>
             <span>{levelInfo.minXP.toLocaleString('pt-BR')} XP</span>
@@ -263,7 +314,6 @@ export default function ConquistasPage() {
           </p>
         )}
 
-        {/* Stats */}
         <div
           className="grid grid-cols-3 gap-3 mt-4 pt-4"
           style={{ borderTop: '1px solid rgba(255,255,255,0.2)' }}
@@ -349,7 +399,6 @@ export default function ConquistasPage() {
           <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{earnedCount} de {totalBadges}</span>
         </div>
 
-        {/* Barra de progresso badges */}
         <div className="w-full rounded-full h-2 mb-4" style={{ background: 'var(--border)' }}>
           <div
             className="rounded-full h-2 transition-all duration-700"

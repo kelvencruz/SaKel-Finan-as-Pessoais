@@ -25,10 +25,7 @@ interface Invoice {
   paid_account_id: string | null
 }
 
-interface Account {
-  id: string
-  name: string
-}
+interface Account { id: string; name: string }
 
 interface InvoiceTransaction {
   id: string
@@ -39,12 +36,10 @@ interface InvoiceTransaction {
   category?: { name: string; icon: string } | null
 }
 
-// Estado financeiro consolidado — nunca split entre dois useState
 interface InvoiceState {
   status: 'idle' | 'loading' | 'loaded' | 'empty'
   invoice: Invoice | null
   transactions: InvoiceTransaction[]
-  // total calculado das transações — fonte única de verdade para o display
   computedTotal: number
 }
 
@@ -72,43 +67,80 @@ const STATUS_COLORS: Record<string, string> = {
 const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// S1-007 — Loading skeleton (página inteira)
+// ─────────────────────────────────────────────────────────────────────────────
+function FaturasSkeleton() {
+  return (
+    <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto space-y-4">
+      <div className="h-8 w-24 bg-gray-100 rounded-lg animate-pulse" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="space-y-4">
+          <div className="h-40 bg-white border border-gray-100 rounded-xl animate-pulse" />
+          <div className="h-24 bg-white border border-gray-100 rounded-xl animate-pulse" />
+        </div>
+        <div className="lg:col-span-2 space-y-4">
+          <div className="h-36 bg-gray-200 rounded-xl animate-pulse" />
+          <div className="h-48 bg-white border border-gray-100 rounded-xl animate-pulse" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S1-007 — Error state
+// ─────────────────────────────────────────────────────────────────────────────
+function FaturasError({ message, onRetry }: { message?: string; onRetry: () => void }) {
+  return (
+    <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <a href="/dashboard" className="text-sm text-gray-400 hover:text-gray-600">← Dashboard</a>
+          <h1 className="text-xl font-semibold mt-1">Faturas</h1>
+        </div>
+      </div>
+      <div className="bg-white border border-dashed border-red-100 rounded-xl p-10 text-center">
+        <p className="text-2xl mb-2">⚠️</p>
+        <p className="text-sm font-medium text-gray-600 mb-1">Erro ao carregar faturas</p>
+        <p className="text-xs text-gray-400 mb-5">
+          {message ?? 'Não foi possível buscar os dados. Verifique sua conexão.'}
+        </p>
+        <button onClick={onRetry} className="text-sm font-medium text-indigo-600 hover:underline">
+          Tentar novamente
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function FaturasPage() {
   const supabase = createClient()
 
-  // ── estado de UI (não financeiro) ────────────────────────────────────────
   const [cards,        setCards]        = useState<CreditCard[]>([])
   const [accounts,     setAccounts]     = useState<Account[]>([])
   const [selectedCard, setSelectedCard] = useState<CreditCard | null>(null)
   const [history,      setHistory]      = useState<Invoice[]>([])
   const [viewMonth,    setViewMonth]    = useState(() => new Date().getMonth() + 1)
   const [viewYear,     setViewYear]     = useState(() => new Date().getFullYear())
-  const [pageLoading,  setPageLoading]  = useState(true)
 
-  // ── estado financeiro consolidado — um único objeto atômico ─────────────
+  // S1-007: três estados explícitos
+  const [pageLoading,  setPageLoading]  = useState(true)
+  const [loadError,    setLoadError]    = useState<string | null>(null)
+
   const [invoiceState, setInvoiceState] = useState<InvoiceState>(INVOICE_IDLE)
 
-  // ── estado do modal de pagamento ─────────────────────────────────────────
   const [showPayModal, setShowPayModal] = useState(false)
   const [payAccountId, setPayAccountId] = useState('')
   const [paying,       setPaying]       = useState(false)
   const [payError,     setPayError]     = useState<string | null>(null)
 
-  // ref para cancelar carregamentos concorrentes (evita race condition)
   const loadSeq = useRef(0)
 
-  // ── carrega invoice + transações de forma atômica ────────────────────────
-  // Nunca exibe invoice sem as transações já disponíveis
-  const loadInvoicePeriod = useCallback(async (
-    cardId: string,
-    month: number,
-    year: number,
-  ) => {
+  const loadInvoicePeriod = useCallback(async (cardId: string, month: number, year: number) => {
     const seq = ++loadSeq.current
-
-    // Entra em loading — mas mantém dados anteriores para evitar flash vazio
     setInvoiceState(prev => ({ ...prev, status: 'loading' }))
 
-    // 1. Busca a fatura do período
     const { data: invData } = await supabase
       .from('credit_card_invoices')
       .select('*')
@@ -119,7 +151,6 @@ export default function FaturasPage() {
       .order('total_amount', { ascending: false })
       .maybeSingle()
 
-    // Descarta se outra chamada mais recente já foi iniciada
     if (seq !== loadSeq.current) return
 
     if (!invData) {
@@ -127,7 +158,6 @@ export default function FaturasPage() {
       return
     }
 
-    // 2. Busca transações da mesma fatura em paralelo com dados já confirmados
     const { data: txData } = await supabase
       .from('transactions')
       .select('id, description, amount, date, status, category:categories(name, icon)')
@@ -136,24 +166,20 @@ export default function FaturasPage() {
 
     if (seq !== loadSeq.current) return
 
-    // Supabase retorna category como array em joins — normaliza para objeto único
     const transactions: InvoiceTransaction[] = (txData ?? []).map((tx: any) => ({
       ...tx,
       category: Array.isArray(tx.category) ? (tx.category[0] ?? null) : tx.category,
     }))
     const computedTotal = transactions.reduce((s, t) => s + Number(t.amount), 0)
 
-    // 3. Comita tudo de uma vez — nunca estado parcial
     setInvoiceState({
       status: 'loaded',
       invoice: invData,
       transactions,
-      // usa o computedTotal se consistente; caso divergente por centavos usa o do banco
       computedTotal: computedTotal > 0 ? computedTotal : Number(invData.total_amount),
     })
   }, [])
 
-  // ── carrega histórico (sidebar) ──────────────────────────────────────────
   const loadHistory = useCallback(async (cardId: string) => {
     const { data } = await supabase
       .from('credit_card_invoices')
@@ -166,37 +192,42 @@ export default function FaturasPage() {
     setHistory(data ?? [])
   }, [])
 
-  // ── carregamento inicial ─────────────────────────────────────────────────
-  useEffect(() => {
-    async function boot() {
-      const [{ data: cardsData }, { data: accData }] = await Promise.all([
+  // S1-007: boot com try/catch/finally
+  async function boot() {
+    setPageLoading(true)
+    setLoadError(null)
+    try {
+      const [{ data: cardsData, error: cardsErr }, { data: accData }] = await Promise.all([
         supabase.from('credit_cards').select('*').eq('is_active', true).order('name'),
         supabase.from('accounts').select('id, name').order('name'),
       ])
+
+      if (cardsErr) { setLoadError(cardsErr.message); return }
+
       setCards(cardsData ?? [])
       setAccounts(accData ?? [])
       if (cardsData && cardsData.length > 0) setSelectedCard(cardsData[0])
+    } catch (e: any) {
+      setLoadError(e?.message ?? 'Erro inesperado ao carregar dados.')
+    } finally {
       setPageLoading(false)
     }
-    boot()
-  }, [])
+  }
 
-  // ── recarrega quando muda cartão ou período ──────────────────────────────
+  useEffect(() => { boot() }, [])
+
   useEffect(() => {
     if (!selectedCard) return
-    setInvoiceState(INVOICE_IDLE) // reseta estado financeiro ao trocar contexto
+    setInvoiceState(INVOICE_IDLE)
     loadHistory(selectedCard.id)
     loadInvoicePeriod(selectedCard.id, viewMonth, viewYear)
   }, [selectedCard?.id, viewMonth, viewYear])
 
-  // ── navegar pelo histórico sem re-fetch desnecessário ────────────────────
   function selectFromHistory(inv: Invoice) {
-    // Apenas muda o período — o useEffect acima cuida do reload
     setViewMonth(inv.month)
     setViewYear(inv.year)
   }
 
-  // ── navegação de mês ─────────────────────────────────────────────────────
   function prevMonth() {
     if (viewMonth === 1) { setViewMonth(12); setViewYear(y => y - 1) }
     else setViewMonth(m => m - 1)
@@ -206,7 +237,6 @@ export default function FaturasPage() {
     else setViewMonth(m => m + 1)
   }
 
-  // ── pagar fatura ─────────────────────────────────────────────────────────
   async function handlePayInvoice() {
     const { invoice } = invoiceState
     if (!invoice || !payAccountId) { setPayError('Selecione a conta para pagamento.'); return }
@@ -233,38 +263,26 @@ export default function FaturasPage() {
       })
     }
 
-    // Atualiza estado financeiro localmente — sem novo fetch
     setInvoiceState(prev => ({
       ...prev,
       invoice: prev.invoice ? { ...prev.invoice, status: 'paid', paid_account_id: payAccountId } : null,
     }))
-    // Atualiza histórico
     setHistory(prev => prev.map(h => h.id === invoice.id ? { ...h, status: 'paid' } : h))
-
     setShowPayModal(false)
     setPaying(false)
   }
 
-  // ── derivados visuais ────────────────────────────────────────────────────
   const { invoice, transactions, computedTotal, status: invStatus } = invoiceState
   const isLoading = invStatus === 'loading'
   const isEmpty   = invStatus === 'empty' || invStatus === 'idle'
 
-  // ── render ───────────────────────────────────────────────────────────────
-  if (pageLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto">
-        <div className="space-y-4">
-          {[1,2,3].map(i => <div key={i} className="h-24 bg-white border border-gray-100 rounded-xl animate-pulse" />)}
-        </div>
-      </div>
-    )
-  }
+  // S1-007: loading → skeleton | error → error state
+  if (pageLoading) return <FaturasSkeleton />
+  if (loadError)   return <FaturasError message={loadError} onRetry={boot} />
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto">
 
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <a href="/dashboard" className="text-sm text-gray-400 hover:text-gray-600">← Dashboard</a>
@@ -273,6 +291,7 @@ export default function FaturasPage() {
         <a href="/dashboard/cartoes" className="text-sm text-indigo-600 hover:underline">Gerenciar cartões →</a>
       </div>
 
+      {/* S1-007: empty — sem cartões cadastrados */}
       {cards.length === 0 ? (
         <div className="bg-white border border-dashed border-gray-200 rounded-xl p-10 text-center">
           <p className="text-4xl mb-3">💳</p>
@@ -282,10 +301,8 @@ export default function FaturasPage() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-          {/* ── Coluna esquerda ─────────────────────────────────────────── */}
+          {/* Coluna esquerda */}
           <div className="space-y-4">
-
-            {/* Seletor de cartão */}
             <div className="bg-white border border-gray-100 rounded-xl p-4">
               <p className="text-xs text-gray-400 mb-3 uppercase tracking-wide">Cartão</p>
               <div className="space-y-2">
@@ -307,7 +324,6 @@ export default function FaturasPage() {
               </div>
             </div>
 
-            {/* Navegação de mês */}
             <div className="bg-white border border-gray-100 rounded-xl p-4">
               <p className="text-xs text-gray-400 mb-3 uppercase tracking-wide">Período</p>
               <div className="flex items-center justify-between">
@@ -317,14 +333,12 @@ export default function FaturasPage() {
               </div>
             </div>
 
-            {/* Histórico */}
             {history.length > 0 && (
               <div className="bg-white border border-gray-100 rounded-xl p-4">
                 <p className="text-xs text-gray-400 mb-3 uppercase tracking-wide">Histórico</p>
                 <div className="space-y-1">
                   {history.slice(0, 6).map(inv => (
-                    <button key={inv.id}
-                      onClick={() => selectFromHistory(inv)}
+                    <button key={inv.id} onClick={() => selectFromHistory(inv)}
                       className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg transition-colors text-left ${
                         invoice?.id === inv.id ? 'bg-indigo-50' : 'hover:bg-gray-50'
                       }`}>
@@ -342,14 +356,12 @@ export default function FaturasPage() {
             )}
           </div>
 
-          {/* ── Coluna direita ──────────────────────────────────────────── */}
+          {/* Coluna direita */}
           <div className="lg:col-span-2 space-y-4">
 
-            {/* Card da fatura — skeleton durante loading, nunca valor zerado */}
             <div className="rounded-xl p-5 text-white relative overflow-hidden"
               style={{ backgroundColor: selectedCard?.color ?? '#6366f1' }}>
 
-              {/* Overlay de loading — mantém cor do cartão, sem piscar */}
               {isLoading && (
                 <div className="absolute inset-0 bg-black/10 flex items-center justify-center rounded-xl">
                   <div className="flex gap-1">
@@ -380,7 +392,6 @@ export default function FaturasPage() {
               <div className="flex items-end justify-between">
                 <div>
                   <p className="text-white/70 text-xs">Total da fatura</p>
-                  {/* Valor só aparece quando totalmente carregado — sem flash de zero */}
                   {isLoading ? (
                     <div className="h-9 w-36 bg-white/20 rounded-lg animate-pulse mt-1" />
                   ) : isEmpty ? (
@@ -397,7 +408,6 @@ export default function FaturasPage() {
               </div>
             </div>
 
-            {/* Ações */}
             <div className="flex gap-3">
               {isLoading ? (
                 <div className="h-10 flex-1 bg-gray-100 rounded-lg animate-pulse" />
@@ -420,7 +430,6 @@ export default function FaturasPage() {
               )}
             </div>
 
-            {/* Lançamentos — só renderiza quando invStatus === 'loaded' */}
             {invStatus === 'loaded' && invoice && (
               <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
                 <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
@@ -429,7 +438,6 @@ export default function FaturasPage() {
                   </p>
                   <span className="text-xs text-gray-400">{transactions.length} item(ns)</span>
                 </div>
-
                 {transactions.length === 0 ? (
                   <div className="p-8 text-center">
                     <p className="text-gray-400 text-sm">Nenhum lançamento nesta fatura.</p>
@@ -438,9 +446,7 @@ export default function FaturasPage() {
                   <div>
                     {transactions.map((tx, i) => (
                       <div key={tx.id}
-                        className={`flex items-center gap-4 px-5 py-3 ${
-                          i < transactions.length - 1 ? 'border-b border-gray-50' : ''
-                        }`}>
+                        className={`flex items-center gap-4 px-5 py-3 ${i < transactions.length - 1 ? 'border-b border-gray-50' : ''}`}>
                         <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-sm flex-shrink-0">
                           {tx.category?.icon ?? '💸'}
                         </div>
@@ -451,9 +457,7 @@ export default function FaturasPage() {
                             {tx.category?.name ? ` · ${tx.category.name}` : ''}
                           </p>
                         </div>
-                        <p className="text-sm font-semibold text-red-500 flex-shrink-0">
-                          -{fmt(Number(tx.amount))}
-                        </p>
+                        <p className="text-sm font-semibold text-red-500 flex-shrink-0">-{fmt(Number(tx.amount))}</p>
                       </div>
                     ))}
                     <div className="px-5 py-3 bg-gray-50 flex justify-between items-center">
@@ -465,7 +469,6 @@ export default function FaturasPage() {
               </div>
             )}
 
-            {/* Skeleton de lançamentos durante loading */}
             {isLoading && (
               <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
                 <div className="px-5 py-3 border-b border-gray-50">
