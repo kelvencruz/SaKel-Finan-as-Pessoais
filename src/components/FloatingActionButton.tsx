@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import NovaTransacaoModal from './NovaTransacaoModal'
 
 export default function FloatingActionButton() {
   const [open, setOpen] = useState(false)
+  const router = useRouter()
 
   return (
     <>
@@ -24,7 +26,7 @@ export default function FloatingActionButton() {
       <NovaTransacaoModal
         open={open}
         onClose={() => setOpen(false)}
-        onSaved={() => window.location.reload()}
+        onSaved={() => router.refresh()}
       />
     </>
   )
