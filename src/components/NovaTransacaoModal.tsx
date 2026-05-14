@@ -77,7 +77,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
   const [saving,      setSaving]      = useState(false)
   const [form,        setForm]        = useState(emptyForm)
   const [error,       setError]       = useState<string | null>(null)
-  const [gamEnabled,  setGamEnabled]  = useState(false)
 
   // ─── Carrega dados toda vez que o modal abre ──────────────────────────────
   useEffect(() => {
@@ -90,11 +89,10 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      const [{ data: acc }, { data: cat }, { data: cards }, { data: prefs }, { data: gls }] = await Promise.all([
+      const [{ data: acc }, { data: cat }, { data: cards }, { data: gls }] = await Promise.all([
         supabase.from('accounts').select('id, name, color, current_balance').eq('user_id', user.id).order('name'),
         supabase.from('categories').select('id, name, type, icon').eq('user_id', user.id).order('name'),
         supabase.from('credit_cards').select('id, name, color, closing_day, due_day').eq('user_id', user.id).eq('is_active', true).order('name'),
-        supabase.from('user_preferences').select('gamification_enabled').eq('user_id', user.id).single(),
         supabase.from('investment_goals').select('id, name, icon, color').eq('user_id', user.id).order('name'),
       ])
 
@@ -103,7 +101,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       setCategories((cat ?? []) as Category[])
       setCreditCards((cards ?? []) as CreditCard[])
       setGoals((gls ?? []) as InvestmentGoal[])
-      setGamEnabled(prefs?.gamification_enabled ?? true)
       setForm(f => ({ ...f, account_id: accList[0]?.id ?? '' }))
       setLoaded(true)
     }
@@ -154,15 +151,29 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     return dates
   }
 
-  // ─── XP — chamado ANTES do onClose para garantir que o push chega na fila ─
+  // ─── XP — lê gamification_enabled direto do Supabase no momento do save ──
+  // Nunca depende do state do React para evitar closure stale
   async function pushXPToast(userId: string, isFirstTx: boolean) {
-    if (!gamEnabled) return
+    const { data: prefs } = await supabase
+      .from('user_preferences')
+      .select('gamification_enabled')
+      .eq('user_id', userId)
+      .single()
+
+    const gamEnabled = prefs?.gamification_enabled ?? true
+    console.log('[XP] gamEnabled (lido agora do Supabase):', gamEnabled)
+
+    if (!gamEnabled) {
+      console.log('[XP] gamificação desativada — abortando')
+      return
+    }
 
     let totalXP = 10
     let badgeEarned: string | null = null
 
     try {
       const r1 = await awardXP(userId, 'transaction_created', isFirstTx ? 'first_transaction' : undefined)
+      console.log('[XP] awardXP retornou:', r1)
       if (r1.newBadge) badgeEarned = r1.newBadge
 
       const { count } = await supabase
@@ -179,17 +190,14 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       console.error('[XP] ERRO em awardXP:', e)
     }
 
-    // push na fila ANTES de fechar o modal — o Provider está no layout e
-    // não desmonta junto com o modal, então a fila é consumida normalmente
+    console.log('[XP] push na fila — xp:', totalXP, '| badge:', badgeEarned)
     toastManager.push({ kind: 'xp', xp: totalXP, badge: badgeEarned })
   }
 
   // ─── Finaliza após salvar — ordem garantida ───────────────────────────────
-  // 1. push confirm  (síncrono — entra na fila imediatamente)
-  // 2. push xp       (após await — também na fila antes do onClose)
-  // 3. onSaved       (callback externo)
-  // 4. onClose       (desmonta o modal — mas o Provider no layout continua vivo)
-  // 5. setSaving     (limpeza)
+  // 1. push confirm  → entra na fila imediatamente (síncrono)
+  // 2. push xp       → entra na fila após await (antes do onClose)
+  // 3. onSaved / onClose → modal desmonta, mas Provider no layout continua vivo
   async function finish(userId: string, isFirstTx: boolean, confirmMessage: string) {
     toastManager.push({ kind: 'confirm', message: confirmMessage })
     await pushXPToast(userId, isFirstTx)
