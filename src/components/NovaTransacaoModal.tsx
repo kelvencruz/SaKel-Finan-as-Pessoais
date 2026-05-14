@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { awardXP } from '@/lib/gamification'
 import { toastManager } from '@/components/core/ToastManager'
+import { useGamification } from '@/features/gamificacao/hooks/useGamification'
 
 type TxType = 'income' | 'expense' | 'transfer'
 type Frequency = 'daily' | 'weekly' | 'monthly' | 'yearly'
@@ -66,6 +66,7 @@ function Toggle({ active, onChange }: { active: boolean; onChange: () => void })
 
 export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
   const supabase = createClient()
+  const { pushXPToast } = useGamification()
 
   const [accounts,    setAccounts]    = useState<Account[]>([])
   const [categories,  setCategories]  = useState<Category[]>([])
@@ -147,68 +148,14 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     return dates
   }
 
-  async function pushXPToast(userId: string, isFirstTx: boolean) {
-    console.log('[XP] pushXPToast iniciado — userId:', userId)
-
-    const { data: prefs, error: prefsError } = await supabase
-      .from('user_preferences')
-      .select('gamification_enabled')
-      .eq('user_id', userId)
-      .single()
-
-    console.log('[XP] prefs:', prefs, '| error:', prefsError)
-
-    const gamEnabled = prefs?.gamification_enabled ?? true
-    console.log('[XP] gamEnabled:', gamEnabled)
-
-    if (!gamEnabled) {
-      console.log('[XP] desativado — abortando')
-      return
-    }
-
-    const totalXP = 10
-    let badgeEarned: string | null = null
-
-    try {
-      const r1 = await awardXP(userId, 'transaction_created', isFirstTx ? 'first_transaction' : undefined)
-      console.log('[XP] awardXP r1:', r1)
-      if (r1.newBadge) badgeEarned = r1.newBadge
-
-      const { count } = await supabase
-        .from('transactions').select('*', { count: 'exact', head: true }).eq('user_id', userId)
-      if (count === 10) {
-        const r2 = await awardXP(userId, 'transaction_created', 'ten_transactions')
-        if (r2.newBadge && !badgeEarned) badgeEarned = r2.newBadge
-      }
-      if (count === 50) {
-        const r3 = await awardXP(userId, 'transaction_created', 'fifty_transactions')
-        if (r3.newBadge && !badgeEarned) badgeEarned = r3.newBadge
-      }
-    } catch (e) {
-      console.error('[XP] ERRO awardXP:', e)
-    }
-
-    console.log('[XP] push fila — xp:', totalXP, 'badge:', badgeEarned)
-    toastManager.push({ kind: 'xp', xp: totalXP, badge: badgeEarned })
-    console.log('[XP] push concluído')
-  }
-
- async function finish(userId: string, isFirstTx: boolean, confirmMessage: string) {
-  console.log('[FINISH] início — msg:', confirmMessage)
-  toastManager.push({ kind: 'confirm', message: confirmMessage })
-  console.log('[FINISH] confirm pushado')
-  try {
+  async function finish(userId: string, isFirstTx: boolean, confirmMessage: string) {
+    toastManager.push({ kind: 'confirm', message: confirmMessage })
     await pushXPToast(userId, isFirstTx)
-  } catch (e) {
-    console.error('[FINISH] ERRO pushXPToast:', e)
+    await new Promise(resolve => setTimeout(resolve, 300))
+    onSaved?.()
+    onClose()
+    setSaving(false)
   }
-  console.log('[FINISH] aguardando toast renderizar...')
-  await new Promise(resolve => setTimeout(resolve, 300))
-  console.log('[FINISH] concluído — fechando modal')
-  onSaved?.()
-  onClose()
-  setSaving(false)
-}
 
   async function handleSave() {
     setError(null)
