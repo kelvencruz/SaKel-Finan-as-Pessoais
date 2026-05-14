@@ -55,7 +55,6 @@ interface Props {
   onSaved?: () => void
 }
 
-// ─── Toggle ──────────────────────────────────────────────────────────────────
 function Toggle({ active, onChange }: { active: boolean; onChange: () => void }) {
   return (
     <button type="button" onClick={onChange}
@@ -65,7 +64,6 @@ function Toggle({ active, onChange }: { active: boolean; onChange: () => void })
   )
 }
 
-// ─── Modal principal ──────────────────────────────────────────────────────────
 export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
   const supabase = createClient()
 
@@ -78,7 +76,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
   const [form,        setForm]        = useState(emptyForm)
   const [error,       setError]       = useState<string | null>(null)
 
-  // ─── Carrega dados toda vez que o modal abre ──────────────────────────────
   useEffect(() => {
     if (!open) return
     setForm({ ...emptyForm })
@@ -115,7 +112,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
   const selectedCategory = categories.find(c => c.id === form.category_id)
   const isInvestmentCategory = selectedCategory?.type === 'investment'
 
-  // ─── Helpers ─────────────────────────────────────────────────────────────
   async function getOrCreateInvoice(cardId: string, date: string, userId: string): Promise<string | null> {
     const d    = new Date(date + 'T12:00:00')
     const card = creditCards.find(c => c.id === cardId)
@@ -151,29 +147,31 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     return dates
   }
 
-  // ─── XP — lê gamification_enabled direto do Supabase no momento do save ──
-  // Nunca depende do state do React para evitar closure stale
   async function pushXPToast(userId: string, isFirstTx: boolean) {
-    const { data: prefs } = await supabase
+    console.log('[XP] pushXPToast iniciado — userId:', userId)
+
+    const { data: prefs, error: prefsError } = await supabase
       .from('user_preferences')
       .select('gamification_enabled')
       .eq('user_id', userId)
       .single()
 
+    console.log('[XP] prefs:', prefs, '| error:', prefsError)
+
     const gamEnabled = prefs?.gamification_enabled ?? true
-    console.log('[XP] gamEnabled (lido agora do Supabase):', gamEnabled)
+    console.log('[XP] gamEnabled:', gamEnabled)
 
     if (!gamEnabled) {
-      console.log('[XP] gamificação desativada — abortando')
+      console.log('[XP] desativado — abortando')
       return
     }
 
-    let totalXP = 10
+    const totalXP = 10
     let badgeEarned: string | null = null
 
     try {
       const r1 = await awardXP(userId, 'transaction_created', isFirstTx ? 'first_transaction' : undefined)
-      console.log('[XP] awardXP retornou:', r1)
+      console.log('[XP] awardXP r1:', r1)
       if (r1.newBadge) badgeEarned = r1.newBadge
 
       const { count } = await supabase
@@ -187,26 +185,29 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         if (r3.newBadge && !badgeEarned) badgeEarned = r3.newBadge
       }
     } catch (e) {
-      console.error('[XP] ERRO em awardXP:', e)
+      console.error('[XP] ERRO awardXP:', e)
     }
 
-    console.log('[XP] push na fila — xp:', totalXP, '| badge:', badgeEarned)
+    console.log('[XP] push fila — xp:', totalXP, 'badge:', badgeEarned)
     toastManager.push({ kind: 'xp', xp: totalXP, badge: badgeEarned })
+    console.log('[XP] push concluído')
   }
 
-  // ─── Finaliza após salvar — ordem garantida ───────────────────────────────
-  // 1. push confirm  → entra na fila imediatamente (síncrono)
-  // 2. push xp       → entra na fila após await (antes do onClose)
-  // 3. onSaved / onClose → modal desmonta, mas Provider no layout continua vivo
   async function finish(userId: string, isFirstTx: boolean, confirmMessage: string) {
+    console.log('[FINISH] início — msg:', confirmMessage)
     toastManager.push({ kind: 'confirm', message: confirmMessage })
-    await pushXPToast(userId, isFirstTx)
+    console.log('[FINISH] confirm pushado')
+    try {
+      await pushXPToast(userId, isFirstTx)
+    } catch (e) {
+      console.error('[FINISH] ERRO pushXPToast:', e)
+    }
+    console.log('[FINISH] concluído — fechando modal')
     onSaved?.()
     onClose()
     setSaving(false)
   }
 
-  // ─── Save ─────────────────────────────────────────────────────────────────
   async function handleSave() {
     setError(null)
     if (!form.description.trim())     { setError('Descrição é obrigatória.'); return }
@@ -231,7 +232,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     const isFirstTx = (txCount ?? 0) === 0
     const goalId = isInvestmentCategory && form.goal_id ? form.goal_id : null
 
-    // ─── RECORRENTE ──────────────────────────────────────────────────────────
     if (form.is_recurring) {
       function calcNextDue(startDate: string, frequency: string): string {
         const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -302,7 +302,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       return
     }
 
-    // ─── PARCELADO ───────────────────────────────────────────────────────────
     if (form.is_installment) {
       const dates = getInstallmentDates()
       const { data: group, error: groupErr } = await supabase
@@ -355,7 +354,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       return
     }
 
-    // ─── TRANSAÇÃO NORMAL ────────────────────────────────────────────────────
     let invoiceId: string | null = null
     let accountId = form.account_id || null
     if (form.use_credit_card && form.type === 'expense') {
@@ -393,7 +391,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     return false
   })
 
-  // ─── Render ───────────────────────────────────────────────────────────────
   if (!open) return null
 
   return (
@@ -403,7 +400,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
 
         <div className="space-y-4">
 
-          {/* Tipo */}
           <div>
             <label className="block text-sm text-gray-600 mb-1">Tipo</label>
             <div className="flex gap-2">
@@ -422,7 +418,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
             </div>
           </div>
 
-          {/* Toggle cartão */}
           {form.type === 'expense' && creditCards.length > 0 && (
             <div className="flex items-center justify-between bg-purple-50 border border-purple-100 rounded-lg px-3 py-2.5">
               <div className="flex items-center gap-2">
@@ -437,7 +432,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
             </div>
           )}
 
-          {/* Descrição */}
           <div>
             <label className="block text-sm text-gray-600 mb-1">Descrição</label>
             <input type="text" value={form.description}
@@ -447,7 +441,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
             />
           </div>
 
-          {/* Valor + Data */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm text-gray-600 mb-1">
@@ -471,7 +464,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
             </div>
           </div>
 
-          {/* Cartão ou Conta */}
           {form.use_credit_card && form.type === 'expense' ? (
             <div>
               <label className="block text-sm text-gray-600 mb-1">Cartão</label>
@@ -519,7 +511,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
             </>
           )}
 
-          {/* Categoria */}
           {form.type !== 'transfer' && (
             <div>
               <label className="block text-sm text-gray-600 mb-1">
@@ -534,7 +525,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
             </div>
           )}
 
-          {/* Objetivo */}
           {isInvestmentCategory && goals.length > 0 && (
             <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-3">
               <label className="block text-sm text-indigo-700 font-medium mb-1">
@@ -549,7 +539,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
             </div>
           )}
 
-          {/* Toggle Recorrente */}
           {form.type !== 'transfer' && (
             <div className="border border-gray-100 rounded-xl overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3">
@@ -592,7 +581,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
             </div>
           )}
 
-          {/* Toggle Parcelado */}
           {form.type === 'expense' && (
             <div className="border border-gray-100 rounded-xl overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3">
@@ -648,7 +636,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
             </div>
           )}
 
-          {/* Observação */}
           <div>
             <label className="block text-sm text-gray-600 mb-1">Observação <span className="text-gray-400">(opcional)</span></label>
             <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
