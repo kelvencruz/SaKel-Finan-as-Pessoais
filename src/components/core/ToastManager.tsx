@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export type ToastItem =
   | { kind: 'confirm'; message: string }
@@ -25,10 +25,17 @@ export const toastManager = {
     _state = { ..._state, queue: [..._state.queue, item] }
     notify()
   },
-  // Chamado apenas quando o toast atual termina — avança para o próximo
+  // Chamado APENAS pelo handleDone — avança para o próximo
   advance() {
     const [next, ...rest] = _state.queue
     _state = { queue: rest, current: next ?? null }
+    notify()
+  },
+  // Kickstart: move o primeiro da fila para current (só se current for null)
+  start() {
+    if (_state.current !== null || _state.queue.length === 0) return
+    const [next, ...rest] = _state.queue
+    _state = { queue: rest, current: next }
     notify()
   },
   clear() {
@@ -40,8 +47,12 @@ export const toastManager = {
 // ─── Componentes de toast ─────────────────────────────────────────────────────
 
 function ConfirmToast({ message, onDone }: { message: string; onDone: () => void }) {
+  const called = useRef(false)
+
   useEffect(() => {
-    const t = setTimeout(onDone, 2500)
+    const t = setTimeout(() => {
+      if (!called.current) { called.current = true; onDone() }
+    }, 2500)
     return () => clearTimeout(t)
   }, [onDone])
 
@@ -55,8 +66,12 @@ function ConfirmToast({ message, onDone }: { message: string; onDone: () => void
 }
 
 function XPToast({ xp, badge, onDone }: { xp: number; badge?: string | null; onDone: () => void }) {
+  const called = useRef(false)
+
   useEffect(() => {
-    const t = setTimeout(onDone, 4500)
+    const t = setTimeout(() => {
+      if (!called.current) { called.current = true; onDone() }
+    }, 4500)
     return () => clearTimeout(t)
   }, [onDone])
 
@@ -76,30 +91,32 @@ function XPToast({ xp, badge, onDone }: { xp: number; badge?: string | null; onD
 
 // ─── Provider — montar UMA VEZ no layout ─────────────────────────────────────
 //
-// Lógica da fila:
-//   1. push() adiciona à fila — nunca toca em `current`
-//   2. useEffect detecta que a fila tem itens e current é null → chama advance()
-//   3. advance() move o primeiro da fila para `current`
-//   4. O toast renderiza e, ao terminar seu timer, chama handleDone()
-//   5. handleDone() chama advance() → limpa current e pega o próximo da fila
-//   6. Volta ao passo 2 se ainda houver itens
+// Lógica da fila (sem race condition):
+//   1. push() só adiciona à fila — nunca toca em `current`
+//   2. useEffect detecta fila com itens e current nulo → chama start() UMA vez
+//   3. start() é idempotente: só age se current === null
+//   4. O toast renderiza; ao terminar, chama handleDone()
+//   5. handleDone() chama advance() → move próximo da fila para current
+//   6. Se fila vazia, current vira null → useEffect de kickstart age de novo
+//      quando/se novos itens chegarem
 //
-// Nunca dois toasts em paralelo. Nunca um toast perdido.
+// `start()` e `advance()` são as únicas funções que alteram `current`.
+// O useEffect só chama `start()` — nunca `advance()` — eliminando o double-advance.
 
 export function ToastManagerProvider() {
-  const [state, setState] = useState<ToastManagerState>(() => ({ ..._state, queue: [..._state.queue] }))
+  const [state, setState] = useState<ToastManagerState>(
+    () => ({ ..._state, queue: [..._state.queue] })
+  )
 
   useEffect(() => {
     _listeners.add(setState)
     return () => { _listeners.delete(setState) }
   }, [])
 
-  // Só avança quando não há nada sendo exibido
+  // Kickstart: só inicia quando current for null e houver itens esperando
   useEffect(() => {
     if (state.current === null && state.queue.length > 0) {
-      // Pequeno delay para o React processar o unmount do toast anterior
-      const t = setTimeout(() => toastManager.advance(), 80)
-      return () => clearTimeout(t)
+      toastManager.start()
     }
   }, [state.current, state.queue.length])
 
@@ -112,10 +129,23 @@ export function ToastManagerProvider() {
   const item = state.current
 
   if (item.kind === 'confirm') {
-    return <ConfirmToast key={item.message + Date.now()} message={item.message} onDone={handleDone} />
+    return (
+      <ConfirmToast
+        key={`confirm-${item.message}`}
+        message={item.message}
+        onDone={handleDone}
+      />
+    )
   }
   if (item.kind === 'xp') {
-    return <XPToast key={'xp-' + Date.now()} xp={item.xp} badge={item.badge} onDone={handleDone} />
+    return (
+      <XPToast
+        key={`xp-${item.xp}-${item.badge ?? 'none'}`}
+        xp={item.xp}
+        badge={item.badge}
+        onDone={handleDone}
+      />
+    )
   }
   return null
 }
