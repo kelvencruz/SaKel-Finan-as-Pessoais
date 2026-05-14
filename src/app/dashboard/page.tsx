@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -12,13 +12,14 @@ import {
   Bank, CreditCard, Tag, ListBullets, Receipt, TrendUp,
   Wallet, Lightbulb, Star, Flame, Confetti, Warning,
   Siren, CalendarCheck, ChartBar, ArrowsClockwise,
-  Package, CheckCircle, Target, SquaresFour,
-  Eye, EyeSlash, ArrowClockwise,
+  Package, CheckCircle, Target, Eye, EyeSlash, ArrowClockwise,
 } from '@phosphor-icons/react'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
+
+type LifecycleStatus = 'CONFIRMED' | 'PENDING_EXPECTED' | 'PENDING_REVIEW' | 'OVERDUE' | 'CANCELLED'
 
 interface MonthBar     { mes: string; receitas: number; despesas: number }
 interface CatSlice     { name: string; value: number }
@@ -52,6 +53,8 @@ interface KalContext {
   catAnterior:         Record<string, number>
   recorrenteSugerida:  { descricao: string; valor: number }[]
   mesesPositivos:      number
+  overdueCount:        number   // novo: transações OVERDUE
+  pendingCount:        number   // novo: PENDING_EXPECTED + PENDING_REVIEW
   xp:        number
   level:     number
   levelName: string
@@ -60,6 +63,26 @@ interface KalContext {
   newBadge:  string | null
   leveledUp: boolean
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Constantes
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SLICE_COLORS = ['#6366f1','#f97316','#22c55e','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6']
+const MONTH_NAMES  = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+const LEVEL_NAMES: Record<number, string> = {
+  1: 'Novato Financeiro',
+  2: 'Poupador Consistente',
+  3: 'Orçamentista Eficiente',
+  4: 'Estrategista Financeiro',
+  5: 'Mestre do Cofrinho',
+}
+
+// Statuses que representam valor real confirmado
+const CONFIRMED_STATUSES: LifecycleStatus[] = ['CONFIRMED']
+
+// Statuses pendentes (não entram no saldo, mas aparecem em alertas)
+const PENDING_STATUSES: LifecycleStatus[] = ['PENDING_EXPECTED', 'PENDING_REVIEW']
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Severidade → tokens CSS
@@ -74,13 +97,6 @@ const SEV_STYLE: Record<KalSeverity, { bg: string; border: string; cor: string }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Constantes
-// ─────────────────────────────────────────────────────────────────────────────
-
-const SLICE_COLORS = ['#6366f1','#f97316','#22c55e','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6']
-const MONTH_NAMES  = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -88,7 +104,7 @@ const fmt  = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curre
 const fmtK = (v: number) => v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v}`
 
 function daysUntil(dateStr: string) {
-  const today = new Date(); today.setHours(0,0,0,0)
+  const today = new Date(); today.setHours(0, 0, 0, 0)
   return Math.round((new Date(dateStr + 'T12:00:00').getTime() - today.getTime()) / 86400000)
 }
 
@@ -104,7 +120,7 @@ function normalizeDesc(desc: string): string {
 
 function occurrencesInWindow(nextDueDate: string, frequency: string, horizonDate: Date): number {
   const start = new Date(nextDueDate + 'T12:00:00')
-  const today = new Date(); today.setHours(0,0,0,0)
+  const today = new Date(); today.setHours(0, 0, 0, 0)
   if (start > horizonDate) return 0
   let count = 0
   let current = new Date(start)
@@ -135,6 +151,8 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 
   const PISO_INV = 200
 
+  // ── Danger ────────────────────────────────────────────────────────────────
+
   if (ctx.saldoLiquido < 0) {
     danger.push({
       id: 'saldo-negativo', severity: 'danger', icon: Warning,
@@ -153,6 +171,18 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
       acao: { label: 'Regularizar agora', href: '/dashboard/faturas' },
     })
   }
+
+  // Transações OVERDUE do lifecycle
+  if (ctx.overdueCount > 0) {
+    danger.push({
+      id: 'lifecycle-overdue', severity: 'danger', icon: Warning,
+      titulo: ctx.overdueCount === 1 ? '1 transação vencida' : `${ctx.overdueCount} transações vencidas`,
+      texto: 'Você tem lançamentos esperados que não foram confirmados e já venceram.',
+      acao: { label: 'Ver transações', href: '/dashboard/transacoes' },
+    })
+  }
+
+  // ── Warning ───────────────────────────────────────────────────────────────
 
   const fatVencendo = ctx.invoicesDue.filter(i => i.days_until_due >= 0 && i.days_until_due <= 5)
   if (fatVencendo.length > 0) {
@@ -188,6 +218,17 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
       id: 'despesa-maior', severity: 'warning', icon: ChartBar,
       titulo: 'Despesas acima das receitas',
       texto: `Você gastou ${pct}% a mais do que recebeu este mês. Bom momento para revisar.`,
+      acao: { label: 'Ver transações', href: '/dashboard/transacoes' },
+    })
+  }
+
+  // ── Info ──────────────────────────────────────────────────────────────────
+
+  if (ctx.pendingCount > 0) {
+    info.push({
+      id: 'lifecycle-pending', severity: 'info', icon: ArrowsClockwise,
+      titulo: `${ctx.pendingCount} lançamento${ctx.pendingCount > 1 ? 's' : ''} aguardando confirmação`,
+      texto: 'Esses valores ainda não estão no seu saldo real. Confirme quando ocorrerem.',
       acao: { label: 'Ver transações', href: '/dashboard/transacoes' },
     })
   }
@@ -228,6 +269,8 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
     })
   }
 
+  // ── Positive ──────────────────────────────────────────────────────────────
+
   if (ctx.mesesPositivos >= 3) {
     positive.push({
       id: 'tres-meses-positivos', severity: 'positive', icon: Star,
@@ -262,6 +305,8 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
     })
   }
 
+  // ── Gamification ──────────────────────────────────────────────────────────
+
   if (ctx.leveledUp) {
     gamification.push({
       id: 'level-up', severity: 'gamification', icon: Confetti,
@@ -273,10 +318,9 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 
   if (ctx.newBadge) {
     const badge = BADGES.find(b => b.id === ctx.newBadge)
-    const nome  = badge?.name ?? ctx.newBadge
     gamification.push({
       id: `badge-${ctx.newBadge}`, severity: 'gamification', icon: Star,
-      titulo: `Nova conquista: ${nome}`,
+      titulo: `Nova conquista: ${badge?.name ?? ctx.newBadge}`,
       texto: 'Você desbloqueou um badge. Acesse conquistas para ver todos os seus marcos.',
       acao: { label: 'Ver conquistas', href: '/dashboard/conquistas' },
     })
@@ -308,26 +352,44 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
     })
   }
 
+  // Seleciona 3 insights: 1 crítico, 1 de ação, 1 positivo/gamification
   const critico  = danger[0] ?? warning[0] ?? null
-  const acao     = warning[0] !== critico
-    ? (warning.find(i => i !== critico) ?? info[0] ?? null)
-    : info[0] ?? null
+  const acao     = (warning[0] !== critico ? warning.find(i => i !== critico) : null) ?? info[0] ?? null
   const positivo = gamification[0] ?? positive[0] ?? null
 
   return [critico, acao, positivo].filter(Boolean) as KalInsight[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S1-007 — Estado de erro do dashboard
+// Sub-componentes
 // ─────────────────────────────────────────────────────────────────────────────
+
+function DashboardSkeleton() {
+  return (
+    <div className="min-h-screen p-6 max-w-5xl mx-auto" style={{ background: 'var(--bg)' }}>
+      <div className="flex items-center justify-between mb-6">
+        <div className="h-7 w-32 rounded-lg skeleton" />
+        <div className="h-9 w-9 rounded-full skeleton" />
+      </div>
+      <div className="h-28 rounded-xl skeleton mb-6" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+        {[1,2,3,4].map(i => <div key={i} className="h-20 rounded-xl skeleton" />)}
+      </div>
+      <div className="h-16 rounded-xl skeleton mb-4" />
+      <div className="h-48 rounded-xl skeleton mb-6" />
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+        <div className="lg:col-span-3 h-64 rounded-xl skeleton" />
+        <div className="lg:col-span-2 h-64 rounded-xl skeleton" />
+      </div>
+    </div>
+  )
+}
 
 function DashboardError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="min-h-screen p-6 max-w-5xl mx-auto" style={{ background: 'var(--bg)' }}>
       <div className="flex items-center justify-between mb-10">
-        <div>
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>Dashboard</h1>
-        </div>
+        <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>Dashboard</h1>
         <UserMenu />
       </div>
       <div className="rounded-2xl p-10 text-center"
@@ -336,12 +398,9 @@ function DashboardError({ message, onRetry }: { message: string; onRetry: () => 
           style={{ background: 'var(--danger-light)' }}>
           <Warning weight="duotone" size={26} style={{ color: 'var(--danger)' }} />
         </div>
-        <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text)' }}>
-          Erro ao carregar o dashboard
-        </p>
+        <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text)' }}>Erro ao carregar o dashboard</p>
         <p className="text-xs mb-6 max-w-xs mx-auto" style={{ color: 'var(--text-muted)' }}>{message}</p>
-        <button
-          onClick={onRetry}
+        <button onClick={onRetry}
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white"
           style={{ background: 'var(--primary)' }}>
           <ArrowClockwise size={14} weight="bold" />
@@ -352,9 +411,60 @@ function DashboardError({ message, onRetry }: { message: string; onRetry: () => 
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// KalDiz v3
-// ─────────────────────────────────────────────────────────────────────────────
+function EmptyDashboard() {
+  return (
+    <div className="min-h-screen p-6 max-w-5xl mx-auto" style={{ background: 'var(--bg)' }}>
+      <div className="flex items-center justify-between mb-10">
+        <div>
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>Dashboard</h1>
+          <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Bem-vindo ao SaKel Finanças</p>
+        </div>
+        <UserMenu />
+      </div>
+      <div className="rounded-2xl p-10 text-center mb-6"
+        style={{ background: 'var(--surface)', border: '2px dashed var(--border-md)' }}>
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
+          style={{ background: 'var(--primary-light)' }}>
+          <Bank weight="duotone" size={28} style={{ color: 'var(--primary)' }} />
+        </div>
+        <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--text)' }}>Sua central financeira começa aqui</h2>
+        <p className="text-sm max-w-sm mx-auto mb-6" style={{ color: 'var(--text-muted)' }}>
+          Adicione uma conta para acompanhar saldo, transações e investimentos.
+        </p>
+        <a href="/dashboard/contas"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white"
+          style={{ background: 'var(--primary)' }}>
+          Criar minha primeira conta
+        </a>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {[
+          { icon: Bank,       title: 'Adicionar contas',  desc: 'Cadastre banco, carteira ou poupança com saldo inicial.', href: '/dashboard/contas'     },
+          { icon: CreditCard, title: 'Cadastrar cartões', desc: 'Vincule seus cartões de crédito e acompanhe faturas.',     href: '/dashboard/cartoes'    },
+          { icon: Tag,        title: 'Ver categorias',    desc: '14 categorias padrão já foram criadas para você.',         href: '/dashboard/categorias' },
+        ].map(item => (
+          <a key={item.href} href={item.href}
+            className="rounded-xl p-4 transition-colors"
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+            onMouseEnter={e => {
+              const el = e.currentTarget as HTMLElement
+              el.style.borderColor = 'var(--primary)'
+              el.style.background  = 'var(--primary-light)'
+            }}
+            onMouseLeave={e => {
+              const el = e.currentTarget as HTMLElement
+              el.style.borderColor = 'var(--border)'
+              el.style.background  = 'var(--surface)'
+            }}>
+            <item.icon weight="duotone" size={24} style={{ color: 'var(--primary)' }} className="mb-2" />
+            <p className="text-sm font-medium mb-1" style={{ color: 'var(--text)' }}>{item.title}</p>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{item.desc}</p>
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function KalDiz({ ctx, enabled }: { ctx: KalContext; enabled: boolean }) {
   if (!enabled) return null
@@ -362,21 +472,20 @@ function KalDiz({ ctx, enabled }: { ctx: KalContext; enabled: boolean }) {
   if (insights.length === 0) return null
 
   return (
-    <div className="rounded-xl p-4 mb-6" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
+    <div className="rounded-xl p-4 mb-6"
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 shrink-0 flex items-center justify-center">
-            <img
-              src="/kal-avatar.png" alt="Kal"
-              className="w-10 h-10 object-contain"
-              onError={(e) => {
+            <img src="/kal-avatar.png" alt="Kal" className="w-10 h-10 object-contain"
+              onError={e => {
                 const t = e.currentTarget as HTMLImageElement
                 t.style.display = 'none'
                 const fb = t.nextElementSibling as HTMLElement
                 if (fb) fb.style.display = 'flex'
-              }}
-            />
-            <span style={{ display: 'none' }} className="w-10 h-10 rounded-full items-center justify-center text-white text-sm font-bold">K</span>
+              }} />
+            <span style={{ display: 'none' }}
+              className="w-10 h-10 rounded-full items-center justify-center text-white text-sm font-bold">K</span>
           </div>
           <div>
             <p className="text-sm font-semibold leading-none" style={{ color: 'var(--text)' }}>Kal</p>
@@ -390,15 +499,13 @@ function KalDiz({ ctx, enabled }: { ctx: KalContext; enabled: boolean }) {
               <p className="text-[10px] font-medium mt-0.5" style={{ color: 'var(--primary)' }}>{ctx.xp} XP</p>
             </div>
             <a href="/dashboard/conquistas"
-              className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
-              style={{ background: 'var(--primary-light)', border: '1px solid var(--border)', color: 'var(--primary)' }}
-              title="Ver conquistas">
+              className="w-8 h-8 rounded-full flex items-center justify-center"
+              style={{ background: 'var(--primary-light)', border: '1px solid var(--border)', color: 'var(--primary)' }}>
               <Star weight="duotone" size={14} />
             </a>
           </div>
         )}
       </div>
-
       <div className="space-y-2.5">
         {insights.map(insight => {
           const s    = SEV_STYLE[insight.severity]
@@ -428,15 +535,12 @@ function KalDiz({ ctx, enabled }: { ctx: KalContext; enabled: boolean }) {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-componentes
-// ─────────────────────────────────────────────────────────────────────────────
-
 function SaldoPrevisto({ itens, saldoPrevisto, recCount, instCount }: {
   itens: ProjecaoItem[]; saldoPrevisto: number; recCount: number; instCount: number
 }) {
   return (
-    <div className="rounded-xl p-5 mb-6" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
+    <div className="rounded-xl p-5 mb-6"
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
       <div className="flex items-center justify-between mb-4">
         <div>
           <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Saldo Previsto</p>
@@ -464,7 +568,9 @@ function SaldoPrevisto({ itens, saldoPrevisto, recCount, instCount }: {
         }}>
         <div>
           <p className="text-xs font-semibold" style={{ color: 'var(--text)' }}>Saldo projetado</p>
-          <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{recCount} recorrência(s) · {instCount} parcela(s) pendente(s)</p>
+          <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+            {recCount} recorrência(s) · {instCount} parcela(s) pendente(s)
+          </p>
         </div>
         <p className="text-xl font-bold" style={{ color: saldoPrevisto >= 0 ? 'var(--success)' : 'var(--danger)' }}>
           {fmt(saldoPrevisto)}
@@ -497,12 +603,8 @@ function InvestimentoCard({ valor }: { valor: number }) {
           <p className="text-2xl font-bold" style={{ color: 'var(--primary)' }}>
             {visivel ? fmt(valor) : '••••••'}
           </p>
-          <button onClick={toggle} title={visivel ? 'Ocultar' : 'Mostrar'}
-            className="flex items-center transition-colors" style={{ color: 'var(--primary)' }}>
-            {visivel
-              ? <Eye weight="duotone" size={16} />
-              : <EyeSlash weight="duotone" size={16} />
-            }
+          <button onClick={toggle} style={{ color: 'var(--primary)' }}>
+            {visivel ? <Eye weight="duotone" size={16} /> : <EyeSlash weight="duotone" size={16} />}
           </button>
         </div>
         <a href="/dashboard/investimentos" className="text-xs hover:underline" style={{ color: 'var(--primary)' }}>
@@ -514,75 +616,10 @@ function InvestimentoCard({ valor }: { valor: number }) {
 }
 
 function InvoiceBadge({ days }: { days: number }) {
-  if (days < 0)   return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--danger-light)', color: 'var(--danger)' }}>Vencida</span>
-  if (days === 0) return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--danger-light)', color: 'var(--danger)' }}>Vence hoje</span>
-  if (days <= 3)  return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--warning-light)', color: 'var(--warning)' }}>Vence em {days}d</span>
+  if (days < 0)  return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--danger-light)',  color: 'var(--danger)'  }}>Vencida</span>
+  if (days === 0) return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--danger-light)',  color: 'var(--danger)'  }}>Vence hoje</span>
   if (days <= 7)  return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--warning-light)', color: 'var(--warning)' }}>Vence em {days}d</span>
-  return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--border)', color: 'var(--text-muted)' }}>{days}d</span>
-}
-
-function EmptyDashboard({ email: _ }: { email: string }) {
-  return (
-    <div className="min-h-screen p-6 max-w-5xl mx-auto" style={{ background: 'var(--bg)' }}>
-      <div className="flex items-center justify-between mb-10">
-        <div>
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>Dashboard</h1>
-          <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Bem-vindo ao SaKel Finanças</p>
-        </div>
-        <UserMenu />
-      </div>
-      <div className="rounded-2xl p-10 text-center mb-6"
-        style={{ background: 'var(--surface)', border: '2px dashed var(--border-md)' }}>
-        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-          style={{ background: 'var(--primary-light)' }}>
-          <Bank weight="duotone" size={28} style={{ color: 'var(--primary)' }} />
-        </div>
-        <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--text)' }}>Sua central financeira começa aqui</h2>
-        <p className="text-sm max-w-sm mx-auto mb-6" style={{ color: 'var(--text-muted)' }}>
-          Adicione uma conta para acompanhar saldo, transações e investimentos.
-        </p>
-        <a href="/dashboard/contas"
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white"
-          style={{ background: 'var(--primary)' }}>
-          Criar minha primeira conta
-        </a>
-      </div>
-      <p className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)' }}>O que você pode fazer</p>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-        {[
-          { icon: Bank,       title: 'Adicionar contas',  desc: 'Cadastre banco, carteira ou poupança com saldo inicial.', href: '/dashboard/contas' },
-          { icon: CreditCard, title: 'Cadastrar cartões', desc: 'Vincule seus cartões de crédito e acompanhe faturas.',     href: '/dashboard/cartoes' },
-          { icon: Tag,        title: 'Ver categorias',    desc: '14 categorias padrão já foram criadas para você.',         href: '/dashboard/categorias' },
-        ].map(item => (
-          <a key={item.href} href={item.href}
-            className="rounded-xl p-4 transition-colors group"
-            style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLElement).style.borderColor = 'var(--primary)'
-              ;(e.currentTarget as HTMLElement).style.background = 'var(--primary-light)'
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'
-              ;(e.currentTarget as HTMLElement).style.background = 'var(--surface)'
-            }}>
-            <item.icon weight="duotone" size={24} style={{ color: 'var(--primary)' }} className="mb-2" />
-            <p className="text-sm font-medium mb-1" style={{ color: 'var(--text)' }}>{item.title}</p>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{item.desc}</p>
-          </a>
-        ))}
-      </div>
-      <div className="rounded-xl px-5 py-4 flex items-start gap-3"
-        style={{ background: 'var(--primary-light)', border: '1px solid var(--primary)20' }}>
-        <Lightbulb weight="duotone" size={20} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: 2 }} />
-        <div>
-          <p className="text-sm font-medium mb-0.5" style={{ color: 'var(--primary)' }}>Dica rápida</p>
-          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-            Após criar uma conta, use o botão + no canto inferior direito para registrar receitas e despesas.
-          </p>
-        </div>
-      </div>
-    </div>
-  )
+  return               <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--border)',        color: 'var(--text-muted)' }}>{days}d</span>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -602,7 +639,7 @@ export default function DashboardPage() {
   const [catSlices,           setCatSlices]           = useState<CatSlice[]>([])
   const [invoicesDue,         setInvoicesDue]         = useState<InvoiceDue[]>([])
   const [loading,             setLoading]             = useState(true)
-  const [loadError,           setLoadError]           = useState<string | null>(null)   // S1-007
+  const [loadError,           setLoadError]           = useState<string | null>(null)
   const [hasAccounts,         setHasAccounts]         = useState(true)
   const [projecaoItens,       setProjecaoItens]       = useState<ProjecaoItem[]>([])
   const [saldoPrevisto,       setSaldoPrevisto]       = useState(0)
@@ -611,8 +648,7 @@ export default function DashboardPage() {
   const [kalEnabled,          setKalEnabled]          = useState(true)
   const [kalCtx,              setKalCtx]              = useState<KalContext | null>(null)
 
-  // S1-007 — função nomeada para permitir retry
-  async function load() {
+  const load = useCallback(async () => {
     setLoadError(null)
     setLoading(true)
 
@@ -621,6 +657,7 @@ export default function DashboardPage() {
       if (!user) { window.location.href = '/auth/login'; return }
       setEmail(user.email ?? '')
 
+      // ── Datas de referência ─────────────────────────────────────────────
       const now            = new Date()
       const year           = now.getFullYear()
       const month          = now.getMonth()
@@ -632,69 +669,102 @@ export default function DashboardPage() {
       const inicio2m       = new Date(year, month - 1, 1).toISOString().split('T')[0]
       const fimMesAnterior = new Date(year, month, 0).toISOString().split('T')[0]
 
+      // ── Preferências ────────────────────────────────────────────────────
       const { data: prefs } = await supabase
         .from('user_preferences').select('kaldiz_enabled').eq('user_id', user.id).single()
       if (prefs) setKalEnabled(prefs.kaldiz_enabled ?? true)
 
+      // ── Contas ──────────────────────────────────────────────────────────
       const { data: acc, error: accErr } = await supabase
         .from('accounts').select('current_balance')
         .eq('user_id', user.id).eq('is_active', true).neq('type', 'credit')
       if (accErr) throw accErr
 
       const accList = (acc ?? []) as { current_balance: number }[]
-      if (accList.length === 0) { setHasAccounts(false); return }
+      if (accList.length === 0) { setHasAccounts(false); setLoading(false); return }
       setHasAccounts(true)
       const saldo = accList.reduce((s, a) => s + Number(a.current_balance), 0)
       setSaldoContas(saldo)
 
+      // ── Faturas em aberto ────────────────────────────────────────────────
       const { data: openInv, error: invErr } = await supabase
         .from('credit_card_invoices').select('total_amount')
-        .eq('user_id', user.id).in('status', ['open','overdue'])
+        .eq('user_id', user.id).in('status', ['open', 'overdue'])
       if (invErr) throw invErr
       const faturas = ((openInv ?? []) as { total_amount: number }[]).reduce((s, i) => s + Number(i.total_amount), 0)
       setTotalFaturas(faturas)
 
+      // ── Investimentos ────────────────────────────────────────────────────
       const { data: invData } = await supabase
         .from('investments').select('current_amount').eq('user_id', user.id).eq('is_active', true)
       const totalInv = ((invData ?? []) as { current_amount: number }[]).reduce((s, i) => s + Number(i.current_amount), 0)
       setPatrimonioInvestido(totalInv)
 
+      // ── Faturas próximas do vencimento ───────────────────────────────────
       const { data: dueInv } = await supabase
         .from('credit_card_invoices').select('id, total_amount, status, due_date, credit_card_id')
-        .eq('user_id', user.id).in('status', ['open','overdue'])
+        .eq('user_id', user.id).in('status', ['open', 'overdue'])
         .lte('due_date', horizon30).order('due_date')
       const { data: cards } = await supabase.from('credit_cards').select('id, name, color').eq('user_id', user.id)
-      const cardMap = Object.fromEntries(((cards ?? []) as { id: string; name: string; color: string }[]).map(c => [c.id, c]))
-      const invoicesFormatted = ((dueInv ?? []) as { id: string; total_amount: number; due_date: string; credit_card_id: string }[]).map(inv => ({
-        id:             inv.id,
-        card_name:      cardMap[inv.credit_card_id]?.name  ?? 'Cartão',
-        card_color:     cardMap[inv.credit_card_id]?.color ?? '#6366f1',
-        due_date:       inv.due_date,
-        total_amount:   Number(inv.total_amount),
-        days_until_due: daysUntil(inv.due_date),
-      }))
+      const cardMap = Object.fromEntries(
+        ((cards ?? []) as { id: string; name: string; color: string }[]).map(c => [c.id, c])
+      )
+      const invoicesFormatted = ((dueInv ?? []) as { id: string; total_amount: number; due_date: string; credit_card_id: string }[])
+        .map(inv => ({
+          id:             inv.id,
+          card_name:      cardMap[inv.credit_card_id]?.name  ?? 'Cartão',
+          card_color:     cardMap[inv.credit_card_id]?.color ?? '#6366f1',
+          due_date:       inv.due_date,
+          total_amount:   Number(inv.total_amount),
+          days_until_due: daysUntil(inv.due_date),
+        }))
       setInvoicesDue(invoicesFormatted)
 
+      // ── Transações do mês — APENAS CONFIRMED (lifecycle) ─────────────────
       const { data: txMes, error: txErr } = await supabase
-        .from('transactions').select('type, amount, category_id, description, status')
-        .eq('user_id', user.id).gte('date', inicioMes).lte('date', fimMes)
-        .in('type', ['income','expense'])
+        .from('transactions')
+        .select('type, amount, category_id, description, lifecycle_status')
+        .eq('user_id', user.id)
+        .gte('date', inicioMes)
+        .lte('date', fimMes)
+        .in('lifecycle_status', CONFIRMED_STATUSES)   // ← lifecycle filter
+        .in('type', ['income', 'expense'])
       if (txErr) throw txErr
-      const txArr = (txMes ?? []) as { type: string; amount: number; category_id: string | null; description: string; status: string }[]
+
+      const txArr = (txMes ?? []) as {
+        type: string; amount: number; category_id: string | null
+        description: string; lifecycle_status: LifecycleStatus
+      }[]
       const recMesVal  = txArr.filter(t => t.type === 'income').reduce((s, t)  => s + Number(t.amount), 0)
       const despMesVal = txArr.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
       setRecMes(recMesVal)
       setDespMes(despMesVal)
       const uncategorized = txArr.filter(t => t.type === 'expense' && !t.category_id).length
 
+      // ── Contagem de pendentes e vencidos (lifecycle) ──────────────────────
+      const { data: pendingData } = await supabase
+        .from('transactions')
+        .select('lifecycle_status')
+        .eq('user_id', user.id)
+        .in('lifecycle_status', [...PENDING_STATUSES, 'OVERDUE'])
+      const pendingArr = (pendingData ?? []) as { lifecycle_status: LifecycleStatus }[]
+      const overdueCount = pendingArr.filter(t => t.lifecycle_status === 'OVERDUE').length
+      const pendingCount = pendingArr.filter(t => PENDING_STATUSES.includes(t.lifecycle_status)).length
+
+      // ── Histórico 6 meses — APENAS CONFIRMED ─────────────────────────────
       const meses = Array.from({ length: 6 }, (_, i) => {
         const d = new Date(year, month - (5 - i), 1)
         return { key: d.toISOString().slice(0, 7), label: MONTH_NAMES[d.getMonth()] + '/' + String(d.getFullYear()).slice(2) }
       })
       const { data: txHist } = await supabase
-        .from('transactions').select('type, amount, date').eq('user_id', user.id)
-        .gte('date', meses[0].key + '-01').in('type', ['income','expense'])
+        .from('transactions')
+        .select('type, amount, date')
+        .eq('user_id', user.id)
+        .gte('date', meses[0].key + '-01')
+        .in('lifecycle_status', CONFIRMED_STATUSES)   // ← lifecycle filter
+        .in('type', ['income', 'expense'])
       const histArr = (txHist ?? []) as { type: string; amount: number; date: string }[]
+
       setMonthBars(meses.map(({ key, label }) => {
         const txs = histArr.filter(t => t.date.startsWith(key))
         return {
@@ -704,6 +774,7 @@ export default function DashboardPage() {
         }
       }))
 
+      // ── Meses consecutivos positivos ──────────────────────────────────────
       let mesesPositivos = 0
       for (let i = 0; i < 3; i++) {
         const key = meses[5 - i]?.key
@@ -714,6 +785,7 @@ export default function DashboardPage() {
         if (rec > desp) mesesPositivos++; else break
       }
 
+      // ── Categorias do mês ─────────────────────────────────────────────────
       const { data: cats } = await supabase.from('categories').select('id, name').eq('user_id', user.id)
       const catNameMap = Object.fromEntries(((cats ?? []) as { id: string; name: string }[]).map(c => [c.id, c.name]))
       const catMap2: Record<string, number> = {}
@@ -721,17 +793,25 @@ export default function DashboardPage() {
         const k = t.category_id ? (catNameMap[t.category_id] ?? 'Outros') : 'Sem categoria'
         catMap2[k] = (catMap2[k] ?? 0) + Number(t.amount)
       })
-      setCatSlices(Object.entries(catMap2).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 7))
+      setCatSlices(
+        Object.entries(catMap2).map(([name, value]) => ({ name, value }))
+          .sort((a, b) => b.value - a.value).slice(0, 7)
+      )
 
+      // ── Categorias mês anterior (para comparação no Kal) ─────────────────
       const { data: txAnt } = await supabase
-        .from('transactions').select('amount, category_id').eq('user_id', user.id)
-        .eq('type', 'expense').gte('date', fimMesAnterior.slice(0,7) + '-01').lte('date', fimMesAnterior)
+        .from('transactions').select('amount, category_id')
+        .eq('user_id', user.id).eq('type', 'expense')
+        .in('lifecycle_status', CONFIRMED_STATUSES)   // ← lifecycle filter
+        .gte('date', fimMesAnterior.slice(0, 7) + '-01')
+        .lte('date', fimMesAnterior)
       const catAntMap: Record<string, number> = {}
       ;((txAnt ?? []) as { amount: number; category_id: string | null }[]).forEach(t => {
         const k = t.category_id ? (catNameMap[t.category_id] ?? 'Outros') : 'Sem categoria'
         catAntMap[k] = (catAntMap[k] ?? 0) + Number(t.amount)
       })
 
+      // ── Recorrências ──────────────────────────────────────────────────────
       const { data: recRules } = await supabase
         .from('recurrences')
         .select('type, amount, frequency, next_due_date, end_date, is_active')
@@ -754,6 +834,7 @@ export default function DashboardPage() {
         else recSaidas += total
       }
 
+      // Fallback para tabela legada recurring_transactions
       if (recRulesArr.length === 0) {
         const { data: rtData } = await supabase
           .from('recurring_transactions')
@@ -777,19 +858,29 @@ export default function DashboardPage() {
       }
       setRecCount(recCountVal)
 
+      // ── Parcelas pendentes — APENAS CONFIRMED (parcelas já ocorridas) ─────
+      // Nota: parcelas futuras ainda não ocorreram — usamos lifecycle_status
+      // PENDING_EXPECTED para as que estão agendadas mas não confirmadas.
+      // Para projeção, incluímos apenas as confirmadas já ocorridas + as
+      // PENDING_EXPECTED que ainda não venceram (são esperadas).
       const { data: instData } = await supabase
         .from('transactions').select('type, amount')
-        .eq('user_id', user.id).not('installment_total', 'is', null)
-        .eq('status', 'pending').gte('date', hoje).lte('date', horizon30)
-        .in('type', ['income','expense'])
-      const instArr = (instData ?? []) as { type: string; amount: number }[]
-      const totalParcelas   = instArr.filter(i => i.type === 'expense').reduce((s, i) => s + Number(i.amount), 0)
+        .eq('user_id', user.id)
+        .not('installment_total', 'is', null)
+        .in('lifecycle_status', [...CONFIRMED_STATUSES, ...PENDING_STATUSES])
+        .gte('date', hoje)
+        .lte('date', horizon30)
+        .in('type', ['income', 'expense'])
+      const instArr        = (instData ?? []) as { type: string; amount: number }[]
+      const totalParcelas  = instArr.filter(i => i.type === 'expense').reduce((s, i) => s + Number(i.amount), 0)
       const parcelaReceitas = instArr.filter(i => i.type === 'income').reduce((s,  i) => s + Number(i.amount), 0)
       setInstCount(instArr.length)
 
+      // ── Sugestões de recorrência ──────────────────────────────────────────
       const { data: tx60 } = await supabase
         .from('transactions').select('description, amount, date')
         .eq('user_id', user.id).eq('type', 'expense')
+        .in('lifecycle_status', CONFIRMED_STATUSES)   // ← lifecycle filter
         .gte('date', inicio2m).lte('date', fimMes)
       const tx60Arr = (tx60 ?? []) as { description: string; amount: number; date: string }[]
       const descMesMap: Record<string, Set<string>> = {}
@@ -805,13 +896,14 @@ export default function DashboardPage() {
       const sugeridas: { descricao: string; valor: number }[] = []
       for (const [desc, mesesSet] of Object.entries(descMesMap)) {
         if (mesesSet.size >= 2 && desc.length > 2) {
-          const vals = descValMap[desc]
+          const vals  = descValMap[desc]
           const media = vals.reduce((a, b) => a + b, 0) / vals.length
-          const maxV = Math.max(...vals); const minV = Math.min(...vals)
+          const maxV  = Math.max(...vals); const minV = Math.min(...vals)
           if (maxV > 0 && (maxV - minV) / maxV <= 0.20) sugeridas.push({ descricao: desc, valor: media })
         }
       }
 
+      // ── Saldo previsto ────────────────────────────────────────────────────
       const previsto = saldo + recEntradas + parcelaReceitas - recSaidas - totalParcelas - faturas
       setSaldoPrevisto(previsto)
       setProjecaoItens([
@@ -822,8 +914,9 @@ export default function DashboardPage() {
         { label: 'Faturas em aberto',          value: faturas,       color: 'var(--primary)', sign: '−' },
       ])
 
+      // ── Gamificação ───────────────────────────────────────────────────────
       let gamCtx = {
-        xp: 0, level: 1, levelName: 'Novato Financeiro',
+        xp: 0, level: 1, levelName: LEVEL_NAMES[1],
         streakDays: 0, badges: [] as string[],
         newBadge: null as string | null, leveledUp: false,
       }
@@ -833,49 +926,30 @@ export default function DashboardPage() {
         if (gam) {
           gamCtx.xp         = gam.xp
           gamCtx.level      = gam.level.level
-          gamCtx.levelName  = gam.level.name
+          gamCtx.levelName  = LEVEL_NAMES[gam.level.level] ?? gam.level.name
           gamCtx.streakDays = gam.streakDays
           gamCtx.badges     = gam.badges
         }
 
-        if (recMesVal > despMesVal && recMesVal > 0 && !gamCtx.badges.includes('month_positive')) {
-          const r = await awardXP(user.id, 'month_positive', 'month_positive')
-          if (r.newBadge)  gamCtx.newBadge  = r.newBadge
-          if (r.leveledUp) { gamCtx.leveledUp = true; gamCtx.level = r.newLevel }
-          gamCtx.xp = r.newXP
-        }
-
-        if (mesesPositivos >= 3 && !gamCtx.badges.includes('three_months_blue')) {
-          const r = await awardXP(user.id, 'three_months_blue', 'three_months_blue')
+        type AwardableId = Parameters<typeof awardXP>[1]
+const tryAward = async (badgeId: AwardableId, condition: boolean) => {
+          if (!condition || gamCtx.badges.includes(badgeId)) return
+          const r = await awardXP(user.id, badgeId, badgeId)
           if (r.newBadge && !gamCtx.newBadge) gamCtx.newBadge = r.newBadge
           if (r.leveledUp) { gamCtx.leveledUp = true; gamCtx.level = r.newLevel }
           gamCtx.xp = r.newXP
         }
 
-        if (gam && gam.streakDays >= 7 && !gamCtx.badges.includes('streak_7')) {
-          const r = await awardXP(user.id, 'streak_7', 'streak_7')
-          if (r.newBadge && !gamCtx.newBadge) gamCtx.newBadge = r.newBadge
-          if (r.leveledUp) { gamCtx.leveledUp = true; gamCtx.level = r.newLevel }
-          gamCtx.xp = r.newXP
-        }
-
-        if (gam && gam.streakDays >= 30 && !gamCtx.badges.includes('streak_30')) {
-          const r = await awardXP(user.id, 'streak_30', 'streak_30')
-          if (r.newBadge && !gamCtx.newBadge) gamCtx.newBadge = r.newBadge
-          if (r.leveledUp) { gamCtx.leveledUp = true; gamCtx.level = r.newLevel }
-          gamCtx.xp = r.newXP
-        }
-
-        const LEVEL_NAMES: Record<number, string> = {
-          1: 'Novato Financeiro', 2: 'Poupador Consistente',
-          3: 'Orçamentista Eficiente', 4: 'Estrategista Financeiro', 5: 'Mestre do Cofrinho',
-        }
-        gamCtx.levelName = LEVEL_NAMES[gamCtx.level] ?? gamCtx.levelName
+        await tryAward('month_positive',   recMesVal > despMesVal && recMesVal > 0)
+        await tryAward('three_months_blue', mesesPositivos >= 3)
+        await tryAward('streak_7',         (gam?.streakDays ?? 0) >= 7)
+        await tryAward('streak_30',        (gam?.streakDays ?? 0) >= 30)
       } catch (e) {
-        // gamificação nunca trava o dashboard — swallow silently
+        // Gamificação nunca trava o dashboard
         console.error('[dashboard] gamification error:', e)
       }
 
+      // ── Contexto do Kal ───────────────────────────────────────────────────
       setKalCtx({
         saldoLiquido:        saldo - faturas,
         saldoContas:         saldo,
@@ -892,40 +966,30 @@ export default function DashboardPage() {
         catAnterior:         catAntMap,
         recorrenteSugerida:  sugeridas.slice(0, 1),
         mesesPositivos,
+        overdueCount,
+        pendingCount,
         ...gamCtx,
       })
 
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao carregar dados financeiros.'
-      setLoadError(msg)
+      setLoadError(err instanceof Error ? err.message : 'Falha ao carregar dados financeiros.')
     } finally {
       setLoading(false)
     }
-  }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { load() }, [])
-
-  const saldoLiquido = saldoContas - totalFaturas
-  const now = new Date()
+  useEffect(() => { load() }, [load])
 
   // ── Estados de controle ──────────────────────────────────────────────────
 
-  if (loading) {
-    return (
-      <div className="min-h-screen p-6 max-w-5xl mx-auto" style={{ background: 'var(--bg)' }}>
-        <div className="space-y-4">
-          {[1,2,3].map(i => <div key={i} className="h-24 rounded-xl skeleton" />)}
-        </div>
-      </div>
-    )
-  }
+  if (loading)   return <DashboardSkeleton />
+  if (loadError) return <DashboardError message={loadError} onRetry={load} />
+  if (!hasAccounts) return <EmptyDashboard />
 
-  // S1-007 — error state com retry
-  if (loadError) {
-    return <DashboardError message={loadError} onRetry={load} />
-  }
+  // ── Valores derivados ────────────────────────────────────────────────────
 
-  if (!hasAccounts) return <EmptyDashboard email={email} />
+  const saldoLiquido = saldoContas - totalFaturas
+  const now          = new Date()
 
   // ── Render principal ─────────────────────────────────────────────────────
 
@@ -957,31 +1021,26 @@ export default function DashboardPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-        <div className="rounded-xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
-          <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Saldo em Contas</p>
-          <p className="text-lg font-bold" style={{ color: saldoContas >= 0 ? 'var(--primary)' : 'var(--danger)' }}>{fmt(saldoContas)}</p>
-          <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>Excluindo cartões</p>
-        </div>
-        <div className="rounded-xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
-          <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Faturas Abertas</p>
-          <p className="text-lg font-bold" style={{ color: 'var(--primary)' }}>{fmt(totalFaturas)}</p>
-          <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>Total a pagar</p>
-        </div>
-        <div className="rounded-xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
-          <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Receitas do Mês</p>
-          <p className="text-lg font-bold" style={{ color: 'var(--success)' }}>{fmt(recMes)}</p>
-        </div>
-        <div className="rounded-xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
-          <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Despesas do Mês</p>
-          <p className="text-lg font-bold" style={{ color: 'var(--danger)' }}>{fmt(despMes)}</p>
-        </div>
+        {[
+          { label: 'Saldo em Contas',  value: saldoContas, color: saldoContas >= 0 ? 'var(--primary)' : 'var(--danger)', sub: 'Excluindo cartões' },
+          { label: 'Faturas Abertas',  value: totalFaturas, color: 'var(--primary)', sub: 'Total a pagar' },
+          { label: 'Receitas do Mês',  value: recMes,       color: 'var(--success)', sub: 'Apenas confirmadas' },
+          { label: 'Despesas do Mês',  value: despMes,      color: 'var(--danger)',  sub: 'Apenas confirmadas' },
+        ].map(kpi => (
+          <div key={kpi.label} className="rounded-xl p-4"
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
+            <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>{kpi.label}</p>
+            <p className="text-lg font-bold" style={{ color: kpi.color }}>{fmt(kpi.value)}</p>
+            <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>{kpi.sub}</p>
+          </div>
+        ))}
       </div>
 
       {/* Patrimônio líquido */}
       <div className="rounded-xl px-5 py-4 mb-4 flex items-center justify-between"
         style={{
-          background:  saldoLiquido >= 0 ? 'var(--success-light)' : 'var(--danger-light)',
-          border:      `1px solid ${saldoLiquido >= 0 ? 'var(--success)' : 'var(--danger)'}20`,
+          background: saldoLiquido >= 0 ? 'var(--success-light)' : 'var(--danger-light)',
+          border: `1px solid ${saldoLiquido >= 0 ? 'var(--success)' : 'var(--danger)'}20`,
         }}>
         <div className="flex items-center gap-2">
           <Wallet weight="duotone" size={16} style={{ color: saldoLiquido >= 0 ? 'var(--success)' : 'var(--danger)' }} />
@@ -997,11 +1056,17 @@ export default function DashboardPage() {
 
       {patrimonioInvestido > 0 && <InvestimentoCard valor={patrimonioInvestido} />}
 
-      <SaldoPrevisto itens={projecaoItens} saldoPrevisto={saldoPrevisto} recCount={recCount} instCount={instCount} />
+      <SaldoPrevisto
+        itens={projecaoItens}
+        saldoPrevisto={saldoPrevisto}
+        recCount={recCount}
+        instCount={instCount}
+      />
 
       {/* Faturas vencendo */}
       {invoicesDue.length > 0 && (
-        <div className="rounded-xl p-5 mb-6" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
+        <div className="rounded-xl p-5 mb-6"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Faturas próximas do vencimento</p>
             <a href="/dashboard/faturas" className="text-xs hover:underline" style={{ color: 'var(--primary)' }}>Ver todas</a>
@@ -1034,7 +1099,8 @@ export default function DashboardPage() {
 
       {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-6">
-        <div className="lg:col-span-3 rounded-xl p-5" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
+        <div className="lg:col-span-3 rounded-xl p-5"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
           <p className="text-sm font-medium mb-4" style={{ color: 'var(--text-secondary)' }}>Receitas × Despesas (6 meses)</p>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={monthBars} barSize={12} barGap={3}>
@@ -1045,17 +1111,18 @@ export default function DashboardPage() {
                 formatter={(v: number | string) => fmt(Number(v))}
                 contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
               />
-              <Bar dataKey="receitas" name="Receitas" fill="var(--success)" radius={[4,4,0,0]} />
-              <Bar dataKey="despesas" name="Despesas" fill="var(--danger)"  radius={[4,4,0,0]} />
+              <Bar dataKey="receitas" name="Receitas" fill="var(--success)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="despesas" name="Despesas" fill="var(--danger)"  radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
-        <div className="lg:col-span-2 rounded-xl p-5" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
+        <div className="lg:col-span-2 rounded-xl p-5"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
           <p className="text-sm font-medium mb-4" style={{ color: 'var(--text-secondary)' }}>Despesas por Categoria</p>
           {catSlices.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-44 gap-2" style={{ color: 'var(--text-muted)' }}>
+            <div className="flex flex-col items-center justify-center h-44 gap-2">
               <ChartBar weight="duotone" size={36} style={{ color: 'var(--border)' }} />
-              <p className="text-xs">Sem dados este mês</p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Sem dados este mês</p>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
@@ -1087,14 +1154,16 @@ export default function DashboardPage() {
             className="rounded-xl px-4 py-3 text-sm font-medium transition-colors flex items-center gap-2"
             style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
             onMouseEnter={e => {
-              (e.currentTarget as HTMLElement).style.borderColor = 'var(--primary)'
-              ;(e.currentTarget as HTMLElement).style.background = 'var(--primary-light)'
-              ;(e.currentTarget as HTMLElement).style.color = 'var(--primary)'
+              const el = e.currentTarget as HTMLElement
+              el.style.borderColor = 'var(--primary)'
+              el.style.background  = 'var(--primary-light)'
+              el.style.color       = 'var(--primary)'
             }}
             onMouseLeave={e => {
-              (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'
-              ;(e.currentTarget as HTMLElement).style.background = 'var(--surface)'
-              ;(e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'
+              const el = e.currentTarget as HTMLElement
+              el.style.borderColor = 'var(--border)'
+              el.style.background  = 'var(--surface)'
+              el.style.color       = 'var(--text-secondary)'
             }}>
             <link.icon weight="duotone" size={16} />
             {link.label}
