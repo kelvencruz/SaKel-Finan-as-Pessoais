@@ -193,20 +193,22 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     console.log('[XP] push concluído')
   }
 
-  async function finish(userId: string, isFirstTx: boolean, confirmMessage: string) {
-    console.log('[FINISH] início — msg:', confirmMessage)
-    toastManager.push({ kind: 'confirm', message: confirmMessage })
-    console.log('[FINISH] confirm pushado')
-    try {
-      await pushXPToast(userId, isFirstTx)
-    } catch (e) {
-      console.error('[FINISH] ERRO pushXPToast:', e)
-    }
-    console.log('[FINISH] concluído — fechando modal')
-    onSaved?.()
-    onClose()
-    setSaving(false)
+ async function finish(userId: string, isFirstTx: boolean, confirmMessage: string) {
+  console.log('[FINISH] início — msg:', confirmMessage)
+  toastManager.push({ kind: 'confirm', message: confirmMessage })
+  console.log('[FINISH] confirm pushado')
+  try {
+    await pushXPToast(userId, isFirstTx)
+  } catch (e) {
+    console.error('[FINISH] ERRO pushXPToast:', e)
   }
+  console.log('[FINISH] aguardando toast renderizar...')
+  await new Promise(resolve => setTimeout(resolve, 300))
+  console.log('[FINISH] concluído — fechando modal')
+  onSaved?.()
+  onClose()
+  setSaving(false)
+}
 
   async function handleSave() {
     setError(null)
