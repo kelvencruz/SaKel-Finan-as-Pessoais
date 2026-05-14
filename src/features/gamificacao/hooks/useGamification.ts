@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react'
 import { toastManager } from '@/components/core/ToastManager'
-import { processTransactionCreated } from '../services/gamificacaoService'
+import { processTransactionCreated } from '@/features/gamificacao/services/gamificacaoService'
 
 export function useGamification() {
   /**
