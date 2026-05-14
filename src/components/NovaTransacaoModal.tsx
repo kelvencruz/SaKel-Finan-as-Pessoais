@@ -103,6 +103,10 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       setCategories((cat ?? []) as Category[])
       setCreditCards((cards ?? []) as CreditCard[])
       setGoals((gls ?? []) as InvestmentGoal[])
+
+      console.log('[DEBUG] prefs do Supabase:', prefs)
+      console.log('[DEBUG] gamification_enabled:', prefs?.gamification_enabled)
+
       setGamEnabled(prefs?.gamification_enabled ?? true)
       setForm(f => ({ ...f, account_id: accList[0]?.id ?? '' }))
       setLoaded(true)
@@ -155,12 +159,18 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
   }
 
   async function handleXP(userId: string, isFirstTx: boolean) {
-    if (!gamEnabled) return
+    console.log('[XP] 1. handleXP chamado — gamEnabled:', gamEnabled)
+    if (!gamEnabled) {
+      console.log('[XP] gamEnabled é false — abortando')
+      return
+    }
     let totalXP = 0
     let badgeEarned: string | null = null
 
     try {
+      console.log('[XP] 2. chamando awardXP...')
       const r1 = await awardXP(userId, 'transaction_created', isFirstTx ? 'first_transaction' : undefined)
+      console.log('[XP] 3. awardXP retornou:', r1)
       totalXP += 10
       if (r1.newBadge) badgeEarned = r1.newBadge
 
@@ -175,11 +185,12 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         if (r3.newBadge && !badgeEarned) badgeEarned = r3.newBadge
       }
     } catch (e) {
-      console.error('[XP] erro:', e)
+      console.error('[XP] ERRO em awardXP:', e)
     }
 
-    // ── Sequência garantida pela fila: confirmação → XP (→ badge se houver) ──
+    console.log('[XP] 4. chamando toastManager.push — totalXP:', totalXP, '| badge:', badgeEarned)
     toastManager.push({ kind: 'xp', xp: totalXP, badge: badgeEarned })
+    console.log('[XP] 5. push feito')
   }
 
   // ─── Save ─────────────────────────────────────────────────────────────────
@@ -274,7 +285,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
       }
 
-      // ✅ FIX ISSUE-001: toasts e XP ANTES de fechar o modal
       toastManager.push({ kind: 'confirm', message: 'Recorrência salva ✓' })
       await handleXP(user.id, isFirstTx)
       onSaved?.()
@@ -332,7 +342,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         }
       }
 
-      // ✅ FIX ISSUE-001: toasts e XP ANTES de fechar o modal
       toastManager.push({ kind: 'confirm', message: `${form.installment_count}x parcelas salvas ✓` })
       await handleXP(user.id, isFirstTx)
       onSaved?.()
@@ -369,7 +378,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
     }
 
-    // ✅ FIX ISSUE-001: toasts e XP ANTES de fechar o modal
     toastManager.push({ kind: 'confirm', message: 'Transação salva ✓' })
     await handleXP(user.id, isFirstTx)
     onSaved?.()
