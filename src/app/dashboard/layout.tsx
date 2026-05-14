@@ -1,5 +1,6 @@
 import Sidebar from '@/components/Sidebar'
 import FloatingActionButton from '@/components/FloatingActionButton'
+import { ToastManagerProvider } from '@/components/core/ToastManager'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -12,6 +13,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </div>
       <FloatingActionButton />
+      <ToastManagerProvider />
     </div>
   )
 }

@@ -5,10 +5,6 @@ import { ThemeProvider } from '@/contexts/ThemeContext'
 export const metadata: Metadata = {
   title: 'SaKel Finanças',
   description: 'Controle financeiro inteligente e elegante. Organize receitas, despesas, cartões e faturas em um só lugar.',
-  icons: {
-    icon: '/sakel-logo.png',
-    apple: '/sakel-logo.png',
-  },
   openGraph: {
     title: 'SaKel Finanças',
     description: 'Controle financeiro inteligente e elegante.',
@@ -20,6 +16,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <head>
+        {/* Favicon */}
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <link rel="alternate icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
         {/* Script inline: aplica tema ANTES do render para evitar flash */}
         <script dangerouslySetInnerHTML={{ __html: `
           (function() {
