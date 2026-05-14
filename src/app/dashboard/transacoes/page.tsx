@@ -643,15 +643,12 @@ export default function TransacoesPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <a href="/dashboard" className="text-sm text-gray-400 hover:text-gray-600">Dashboard</a>
-          <h1 className="text-xl font-semibold mt-1">Transacoes</h1>
-        </div>
-        <button onClick={openCreate} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
-          + Nova Transacao
-        </button>
-      </div>
+    <div className="flex items-center justify-between mb-6">
+  <div>
+    <a href="/dashboard" className="text-sm text-gray-400 hover:text-gray-600">Dashboard</a>
+    <h1 className="text-xl font-semibold mt-1">Transacoes</h1>
+  </div>
+</div>
 
       {/* Filtros */}
       <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 space-y-3">
