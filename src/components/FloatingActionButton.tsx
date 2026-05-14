@@ -1,12 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import NovaTransacaoModal from './NovaTransacaoModal'
 
 export default function FloatingActionButton() {
   const [open, setOpen] = useState(false)
-  const router = useRouter()
+
+  function handleSaved() {
+    // Dispara evento para as páginas que precisam recarregar dados
+    window.dispatchEvent(new CustomEvent('transacao-criada'))
+    setOpen(false)
+  }
 
   return (
     <>
@@ -26,7 +30,7 @@ export default function FloatingActionButton() {
       <NovaTransacaoModal
         open={open}
         onClose={() => setOpen(false)}
-        onSaved={() => router.refresh()}
+        onSaved={handleSaved}
       />
     </>
   )

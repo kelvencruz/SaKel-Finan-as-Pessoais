@@ -265,14 +265,13 @@ export default function TransacoesPage() {
     setLoading(false)
   }
 
-  useEffect(() => { loadAll() }, [])
-
-  function openCreate() {
-    setForm({ ...emptyForm, account_id: accounts[0]?.id ?? '' })
-    setEditingId(null)
-    setError(null)
-    setShowModal(true)
-  }
+ useEffect(() => {
+  loadAll()
+  
+  const handler = () => loadAll()
+  window.addEventListener('transacao-criada', handler)
+  return () => window.removeEventListener('transacao-criada', handler)
+}, [])
 
   function openEdit(tx: Transaction) {
     setForm({
