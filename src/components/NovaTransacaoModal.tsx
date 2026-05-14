@@ -274,10 +274,11 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
       }
 
-      onSaved?.()
-      onClose()
+      // ✅ FIX ISSUE-001: toasts e XP ANTES de fechar o modal
       toastManager.push({ kind: 'confirm', message: 'Recorrência salva ✓' })
       await handleXP(user.id, isFirstTx)
+      onSaved?.()
+      onClose()
       setSaving(false)
       return
     }
@@ -331,10 +332,11 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         }
       }
 
-      onSaved?.()
-      onClose()
+      // ✅ FIX ISSUE-001: toasts e XP ANTES de fechar o modal
       toastManager.push({ kind: 'confirm', message: `${form.installment_count}x parcelas salvas ✓` })
       await handleXP(user.id, isFirstTx)
+      onSaved?.()
+      onClose()
       setSaving(false)
       return
     }
@@ -367,10 +369,11 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
     }
 
-    onSaved?.()
-    onClose()
+    // ✅ FIX ISSUE-001: toasts e XP ANTES de fechar o modal
     toastManager.push({ kind: 'confirm', message: 'Transação salva ✓' })
     await handleXP(user.id, isFirstTx)
+    onSaved?.()
+    onClose()
     setSaving(false)
   }
 
