@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { PasswordInput, getPasswordStrength } from '@/components/auth/PasswordInput'
 
 type Tab = 'perfil' | 'aparencia' | 'financeiro' | 'seguranca' | 'dados'
 
@@ -248,42 +249,205 @@ function TabFinanceiro({ prefs, onChange, onSave, saving }: {
 // ── Aba Segurança ───────────────────────────────────────────────────────────
 function TabSeguranca({ email }: { email: string }) {
   const supabase = createClient()
-  const [sending, setSending] = useState(false)
-  const [sent,    setSent]    = useState(false)
-  const [error,   setError]   = useState('')
 
-  async function handleReset() {
-    setSending(true); setError('')
+  // — Troca de senha inline —
+  const [senhaAtual,    setSenhaAtual]    = useState('')
+  const [novaSenha,     setNovaSenha]     = useState('')
+  const [confirmaSenha, setConfirmaSenha] = useState('')
+  const [trocando,      setTrocando]      = useState(false)
+  const [trocaErro,     setTrocaErro]     = useState('')
+  const [trocaOk,       setTrocaOk]       = useState(false)
+
+  // — Link por email (fallback) —
+  const [sending,  setSending]  = useState(false)
+  const [sent,     setSent]     = useState(false)
+  const [linkErro, setLinkErro] = useState('')
+
+  // Força nova senha deve ser >= 3 (boa) para habilitar botão
+  const forcaNovaSenha = getPasswordStrength(novaSenha)
+  const senhasIguais   = novaSenha === confirmaSenha && confirmaSenha !== ''
+  const podeSubmeter   =
+    senhaAtual.length > 0 &&
+    novaSenha.length >= 8 &&
+    senhasIguais &&
+    !trocando
+
+  async function handleTrocarSenha() {
+    setTrocaErro('')
+    setTrocaOk(false)
+
+    // Validações client-side
+    if (!senhaAtual || !novaSenha || !confirmaSenha) {
+      setTrocaErro('Preencha todos os campos.')
+      return
+    }
+    if (novaSenha !== confirmaSenha) {
+      setTrocaErro('As senhas não coincidem.')
+      return
+    }
+    if (novaSenha.length < 8) {
+      setTrocaErro('A nova senha precisa ter pelo menos 8 caracteres.')
+      return
+    }
+    if (novaSenha === senhaAtual) {
+      setTrocaErro('A nova senha deve ser diferente da atual.')
+      return
+    }
+
+    setTrocando(true)
+
+    // 1. Confirma identidade — NUNCA pula essa etapa (regra inviolável #12)
+    const { error: signInErr } = await supabase.auth.signInWithPassword({
+      email,
+      password: senhaAtual,
+    })
+    if (signInErr) {
+      setTrocaErro('Senha atual incorreta.')
+      setTrocando(false)
+      return
+    }
+
+    // 2. Atualiza a senha
+    const { error: updateErr } = await supabase.auth.updateUser({
+      password: novaSenha,
+    })
+    if (updateErr) {
+      setTrocaErro(updateErr.message)
+      setTrocando(false)
+      return
+    }
+
+    // 3. Encerra sessões em outros dispositivos
+    await supabase.auth.signOut({ scope: 'others' })
+
+    // 4. Limpa formulário e exibe confirmação
+    setSenhaAtual('')
+    setNovaSenha('')
+    setConfirmaSenha('')
+    setTrocando(false)
+    setTrocaOk(true)
+    setTimeout(() => setTrocaOk(false), 4000)
+  }
+
+  async function handleEnviarLink() {
+    setSending(true)
+    setLinkErro('')
     const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/auth/reset-password`,
     })
-    if (err) setError(err.message); else setSent(true)
+    if (err) setLinkErro(err.message)
+    else setSent(true)
     setSending(false)
   }
 
   return (
     <div>
-      <SectionTitle>Senha</SectionTitle>
-      <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 mb-4">
-        <p className="text-sm text-gray-700 mb-1">Alterar senha</p>
-        <p className="text-xs text-gray-400 mb-4">
-          Um link de redefinição será enviado para <strong>{email}</strong>.
+      {/* ── Troca de senha inline ── */}
+      <SectionTitle>Alterar senha</SectionTitle>
+      <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-4">
+        <p className="text-xs text-gray-400">
+          Confirme sua senha atual antes de definir a nova. Sessões em outros dispositivos serão encerradas automaticamente.
         </p>
-        {sent ? (
-          <p className="text-sm text-green-600 flex items-center gap-2"><span>✅</span> Link enviado! Verifique seu e-mail.</p>
-        ) : (
-          <button onClick={handleReset} disabled={sending}
-            className="w-full sm:w-auto bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-            {sending ? 'Enviando…' : 'Enviar link de redefinição'}
-          </button>
+
+        {/* Senha atual */}
+        <PasswordInput
+          label="Senha atual"
+          value={senhaAtual}
+          onChange={setSenhaAtual}
+          autoComplete="current-password"
+          placeholder="••••••••"
+          disabled={trocando}
+        />
+
+        {/* Nova senha com strength meter */}
+        <PasswordInput
+          label="Nova senha"
+          value={novaSenha}
+          onChange={setNovaSenha}
+          showStrengthMeter
+          autoComplete="new-password"
+          placeholder="Mín. 8 caracteres"
+          disabled={trocando}
+        />
+
+        {/* Confirmar nova senha */}
+        <div>
+          <PasswordInput
+            label="Confirmar nova senha"
+            value={confirmaSenha}
+            onChange={setConfirmaSenha}
+            autoComplete="new-password"
+            placeholder="Repita a nova senha"
+            disabled={trocando}
+          />
+          {/* Feedback de senhas iguais — só aparece após o user digitar algo */}
+          {confirmaSenha.length > 0 && (
+            <p className={`text-xs mt-1.5 ${senhasIguais ? 'text-green-600' : 'text-red-500'}`}>
+              {senhasIguais ? '✓ Senhas coincidem' : '✗ Senhas não coincidem'}
+            </p>
+          )}
+        </div>
+
+        {/* Erro */}
+        {trocaErro && (
+          <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2.5">
+            <span className="text-red-500 text-xs mt-0.5">⚠</span>
+            <p className="text-xs text-red-600">{trocaErro}</p>
+          </div>
         )}
-        {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
+
+        {/* Sucesso */}
+        {trocaOk && (
+          <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-lg px-3 py-2.5">
+            <span className="text-green-600 text-sm">✅</span>
+            <p className="text-xs text-green-700 font-medium">Senha alterada com sucesso! Outros dispositivos foram desconectados.</p>
+          </div>
+        )}
+
+        <button
+          onClick={handleTrocarSenha}
+          disabled={!podeSubmeter}
+          className="w-full sm:w-auto bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+        >
+          {trocando ? (
+            <>
+              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Verificando…
+            </>
+          ) : 'Alterar senha'}
+        </button>
       </div>
 
-      <SectionTitle>Sessões</SectionTitle>
+      {/* ── Fallback: link por e-mail ── */}
+      <SectionTitle>Esqueceu a senha atual?</SectionTitle>
       <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
-        <p className="text-sm text-gray-700 mb-1">Gerenciar sessões ativas</p>
-        <p className="text-xs text-gray-400 mb-3">Visualize e encerre sessões em outros dispositivos.</p>
+        <p className="text-xs text-gray-400 mb-4">
+          Enviaremos um link de redefinição para <strong className="text-gray-600">{email}</strong>.
+        </p>
+        {sent ? (
+          <p className="text-sm text-green-600 flex items-center gap-2">
+            <span>✅</span> Link enviado! Verifique seu e-mail.
+          </p>
+        ) : (
+          <button
+            onClick={handleEnviarLink}
+            disabled={sending}
+            className="w-full sm:w-auto border border-gray-200 text-gray-600 bg-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            {sending ? 'Enviando…' : 'Enviar link por e-mail'}
+          </button>
+        )}
+        {linkErro && <p className="text-xs text-red-500 mt-2">{linkErro}</p>}
+      </div>
+
+      {/* ── Sessões ── */}
+      <SectionTitle>Sessões ativas</SectionTitle>
+      <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
+        <p className="text-sm text-gray-700 mb-1">Gerenciar sessões em outros dispositivos</p>
+        <p className="text-xs text-gray-400 mb-3">
+          Ao trocar a senha, outras sessões são encerradas automaticamente.
+          Visualização detalhada de dispositivos em breve.
+        </p>
         <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full">
           🚧 Em desenvolvimento
         </span>
@@ -403,7 +567,6 @@ export default function SettingsPage() {
           gamification_enabled: p.gamification_enabled ?? true,
         })
       } else {
-        // Sem registro em user_preferences ainda — lê o que tem em profiles
         const { data: profile } = await supabase
           .from('profiles').select('full_name, gamification_enabled, kal_enabled').eq('id', user.id).single()
         if (profile) {
@@ -429,7 +592,6 @@ export default function SettingsPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setSaving(false); return }
 
-    // Salva tudo em user_preferences (fonte primária)
     await supabase.from('user_preferences').upsert({
       user_id:              user.id,
       full_name:            prefs.full_name,
@@ -446,7 +608,6 @@ export default function SettingsPage() {
       updated_at:           new Date().toISOString(),
     }, { onConflict: 'user_id' })
 
-    // Sincroniza profiles (outras partes do app leem daqui)
     await supabase.from('profiles').update({
       full_name:            prefs.full_name,
       gamification_enabled: prefs.gamification_enabled,
@@ -477,7 +638,7 @@ export default function SettingsPage() {
         <p className="text-sm text-gray-400 mt-0.5">Gerencie seu perfil, aparência e preferências</p>
       </div>
 
-      {/* Toast */}
+      {/* Toast de salvamento */}
       {saved && (
         <div className="fixed top-4 right-4 z-50 bg-green-600 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2">
           <span>✅</span> Salvo com sucesso!
