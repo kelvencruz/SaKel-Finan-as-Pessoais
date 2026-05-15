@@ -7,34 +7,47 @@ export type CategoryType      = 'income' | 'expense' | 'both' | 'investment'
 export type BudgetPeriod      = 'monthly' | 'yearly'
 export type Frequency         = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
-/// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// App roles
+// Adicionado para controle de permissões de convite e futuro RBAC.
+// SQL necessário (rodar UMA vez no Supabase):
+//   ALTER TABLE profiles ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user';
+//   UPDATE profiles SET role = 'owner' WHERE id = '<seu-user-id>';
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type AppRole = 'owner' | 'admin' | 'user'
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Lifecycle engine
-// ...
+// ATENÇÃO: os valores abaixo espelham o enum PostgreSQL criado na Sprint 2·S4.
+// O banco usa SCREAMING_SNAKE_CASE — não alterar sem migração SQL correspondente.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type LifecycleStatus =
-  | 'draft'
-  | 'scheduled'
-  | 'pending'
-  | 'processing'
-  | 'paid'
-  | 'overdue'
-  | 'cancelled'
-  | 'refunded'
+  | 'CONFIRMED'
+  | 'PENDING_EXPECTED'
+  | 'PENDING_REVIEW'
+  | 'OVERDUE'
+  | 'CANCELLED'
 
-export const LIFECYCLE_TRANSITIONS: Record<LifecycleStatus, LifecycleStatus[]> = {
-  draft:      ['scheduled', 'pending', 'cancelled'],
-  scheduled:  ['pending', 'cancelled'],
-  pending:    ['processing', 'paid', 'overdue', 'cancelled'],
-  processing: ['paid', 'cancelled'],
-  paid:       ['refunded'],
-  overdue:    ['paid', 'cancelled'],
-  cancelled:  [],
-  refunded:   [],
+// Estados que não aceitam mais transições (regra inviolável #11)
+export const TERMINAL_STATUSES: LifecycleStatus[] = ['CONFIRMED', 'CANCELLED']
+
+export function isTerminal(status: LifecycleStatus): boolean {
+  return TERMINAL_STATUSES.includes(status)
+}
+
+// Mapa de transições válidas — espelha a tabela no checklist
+export const VALID_TRANSITIONS: Record<LifecycleStatus, LifecycleStatus[]> = {
+  PENDING_EXPECTED: ['CONFIRMED', 'OVERDUE',    'CANCELLED'],
+  PENDING_REVIEW:   ['CONFIRMED', 'CANCELLED'],
+  OVERDUE:          ['CONFIRMED', 'CANCELLED'],
+  CONFIRMED:        [],
+  CANCELLED:        [],
 }
 
 export function isValidTransition(from: LifecycleStatus, to: LifecycleStatus): boolean {
-  return LIFECYCLE_TRANSITIONS[from]?.includes(to) ?? false
+  return VALID_TRANSITIONS[from]?.includes(to) ?? false
 }
 
 export interface TransitionResult {
@@ -73,16 +86,16 @@ export interface UserPreferences {
 export type ToastKind = 'success' | 'error' | 'warning' | 'info' | 'xp' | 'achievement'
 
 export interface GamificationEvent {
-  type:        'xp_gained' | 'level_up' | 'achievement_unlocked' | 'streak_updated'
-  xp?:         number
-  level?:      number
+  type:         'xp_gained' | 'level_up' | 'achievement_unlocked' | 'streak_updated'
+  xp?:          number
+  level?:       number
   achievement?: string
-  streak?:     number
+  streak?:      number
 }
 
 export interface GamificationResult {
-  events:   GamificationEvent[]
-  toast?:   { kind: ToastKind; message: string }
+  events: GamificationEvent[]
+  toast?: { kind: ToastKind; message: string }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,8 +107,8 @@ export interface Profile {
   full_name:    string | null
   avatar_url:   string | null
   currency:     string
-  // kal_enabled é a coluna em profiles; kal_arcade_enabled é em user_preferences
-  kal_enabled:          boolean
+  role:         AppRole              // adicionado — coluna: ALTER TABLE profiles ADD COLUMN role text NOT NULL DEFAULT 'user'
+  kal_enabled:          boolean      // legado em profiles; source of truth é user_preferences.kal_arcade_enabled
   gamification_enabled: boolean
   created_at:   string
   updated_at:   string
@@ -162,8 +175,8 @@ export interface Transaction {
   description:         string
   date:                string
   status:              TransactionStatus
-  // lifecycle_status é o campo gerenciado pelo engine acima.
-  // Pode ser null em transações antigas criadas antes do engine existir.
+  // lifecycle_status gerenciado pelo lifecycleEngine.ts
+  // null apenas em transações criadas antes da Sprint 2·S4
   lifecycle_status:    LifecycleStatus | null
   notes:               string | null
   transfer_account_id: string | null
@@ -203,10 +216,10 @@ export interface Recorrencia {
   is_active:       boolean
   created_at:      string
   // joins (populados no front)
-  account_name?:      string
-  category_name?:     string
-  category_icon?:     string
-  credit_card_name?:  string
+  account_name?:     string
+  category_name?:    string
+  category_icon?:    string
+  credit_card_name?: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

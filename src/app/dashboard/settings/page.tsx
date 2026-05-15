@@ -5,15 +5,16 @@ import { createClient } from '@/lib/supabase/client'
 import { PasswordInput, getPasswordStrength } from '@/components/auth/PasswordInput'
 import { WarningCircle } from '@phosphor-icons/react'
 
-type Tab = 'perfil' | 'aparencia' | 'financeiro' | 'seguranca' | 'dados'
+// ── Adicionado 'membros' ao tipo e array de tabs ──────────────────────────────
+type Tab = 'perfil' | 'aparencia' | 'financeiro' | 'seguranca' | 'membros' | 'dados'
 
 // REGRA INVIOLÁVEL #8 — zero emoji em navegação principal
-// Ícones Phosphor substituem emojis nas tabs
 const TABS: { id: Tab; label: string }[] = [
   { id: 'perfil',     label: 'Perfil'     },
   { id: 'aparencia',  label: 'Aparência'  },
   { id: 'financeiro', label: 'Financeiro' },
   { id: 'seguranca',  label: 'Segurança'  },
+  { id: 'membros',    label: 'Membros'    },
   { id: 'dados',      label: 'Dados'      },
 ]
 
@@ -27,9 +28,6 @@ interface Prefs {
   currency:             string
   hide_balances:        boolean
   number_format:        string
-  // FIX BUG-007: nome alinhado com a coluna real em user_preferences
-  // O banco tem 'kal_arcade_enabled' em user_preferences.
-  // A coluna 'kal_enabled' existe só em profiles (fallback de leitura).
   kal_arcade_enabled:   boolean
   gamification_enabled: boolean
 }
@@ -240,7 +238,6 @@ function TabFinanceiro({ prefs, onChange, onSave, saving }: {
       </Field>
 
       <SectionTitle>Inteligência</SectionTitle>
-      {/* FIX BUG-007: prop renomeada de kaldiz_enabled → kal_arcade_enabled */}
       <Field label="Kal diz (insights)" hint="Exibe insights automáticos no dashboard">
         <Toggle active={prefs.kal_arcade_enabled} onChange={() => onChange({ kal_arcade_enabled: !prefs.kal_arcade_enabled })} />
       </Field>
@@ -294,11 +291,8 @@ function TabSeguranca({ email }: { email: string }) {
 
     setTrocando(true)
 
-    // REGRA INVIOLÁVEL #12 — confirma identidade antes de updateUser
-    const { error: signInErr } = await supabase.auth.signInWithPassword({
-      email,
-      password: senhaAtual,
-    })
+    // REGRA INVIOLÁVEL #12
+    const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password: senhaAtual })
     if (signInErr) {
       setTrocaErro('Senha atual incorreta.')
       setTrocando(false)
@@ -318,7 +312,6 @@ function TabSeguranca({ email }: { email: string }) {
       return
     }
 
-    // Encerra sessões em outros dispositivos; mantém a atual
     await supabase.auth.signOut({ scope: 'others' })
 
     setSenhaAtual('')
@@ -387,7 +380,6 @@ function TabSeguranca({ email }: { email: string }) {
           )}
         </div>
 
-        {/* FIX regra #8 — WarningCircle no lugar de emoji ⚠ */}
         {trocaErro && (
           <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2.5" role="alert">
             <WarningCircle size={14} weight="fill" className="mt-0.5 shrink-0 text-red-500" aria-hidden="true" />
@@ -452,15 +444,109 @@ function TabSeguranca({ email }: { email: string }) {
   )
 }
 
+// ── Aba Membros ─────────────────────────────────────────────────────────────
+// Visível para todos, mas a API route rejeita quem não é 'owner'.
+// O token é passado no header Authorization para a route server-side
+// que usa a service_role key — jamais exposta no client.
+function TabMembros() {
+  const supabase = createClient()
+  const [email,   setEmail]   = useState('')
+  const [sending, setSending] = useState(false)
+  const [sent,    setSent]    = useState(false)
+  const [error,   setError]   = useState('')
+
+  async function handleInvite() {
+    if (!email.trim()) return
+    setSending(true)
+    setError('')
+    setSent(false)
+
+    // Obtém token da sessão atual para passar à API route (que roda server-side)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      setError('Sessão expirada. Faça login novamente.')
+      setSending(false)
+      return
+    }
+
+    const res = await fetch('/api/invite', {
+      method:  'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ email: email.trim() }),
+    })
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      setError(data.error ?? 'Erro ao enviar convite.')
+    } else {
+      setSent(true)
+      setEmail('')
+    }
+    setSending(false)
+  }
+
+  return (
+    <div>
+      <SectionTitle>Convidar usuário</SectionTitle>
+      <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-4">
+        <p className="text-xs text-gray-400">
+          O usuário receberá um e-mail com link para criar a senha e acessar a plataforma.
+          O link expira em 24 horas. Apenas o owner da conta pode enviar convites.
+        </p>
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">E-mail do convidado</label>
+          <input
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleInvite()}
+            placeholder="nome@email.com"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+
+        {error && (
+          <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2.5" role="alert">
+            <WarningCircle size={14} weight="fill" className="mt-0.5 shrink-0 text-red-500" aria-hidden="true" />
+            <p className="text-xs text-red-600">{error}</p>
+          </div>
+        )}
+
+        {sent && (
+          <p className="text-xs text-green-600" role="status">
+            Convite enviado com sucesso.
+          </p>
+        )}
+
+        <button
+          onClick={handleInvite}
+          disabled={sending || !email.trim()}
+          className="w-full sm:w-auto bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+        >
+          {sending ? (
+            <>
+              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+              Enviando…
+            </>
+          ) : 'Enviar convite'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Aba Dados ───────────────────────────────────────────────────────────────
 function TabDados({ email: _email }: { email: string }) {
   const supabase = createClient()
-  const [exporting,    setExporting]    = useState(false)
-  const [confirming,   setConfirming]   = useState(false)
-  const [confirmText,  setConfirmText]  = useState('')
-  const [deleting,     setDeleting]     = useState(false)
-  // FIX BUG: estado de erro para handleDelete — antes o erro era silenciado
-  const [deleteError,  setDeleteError]  = useState('')
+  const [exporting,   setExporting]   = useState(false)
+  const [confirming,  setConfirming]  = useState(false)
+  const [confirmText, setConfirmText] = useState('')
+  const [deleting,    setDeleting]    = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   async function handleExport() {
     setExporting(true)
@@ -481,9 +567,7 @@ function TabDados({ email: _email }: { email: string }) {
     setExporting(false)
   }
 
-  // FIX: chama RPC que apaga os dados antes de fazer signOut.
-  // A RPC delete_user_data() deve existir no Supabase (rodar o SQL já entregue).
-  // Se a RPC falhar, exibe erro e não desloga — o usuário sabe que algo quebrou.
+  // REGRA INVIOLÁVEL #16 — RPC antes de signOut
   async function handleDelete() {
     if (confirmText !== 'EXCLUIR') return
     setDeleting(true)
@@ -528,7 +612,6 @@ function TabDados({ email: _email }: { email: string }) {
             <input type="text" value={confirmText} onChange={e => setConfirmText(e.target.value)} placeholder="EXCLUIR"
               className="w-full border border-red-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
 
-            {/* FIX: exibe erro de deleção se a RPC falhar */}
             {deleteError && (
               <div className="flex items-start gap-2 bg-red-100 border border-red-200 rounded-lg px-3 py-2.5" role="alert">
                 <WarningCircle size={14} weight="fill" className="mt-0.5 shrink-0 text-red-600" aria-hidden="true" />
@@ -583,7 +666,6 @@ export default function SettingsPage() {
           currency:             p.currency             ?? DEFAULT_PREFS.currency,
           hide_balances:        p.hide_balances        ?? false,
           number_format:        p.number_format        ?? DEFAULT_PREFS.number_format,
-          // FIX BUG-007: lê kal_arcade_enabled de user_preferences (coluna real)
           kal_arcade_enabled:   p.kal_arcade_enabled   ?? true,
           gamification_enabled: p.gamification_enabled ?? true,
         })
@@ -596,7 +678,6 @@ export default function SettingsPage() {
             ...prev,
             full_name:            profile.full_name            ?? prev.full_name,
             gamification_enabled: profile.gamification_enabled ?? prev.gamification_enabled,
-            // kal_enabled em profiles → kal_arcade_enabled no estado local
             kal_arcade_enabled:   profile.kal_enabled          ?? prev.kal_arcade_enabled,
           }))
         }
@@ -615,7 +696,6 @@ export default function SettingsPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setSaving(false); return }
 
-    // FIX BUG-007: upsert usa kal_arcade_enabled (coluna real em user_preferences)
     await supabase.from('user_preferences').upsert({
       user_id:              user.id,
       full_name:            prefs.full_name,
@@ -632,7 +712,6 @@ export default function SettingsPage() {
       updated_at:           new Date().toISOString(),
     }, { onConflict: 'user_id' })
 
-    // Mantém profiles sincronizado (kal_enabled é a coluna lá)
     await supabase.from('profiles').update({
       full_name:            prefs.full_name,
       gamification_enabled: prefs.gamification_enabled,
@@ -671,6 +750,7 @@ export default function SettingsPage() {
 
       <div className="flex flex-col sm:flex-row gap-6">
 
+        {/* Mobile: scroll horizontal */}
         <div className="sm:hidden w-full">
           <div className="flex gap-1 overflow-x-auto pb-1 -mx-4 px-4">
             {TABS.map(t => (
@@ -685,6 +765,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* Desktop: sidebar vertical */}
         <nav className="hidden sm:flex flex-col w-44 shrink-0 gap-0.5">
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
@@ -704,6 +785,7 @@ export default function SettingsPage() {
           {tab === 'aparencia'  && <TabAparencia  prefs={prefs} onChange={handleChange} onSave={handleSave} saving={saving} />}
           {tab === 'financeiro' && <TabFinanceiro prefs={prefs} onChange={handleChange} onSave={handleSave} saving={saving} />}
           {tab === 'seguranca'  && <TabSeguranca  email={email} />}
+          {tab === 'membros'    && <TabMembros />}
           {tab === 'dados'      && <TabDados      email={email} />}
         </div>
 
