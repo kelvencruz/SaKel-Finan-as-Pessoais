@@ -563,6 +563,9 @@ a, button {
   100% { transform: translateX(-50%) translateY(0) scale(1); }
 }
 .animate-bounce-in {
-  animation: bounce-in 0.35s ease-out forwards;
+  animation: bounce-in 0.55s cubic-bezier(.22,1,.36,1) forwards;
 }
-
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
