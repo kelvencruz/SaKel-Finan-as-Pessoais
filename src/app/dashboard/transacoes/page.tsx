@@ -2,6 +2,12 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import {
+  transitionStatus,
+  availableTransitions,
+  isTerminal,
+  type LifecycleStatus,
+} from '@/features/financas/services/lifecycleEngine'
 
 // TODO S1-005: mover handleTransactionGamification para useGamification
 import { awardXP, getGamification } from '@/lib/gamification'
@@ -19,6 +25,7 @@ interface Transaction {
   category_id?: string | null
   notes?: string | null
   status?: string | null
+  lifecycle_status?: LifecycleStatus | null
   credit_card_id?: string | null
   invoice_id?: string | null
   is_recurring?: boolean
@@ -63,6 +70,35 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   cancelled: { label: 'Cancelado', className: 'bg-gray-100 text-gray-400' },
   posted:    { label: 'Na fatura', className: 'bg-purple-50 text-purple-600' },
 }
+
+// ─── Lifecycle ────────────────────────────────────────────────────────────────
+
+const LIFECYCLE_CONFIG: Record<LifecycleStatus, {
+  label: string
+  className: string       // badge
+  dotColor: string        // indicador lateral
+}> = {
+  CONFIRMED:        { label: 'Confirmado',   className: 'bg-green-50 text-green-700 border-green-200',    dotColor: 'bg-green-400' },
+  PENDING_EXPECTED: { label: 'Esperado',     className: 'bg-blue-50 text-blue-600 border-blue-200',       dotColor: 'bg-blue-400'  },
+  PENDING_REVIEW:   { label: 'Em revisão',   className: 'bg-yellow-50 text-yellow-700 border-yellow-200', dotColor: 'bg-yellow-400' },
+  OVERDUE:          { label: 'Vencido',      className: 'bg-red-50 text-red-600 border-red-200',          dotColor: 'bg-red-400'   },
+  CANCELLED:        { label: 'Cancelado',    className: 'bg-gray-100 text-gray-500 border-gray-200',      dotColor: 'bg-gray-300'  },
+}
+
+// Rótulos e estilos dos botões de ação de transição
+const TRANSITION_BUTTON_CONFIG: Record<LifecycleStatus, {
+  label: string
+  className: string
+  icon: string
+}> = {
+  CONFIRMED:        { label: 'Confirmar',   className: 'text-green-700 bg-green-50 hover:bg-green-100 border-green-200',    icon: '✓' },
+  PENDING_EXPECTED: { label: 'Revisar',     className: 'text-blue-600 bg-blue-50 hover:bg-blue-100 border-blue-200',        icon: '↺' },
+  PENDING_REVIEW:   { label: 'Em revisão',  className: 'text-yellow-700 bg-yellow-50 hover:bg-yellow-100 border-yellow-200', icon: '?' },
+  OVERDUE:          { label: 'Marcar vencido', className: 'text-red-600 bg-red-50 hover:bg-red-100 border-red-200',         icon: '!' },
+  CANCELLED:        { label: 'Cancelar',    className: 'text-gray-500 bg-gray-50 hover:bg-gray-100 border-gray-200',        icon: '✕' },
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 const emptyForm = {
   type: 'expense' as TxType,
@@ -117,10 +153,8 @@ function addYears(dateStr: string, years: number): string {
   return d.toISOString().split('T')[0]
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PADRÃO S1-007 — Loading skeleton
-// Replicar para cada página: ajustar número de colunas/linhas conforme o layout
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Componentes auxiliares (S1-007) ──────────────────────────────────────────
+
 function SkeletonRow() {
   return (
     <div className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-4 animate-pulse">
@@ -137,11 +171,6 @@ function SkeletonRow() {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PADRÃO S1-007 — Empty state
-// Props: icon, title, description, action (opcional)
-// Uso: <PageEmptyState icon="📭" title="Sem transações" description="..." />
-// ─────────────────────────────────────────────────────────────────────────────
 interface PageEmptyStateProps {
   icon: string
   title: string
@@ -156,10 +185,7 @@ function PageEmptyState({ icon, title, description, action }: PageEmptyStateProp
       <p className="text-gray-600 text-sm font-medium">{title}</p>
       {description && <p className="text-gray-400 text-xs mt-1 mb-4">{description}</p>}
       {action && (
-        <button
-          onClick={action.onClick}
-          className="text-indigo-600 text-sm hover:underline mt-2"
-        >
+        <button onClick={action.onClick} className="text-indigo-600 text-sm hover:underline mt-2">
           {action.label}
         </button>
       )}
@@ -167,10 +193,6 @@ function PageEmptyState({ icon, title, description, action }: PageEmptyStateProp
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PADRÃO S1-007 — Error state
-// Uso: <PageErrorState onRetry={loadAll} />
-// ─────────────────────────────────────────────────────────────────────────────
 interface PageErrorStateProps {
   message?: string
   onRetry: () => void
@@ -184,17 +206,12 @@ function PageErrorState({ message, onRetry }: PageErrorStateProps) {
       <p className="text-gray-400 text-xs mt-1 mb-4">
         {message ?? 'Não foi possível buscar os dados. Verifique sua conexão.'}
       </p>
-      <button
-        onClick={onRetry}
-        className="text-sm font-medium text-indigo-600 hover:underline"
-      >
+      <button onClick={onRetry} className="text-sm font-medium text-indigo-600 hover:underline">
         Tentar novamente
       </button>
     </div>
   )
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
   return (
@@ -207,7 +224,8 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
   )
 }
 
-// TODO S1-005: extrair para useGamification().pushXPToast()
+// ─── Gamificação ──────────────────────────────────────────────────────────────
+
 async function handleTransactionGamification(
   userId: string,
   txCount: number,
@@ -245,6 +263,48 @@ async function handleTransactionGamification(
   }
 }
 
+// ─── Componente de ações lifecycle ────────────────────────────────────────────
+
+interface LifecycleActionsProps {
+  tx: Transaction
+  onTransition: (id: string, to: LifecycleStatus) => Promise<void>
+  transitioning: string | null
+}
+
+function LifecycleActions({ tx, onTransition, transitioning }: LifecycleActionsProps) {
+  const current = tx.lifecycle_status ?? 'CONFIRMED'
+  const actions = availableTransitions(current)
+
+  if (actions.length === 0) return null
+
+  return (
+    <div className="flex gap-1 flex-wrap">
+      {actions.map(to => {
+        const cfg = TRANSITION_BUTTON_CONFIG[to]
+        const isLoading = transitioning === tx.id
+        return (
+          <button
+            key={to}
+            onClick={() => onTransition(tx.id, to)}
+            disabled={isLoading}
+            title={cfg.label}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium border transition-colors disabled:opacity-40 ${cfg.className}`}
+          >
+            {isLoading ? (
+              <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <span>{cfg.icon}</span>
+            )}
+            {cfg.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Página principal ─────────────────────────────────────────────────────────
+
 export default function TransacoesPage() {
   const supabase = createClient()
 
@@ -253,19 +313,19 @@ export default function TransacoesPage() {
   const [categories,   setCategories]   = useState<Category[]>([])
   const [creditCards,  setCreditCards]  = useState<CreditCard[]>([])
 
-  // S1-007: três estados explícitos — nunca undefined implícito
   const [loading,      setLoading]      = useState(true)
   const [loadError,    setLoadError]    = useState<string | null>(null)
-
   const [saving,       setSaving]       = useState(false)
   const [deletingId,   setDeletingId]   = useState<string | null>(null)
+  const [transitioning, setTransitioning] = useState<string | null>(null) // id da tx em transição
   const [toast,        setToast]        = useState<Toast | null>(null)
 
-  const [search,         setSearch]         = useState('')
-  const [filterType,     setFilterType]     = useState<TxType | ''>('')
-  const [filterAccount,  setFilterAccount]  = useState('')
-  const [filterCategory, setFilterCategory] = useState('')
-  const [filterMonth,    setFilterMonth]    = useState(() => {
+  const [search,            setSearch]            = useState('')
+  const [filterType,        setFilterType]        = useState<TxType | ''>('')
+  const [filterAccount,     setFilterAccount]     = useState('')
+  const [filterCategory,    setFilterCategory]    = useState('')
+  const [filterLifecycle,   setFilterLifecycle]   = useState<LifecycleStatus | ''>('')
+  const [filterMonth,       setFilterMonth]       = useState(() => {
     const now = new Date()
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   })
@@ -283,7 +343,6 @@ export default function TransacoesPage() {
     setTimeout(() => setToast(null), 3500)
   }
 
-  // S1-007: loadAll agora captura erros e expõe via loadError
   async function loadAll() {
     setLoading(true)
     setLoadError(null)
@@ -295,7 +354,7 @@ export default function TransacoesPage() {
       const [{ data: tx, error: txErr }, { data: acc }, { data: cat }, { data: cards }] = await Promise.all([
         supabase
           .from('transactions')
-          .select('id, type, description, amount, date, account_id, destination_account_id, category_id, notes, status, credit_card_id, invoice_id, is_recurring, recurrence_id, recurrence, recurrence_start, recurrence_end, installment_total, installment_current, installment_group')
+          .select('id, type, description, amount, date, account_id, destination_account_id, category_id, notes, status, lifecycle_status, credit_card_id, invoice_id, is_recurring, recurrence_id, recurrence, recurrence_start, recurrence_end, installment_total, installment_current, installment_group')
           .eq('user_id', user.id)
           .order('date', { ascending: false })
           .limit(500),
@@ -304,11 +363,7 @@ export default function TransacoesPage() {
         supabase.from('credit_cards').select('id, name, color, closing_day, due_day').eq('user_id', user.id).eq('is_active', true).order('name'),
       ])
 
-      // S1-007: propaga erro do fetch principal para o estado de erro
-      if (txErr) {
-        setLoadError(txErr.message)
-        return
-      }
+      if (txErr) { setLoadError(txErr.message); return }
 
       const accList  = (acc   ?? []) as Account[]
       const catList  = (cat   ?? []) as Category[]
@@ -322,6 +377,7 @@ export default function TransacoesPage() {
       setTransactions(txRaw.map(t => ({
         ...t,
         type: t.type as TxType,
+        lifecycle_status: (t.lifecycle_status ?? 'CONFIRMED') as LifecycleStatus,
         account_name:             accMap[t.account_id]?.name ?? '-',
         destination_account_name: t.destination_account_id ? (accMap[t.destination_account_id]?.name ?? '-') : undefined,
         category_name:            t.category_id    ? catMap[t.category_id]?.name    : undefined,
@@ -332,7 +388,6 @@ export default function TransacoesPage() {
       setCategories(catList)
       setCreditCards(cardList)
     } catch (e: any) {
-      // S1-007: catch para erros de rede ou exceções inesperadas
       setLoadError(e?.message ?? 'Erro inesperado ao carregar dados.')
     } finally {
       setLoading(false)
@@ -341,11 +396,35 @@ export default function TransacoesPage() {
 
   useEffect(() => {
     loadAll()
-
     const handler = () => loadAll()
     window.addEventListener('transacao-criada', handler)
     return () => window.removeEventListener('transacao-criada', handler)
   }, [])
+
+  // ─── Transição de lifecycle ─────────────────────────────────────────────────
+
+  async function handleTransition(id: string, to: LifecycleStatus) {
+    setTransitioning(id)
+    try {
+      const result = await transitionStatus(id, to)
+      if (result.success) {
+        // Atualiza localmente sem refetch completo — snappy UX
+        setTransactions(prev =>
+          prev.map(tx => tx.id === id ? { ...tx, lifecycle_status: to } : tx)
+        )
+        const cfg = LIFECYCLE_CONFIG[to]
+        showToast(`Status atualizado: ${cfg.label}`)
+      } else {
+        showToast(result.error ?? 'Erro ao atualizar status.', 'error')
+      }
+    } catch {
+      showToast('Erro inesperado ao atualizar status.', 'error')
+    } finally {
+      setTransitioning(null)
+    }
+  }
+
+  // ─── Editar ─────────────────────────────────────────────────────────────────
 
   function openEdit(tx: Transaction) {
     setForm({
@@ -370,6 +449,8 @@ export default function TransacoesPage() {
     setFormError(null)
     setShowModal(true)
   }
+
+  // ─── Invoice helpers ────────────────────────────────────────────────────────
 
   async function getOrCreateInvoice(cardId: string, date: string, userId: string): Promise<string | null> {
     const d    = new Date(date + 'T12:00:00')
@@ -404,6 +485,8 @@ export default function TransacoesPage() {
     const total = (data ?? []).reduce((s: number, t: any) => s + Number(t.amount), 0)
     await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
   }
+
+  // ─── Salvar transação ───────────────────────────────────────────────────────
 
   async function handleSave() {
     setFormError(null)
@@ -461,6 +544,7 @@ export default function TransacoesPage() {
           installment_current:    i + 1,
           installment_group:      groupId,
           is_recurring:           false,
+          lifecycle_status:       'CONFIRMED',
         })
       }
 
@@ -471,9 +555,7 @@ export default function TransacoesPage() {
       for (const iid of invoiceIds) { if (iid) await updateInvoiceTotal(iid) }
 
       const { count: txCount } = await supabase
-        .from('transactions')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
+        .from('transactions').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
       await handleTransactionGamification(user.id, txCount ?? 0, !!form.category_id)
 
       showToast(`${total} parcelas criadas!`)
@@ -513,10 +595,7 @@ export default function TransacoesPage() {
       }
 
       const { data: recData, error: recErr } = await supabase
-        .from('recurrences')
-        .insert(recPayload)
-        .select('id')
-        .single()
+        .from('recurrences').insert(recPayload).select('id').single()
 
       if (recErr || !recData) {
         setFormError(recErr?.message ?? 'Erro ao criar recorrencia.')
@@ -545,15 +624,14 @@ export default function TransacoesPage() {
         invoice_id:     invoiceId,
         is_recurring:   true,
         recurrence_id:  recData.id,
+        lifecycle_status: 'CONFIRMED',
       })
 
       if (txErr) { setFormError(txErr.message); setSaving(false); return }
       if (invoiceId) await updateInvoiceTotal(invoiceId)
 
       const { count: txCount } = await supabase
-        .from('transactions')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
+        .from('transactions').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
       await handleTransactionGamification(user.id, txCount ?? 0, !!form.category_id)
 
       showToast('Recorrencia criada!')
@@ -563,7 +641,7 @@ export default function TransacoesPage() {
       return
     }
 
-    // ── TRANSACAO NORMAL (create ou edit) ─────────────────────
+    // ── TRANSACAO NORMAL ──────────────────────────────────────
     let invoiceId: string | null = null
     let accountId = form.account_id || null
 
@@ -591,17 +669,18 @@ export default function TransacoesPage() {
       const { error: err } = await supabase.from('transactions').update(payload).eq('id', editingId)
       if (err) { setFormError(err.message); setSaving(false); return }
       if (invoiceId) await updateInvoiceTotal(invoiceId)
-      // Edição não concede XP — evita farm infinito
       showToast('Transacao atualizada!')
     } else {
-      const { error: err } = await supabase.from('transactions').insert({ ...payload, user_id: user.id })
+      const { error: err } = await supabase.from('transactions').insert({
+        ...payload,
+        user_id: user.id,
+        lifecycle_status: 'CONFIRMED',
+      })
       if (err) { setFormError(err.message); setSaving(false); return }
       if (invoiceId) await updateInvoiceTotal(invoiceId)
 
       const { count: txCount } = await supabase
-        .from('transactions')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
+        .from('transactions').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
       await handleTransactionGamification(user.id, txCount ?? 0, !!form.category_id)
 
       showToast('Transacao criada!')
@@ -611,6 +690,8 @@ export default function TransacoesPage() {
     setShowModal(false)
     setSaving(false)
   }
+
+  // ─── Excluir ────────────────────────────────────────────────────────────────
 
   function handleDeleteClick(tx: Transaction) {
     if (tx.is_recurring && tx.recurrence_id) {
@@ -652,12 +733,15 @@ export default function TransacoesPage() {
     setDeletingId(null)
   }
 
+  // ─── Filtros ────────────────────────────────────────────────────────────────
+
   const filtered = useMemo(() => {
     return transactions.filter(tx => {
-      if (filterType     && tx.type        !== filterType)     return false
-      if (filterAccount  && tx.account_id  !== filterAccount)  return false
-      if (filterCategory && tx.category_id !== filterCategory) return false
-      if (filterMonth && tx.date.slice(0, 7) !== filterMonth)  return false
+      if (filterType      && tx.type             !== filterType)      return false
+      if (filterAccount   && tx.account_id       !== filterAccount)   return false
+      if (filterCategory  && tx.category_id      !== filterCategory)  return false
+      if (filterLifecycle && tx.lifecycle_status !== filterLifecycle) return false
+      if (filterMonth     && tx.date.slice(0, 7) !== filterMonth)     return false
       if (search) {
         const q = search.toLowerCase()
         if (
@@ -669,7 +753,7 @@ export default function TransacoesPage() {
       }
       return true
     })
-  }, [transactions, filterType, filterAccount, filterCategory, filterMonth, search])
+  }, [transactions, filterType, filterAccount, filterCategory, filterLifecycle, filterMonth, search])
 
   const summary = useMemo(() => {
     const income  = filtered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
@@ -677,17 +761,21 @@ export default function TransacoesPage() {
     return { income, expense, balance: income - expense }
   }, [filtered])
 
-  const hasActiveFilters = filterType || filterAccount || filterCategory || search
-  function clearFilters() { setFilterType(''); setFilterAccount(''); setFilterCategory(''); setSearch('') }
+  const hasActiveFilters = filterType || filterAccount || filterCategory || filterLifecycle || search
+  function clearFilters() {
+    setFilterType('')
+    setFilterAccount('')
+    setFilterCategory('')
+    setFilterLifecycle('')
+    setSearch('')
+  }
 
   const amountColor  = (type: TxType) => type === 'income' ? 'text-green-600' : type === 'expense' ? 'text-red-500' : 'text-indigo-600'
   const amountPrefix = (type: TxType) => type === 'income' ? '+' : type === 'expense' ? '-' : ''
   const catsFiltradas = categories.filter(c => form.type !== 'transfer' && (c.type === form.type || c.type === 'both'))
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // S1-007: lógica de renderização dos três estados — isolada e clara
-  // loading → skeleton | error → PageErrorState | vazio → PageEmptyState
-  // ─────────────────────────────────────────────────────────────────────────
+  // ─── Render ──────────────────────────────────────────────────────────────────
+
   function renderContent() {
     if (loading) {
       return (
@@ -726,25 +814,45 @@ export default function TransacoesPage() {
           {filtered.length} transacao{filtered.length !== 1 ? 'oes' : ''}
         </p>
         {filtered.map(tx => {
-          const statusInfo = tx.status ? STATUS_LABELS[tx.status] : null
+          const statusInfo  = tx.status ? STATUS_LABELS[tx.status] : null
+          const lcStatus    = tx.lifecycle_status ?? 'CONFIRMED'
+          const lcCfg       = LIFECYCLE_CONFIG[lcStatus]
+          const isNonDefault = lcStatus !== 'CONFIRMED'
+
           return (
-            <div key={tx.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-4 group hover:border-gray-200 transition-colors">
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+            <div
+              key={tx.id}
+              className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex gap-4 group hover:border-gray-200 transition-colors"
+            >
+              {/* Indicador lateral de lifecycle — só aparece em status não-default */}
+              {isNonDefault && (
+                <div className={`w-1 rounded-full shrink-0 self-stretch ${lcCfg.dotColor}`} />
+              )}
+
+              {/* Ícone */}
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 self-start mt-0.5 ${
                 tx.type === 'income' ? 'bg-green-50 text-green-600' : tx.type === 'expense' ? 'bg-red-50 text-red-500' : 'bg-indigo-50 text-indigo-600'
               }`}>
                 {tx.category_icon ?? (tx.type === 'income' ? '↑' : tx.type === 'expense' ? '↓' : '⇄')}
               </div>
+
+              {/* Corpo */}
               <div className="flex-1 min-w-0">
+                {/* Linha 1: descrição + badges */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-medium text-gray-800 truncate">{tx.description}</p>
                   {tx.is_recurring && tx.recurrence_id && (
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 shrink-0">
-                      🔁 Recorrente
-                    </span>
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 shrink-0">🔁 Recorrente</span>
                   )}
                   {tx.installment_total && tx.installment_current && (
                     <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600 shrink-0">
                       {tx.installment_current}/{tx.installment_total}x
+                    </span>
+                  )}
+                  {/* Badge lifecycle — só para estados não-default */}
+                  {isNonDefault && (
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border shrink-0 ${lcCfg.className}`}>
+                      {lcCfg.label}
                     </span>
                   )}
                   {statusInfo && tx.status !== 'paid' && (
@@ -753,22 +861,43 @@ export default function TransacoesPage() {
                     </span>
                   )}
                 </div>
+
+                {/* Linha 2: conta / cartão / categoria */}
                 <p className="text-xs text-gray-400 mt-0.5 truncate">
                   {tx.credit_card_name ? `💳 ${tx.credit_card_name}` : tx.account_name}
                   {tx.type === 'transfer' && tx.destination_account_name ? ` → ${tx.destination_account_name}` : ''}
                   {tx.category_name ? ` · ${tx.category_name}` : ''}
                 </p>
+
+                {/* Linha 3: botões de ação lifecycle — aparecem no hover */}
+                <div className="mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <LifecycleActions
+                    tx={tx}
+                    onTransition={handleTransition}
+                    transitioning={transitioning}
+                  />
+                </div>
               </div>
-              <div className="text-right shrink-0">
-                <p className={`text-sm font-semibold ${amountColor(tx.type)}`}>{amountPrefix(tx.type)} {fmt(tx.amount)}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{fmtDate(tx.date)}</p>
-              </div>
-              <div className="opacity-0 group-hover:opacity-100 transition-all flex gap-1 shrink-0">
-                <button onClick={() => openEdit(tx)} className="text-gray-300 hover:text-indigo-500 text-sm px-1.5 py-1 rounded hover:bg-indigo-50 transition-colors" title="Editar">✏️</button>
-                <button onClick={() => handleDeleteClick(tx)} disabled={deletingId === tx.id}
-                  className="text-gray-300 hover:text-red-400 text-sm px-1.5 py-1 rounded hover:bg-red-50 transition-colors disabled:opacity-30" title="Excluir">
-                  {deletingId === tx.id ? '…' : '🗑️'}
-                </button>
+
+              {/* Valor + data + ações CRUD */}
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <p className={`text-sm font-semibold ${amountColor(tx.type)}`}>
+                  {amountPrefix(tx.type)} {fmt(tx.amount)}
+                </p>
+                <p className="text-xs text-gray-400">{fmtDate(tx.date)}</p>
+                <div className="opacity-0 group-hover:opacity-100 transition-all flex gap-1 mt-1">
+                  <button
+                    onClick={() => openEdit(tx)}
+                    className="text-gray-300 hover:text-indigo-500 text-sm px-1.5 py-1 rounded hover:bg-indigo-50 transition-colors"
+                    title="Editar"
+                  >✏️</button>
+                  <button
+                    onClick={() => handleDeleteClick(tx)}
+                    disabled={deletingId === tx.id}
+                    className="text-gray-300 hover:text-red-400 text-sm px-1.5 py-1 rounded hover:bg-red-50 transition-colors disabled:opacity-30"
+                    title="Excluir"
+                  >{deletingId === tx.id ? '…' : '🗑️'}</button>
+                </div>
               </div>
             </div>
           )
@@ -776,6 +905,8 @@ export default function TransacoesPage() {
       </div>
     )
   }
+
+  // ─────────────────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 max-w-4xl mx-auto">
@@ -795,15 +926,21 @@ export default function TransacoesPage() {
         </div>
       </div>
 
-      {/* Filtros */}
+      {/* ── Filtros ── */}
       <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 space-y-3">
         <div className="relative">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 text-sm">🔍</span>
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
             placeholder="Buscar por descricao, conta, cartao ou categoria..."
-            className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
         </div>
+
         <div className="flex gap-2 flex-wrap">
+          {/* Filtro tipo */}
           <div className="flex gap-1.5">
             {([['', 'Todas'], ['income', 'Receitas'], ['expense', 'Despesas'], ['transfer', 'Transf.']] as [TxType | '', string][]).map(([val, label]) => (
               <button key={val} onClick={() => setFilterType(val)}
@@ -812,10 +949,26 @@ export default function TransacoesPage() {
               </button>
             ))}
           </div>
+
+          {/* Filtro mês */}
           <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
             {monthOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
+
+          {/* Filtro lifecycle */}
+          <select
+            value={filterLifecycle}
+            onChange={e => setFilterLifecycle(e.target.value as LifecycleStatus | '')}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="">Todos os status</option>
+            {(Object.keys(LIFECYCLE_CONFIG) as LifecycleStatus[]).map(s => (
+              <option key={s} value={s}>{LIFECYCLE_CONFIG[s].label}</option>
+            ))}
+          </select>
+
+          {/* Filtro conta */}
           {accounts.length > 0 && (
             <select value={filterAccount} onChange={e => setFilterAccount(e.target.value)}
               className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
@@ -823,6 +976,8 @@ export default function TransacoesPage() {
               {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           )}
+
+          {/* Filtro categoria */}
           {categories.length > 0 && (
             <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
               className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
@@ -830,6 +985,7 @@ export default function TransacoesPage() {
               {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
             </select>
           )}
+
           {hasActiveFilters && (
             <button onClick={clearFilters} className="px-3 py-1.5 rounded-lg text-xs text-red-400 hover:text-red-600 hover:bg-red-50 border border-red-100 transition-colors">
               Limpar
@@ -838,7 +994,7 @@ export default function TransacoesPage() {
         </div>
       </div>
 
-      {/* Summary cards — só aparece quando há dados */}
+      {/* ── Summary ── */}
       {!loading && !loadError && filtered.length > 0 && (
         <div className="grid grid-cols-3 gap-3 mb-4">
           <div className="bg-white border border-gray-100 rounded-xl px-4 py-3">
@@ -856,10 +1012,9 @@ export default function TransacoesPage() {
         </div>
       )}
 
-      {/* S1-007: ponto único de decisão de render */}
       {renderContent()}
 
-      {/* Modal exclusão transação recorrente */}
+      {/* ── Modal exclusão recorrente ── */}
       {txDeleteModal.open && txDeleteModal.tx && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
@@ -898,12 +1053,13 @@ export default function TransacoesPage() {
         </div>
       )}
 
-      {/* Modal criar/editar */}
+      {/* ── Modal criar/editar ── */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-semibold mb-5">{editingId ? 'Editar Transacao' : 'Nova Transacao'}</h2>
             <div className="space-y-4">
+
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Tipo</label>
                 <div className="flex gap-2">
