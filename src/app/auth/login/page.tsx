@@ -11,8 +11,16 @@ export default function LoginPage() {
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState<string | null>(null)
   const [message,  setMessage]  = useState<string | null>(null)
-  const [isDark,   setIsDark]   = useState(true)
-
+  const [isDark,   setIsDark]   = useState(true)  
+  
+useEffect(() => {
+  const hash = window.location.hash
+  if (hash.includes('type=invite')) {
+    window.location.replace('/auth/accept-invite' + hash)
+  } else if (hash.includes('type=recovery')) {
+    window.location.replace('/auth/reset-password' + hash)
+  }
+}, [])
   useEffect(() => {
     // O login tem fundo sempre escuro, então sempre usa logo dark
     setIsDark(true)
