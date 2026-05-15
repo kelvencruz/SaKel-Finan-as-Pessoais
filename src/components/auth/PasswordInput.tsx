@@ -44,7 +44,7 @@ const STRENGTH_CONFIG: Record<
 
 interface PasswordInputProps {
   id?: string;
-  label: string;
+  label?: string;
   value: string;
   onChange: (value: string) => void;
   showStrengthMeter?: boolean;
@@ -55,7 +55,7 @@ interface PasswordInputProps {
 
 export function PasswordInput({
   id: externalId,
-  label,
+  label = '',
   value,
   onChange,
   showStrengthMeter = false,
@@ -73,18 +73,20 @@ export function PasswordInput({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <label
-        htmlFor={id}
-        style={{
-          fontSize: 12,
-          fontWeight: 600,
-          color: "var(--text-secondary)",
-          letterSpacing: "0.04em",
-          textTransform: "uppercase",
-        }}
-      >
-        {label}
-      </label>
+      {label && (
+        <label
+          htmlFor={id}
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--text-secondary)",
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+        >
+          {label}
+        </label>
+      )}
 
       <div style={{ position: "relative" }}>
         <input
