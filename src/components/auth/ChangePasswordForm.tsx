@@ -130,7 +130,7 @@ export function ChangePasswordForm({ email }: Props) {
           onChange={handleField("currentPassword")}
           placeholder="••••••••"
           autoComplete="current-password"
-          showStrength={false}
+          showStrengthMeter={false}
           disabled={status === "loading"}
         />
       </div>
@@ -147,7 +147,7 @@ export function ChangePasswordForm({ email }: Props) {
           onChange={handleField("newPassword")}
           placeholder="Mínimo 8 caracteres"
           autoComplete="new-password"
-          showStrength={true}
+          showStrengthMeter={true}
           disabled={status === "loading"}
         />
       </div>
@@ -162,7 +162,7 @@ export function ChangePasswordForm({ email }: Props) {
           onChange={handleField("confirmPassword")}
           placeholder="Repita a nova senha"
           autoComplete="new-password"
-          showStrength={false}
+          showStrengthMeter={false}
           disabled={status === "loading"}
           aria-invalid={passwordsMismatch}
           aria-describedby={passwordsMismatch ? "confirm-error" : undefined}
