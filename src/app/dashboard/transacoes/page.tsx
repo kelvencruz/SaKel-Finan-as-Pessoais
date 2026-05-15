@@ -767,10 +767,11 @@ async function executeDeleteNormal() {
   }, [transactions, filterType, filterAccount, filterCategory, filterLifecycle, filterMonth, search])
 
   const summary = useMemo(() => {
-    const income  = filtered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-    const expense = filtered.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-    return { income, expense, balance: income - expense }
-  }, [filtered])
+  const confirmed = filtered.filter(t => t.lifecycle_status === 'CONFIRMED')
+  const income  = confirmed.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+  const expense = confirmed.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+  return { income, expense, balance: income - expense }
+}, [filtered])
 
   const hasActiveFilters = filterType || filterAccount || filterCategory || filterLifecycle || search
   function clearFilters() {
@@ -866,7 +867,7 @@ async function executeDeleteNormal() {
                       {lcCfg.label}
                     </span>
                   )}
-                  {statusInfo && tx.status !== 'paid' && (
+                  {statusInfo && tx.status !== 'paid' && lcStatus === 'CONFIRMED' && (
                     <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${statusInfo.className}`}>
                       {statusInfo.label}
                     </span>
