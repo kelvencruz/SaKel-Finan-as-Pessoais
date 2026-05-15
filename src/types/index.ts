@@ -15,7 +15,9 @@ export type Frequency         = 'daily' | 'weekly' | 'monthly' | 'yearly'
 //   UPDATE profiles SET role = 'owner' WHERE id = '<seu-user-id>';
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type AppRole = 'owner' | 'admin' | 'user'
+export type AppRole = 'user' | 'owner' | 'admin' | 'platform_admin'
+
+export type PlanType = 'free' | 'pro' | 'business'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lifecycle engine
@@ -107,8 +109,9 @@ export interface Profile {
   full_name:    string | null
   avatar_url:   string | null
   currency:     string
-  role:         AppRole              // adicionado — coluna: ALTER TABLE profiles ADD COLUMN role text NOT NULL DEFAULT 'user'
-  kal_enabled:          boolean      // legado em profiles; source of truth é user_preferences.kal_arcade_enabled
+  role:         AppRole
+  plan:         PlanType | null        // ← adicionar essa linha
+  kal_enabled:          boolean
   gamification_enabled: boolean
   created_at:   string
   updated_at:   string
