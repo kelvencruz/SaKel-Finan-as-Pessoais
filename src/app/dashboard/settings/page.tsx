@@ -364,7 +364,7 @@ function TabSeguranca({ email }: { email: string }) {
           <PasswordInput
             value={novaSenha}
             onChange={(value: string) => setNovaSenha(value)}
-            showStrength={true}
+            showStrengthMeter={true}
             autoComplete="new-password"
             placeholder="Mín. 8 caracteres"
             disabled={trocando}
