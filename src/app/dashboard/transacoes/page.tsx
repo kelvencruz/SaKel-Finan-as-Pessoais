@@ -54,6 +54,11 @@ interface TxDeleteModal {
   tx: Transaction | null
 }
 
+interface DeleteConfirmModal {
+  open: boolean
+  id: string | null
+}
+
 const fmt     = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtDate = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString('pt-BR')
 
@@ -85,17 +90,19 @@ const LIFECYCLE_CONFIG: Record<LifecycleStatus, {
   CANCELLED:        { label: 'Cancelado',    className: 'bg-gray-100 text-gray-500 border-gray-200',      dotColor: 'bg-gray-300'  },
 }
 
-// Rótulos e estilos dos botões de ação de transição
+// Rótulos e estilos dos botões de ação de transição.
+// A chave é o status de DESTINO — o label descreve a ação, não o estado.
+// OVERDUE como destino manual existe (PENDING_EXPECTED → OVERDUE é válido),
+// mas só aparece se availableTransitions() retorná-lo — sem lógica extra aqui.
 const TRANSITION_BUTTON_CONFIG: Record<LifecycleStatus, {
   label: string
   className: string
-  icon: string
 }> = {
-  CONFIRMED:        { label: 'Confirmar',   className: 'text-green-700 bg-green-50 hover:bg-green-100 border-green-200',    icon: '✓' },
-  PENDING_EXPECTED: { label: 'Revisar',     className: 'text-blue-600 bg-blue-50 hover:bg-blue-100 border-blue-200',        icon: '↺' },
-  PENDING_REVIEW:   { label: 'Em revisão',  className: 'text-yellow-700 bg-yellow-50 hover:bg-yellow-100 border-yellow-200', icon: '?' },
-  OVERDUE:          { label: 'Marcar vencido', className: 'text-red-600 bg-red-50 hover:bg-red-100 border-red-200',         icon: '!' },
-  CANCELLED:        { label: 'Cancelar',    className: 'text-gray-500 bg-gray-50 hover:bg-gray-100 border-gray-200',        icon: '✕' },
+  CONFIRMED:        { label: 'Confirmar pagamento', className: 'text-green-700 bg-green-50 hover:bg-green-100 border-green-200'    },
+  CANCELLED:        { label: 'Cancelar',            className: 'text-gray-500 bg-gray-50 hover:bg-gray-100 border-gray-200'        },
+  OVERDUE:          { label: 'Marcar como vencido', className: 'text-red-600 bg-red-50 hover:bg-red-100 border-red-200'            },
+  PENDING_EXPECTED: { label: 'Marcar como esperado', className: 'text-blue-600 bg-blue-50 hover:bg-blue-100 border-blue-200'      },
+  PENDING_REVIEW:   { label: 'Colocar em revisão',  className: 'text-yellow-700 bg-yellow-50 hover:bg-yellow-100 border-yellow-200' },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -290,11 +297,9 @@ function LifecycleActions({ tx, onTransition, transitioning }: LifecycleActionsP
             title={cfg.label}
             className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium border transition-colors disabled:opacity-40 ${cfg.className}`}
           >
-            {isLoading ? (
-              <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <span>{cfg.icon}</span>
-            )}
+            {isLoading && (
+  <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+)}
             {cfg.label}
           </button>
         )
@@ -335,7 +340,7 @@ export default function TransacoesPage() {
   const [form,          setForm]          = useState(emptyForm)
   const [formError,     setFormError]     = useState<string | null>(null)
   const [txDeleteModal, setTxDeleteModal] = useState<TxDeleteModal>({ open: false, tx: null })
-
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<DeleteConfirmModal>({ open: false, id: null })
   const monthOptions = useMemo(() => getMonthOptions(), [])
 
   function showToast(message: string, type: Toast['type'] = 'success') {
@@ -701,15 +706,21 @@ export default function TransacoesPage() {
     }
   }
 
-  async function handleDeleteNormal(id: string) {
-    if (!confirm('Excluir esta transacao?')) return
-    setDeletingId(id)
-    const { error: err } = await supabase.from('transactions').delete().eq('id', id)
-    if (err) showToast('Erro ao excluir.', 'error')
-    else showToast('Transacao excluida.')
-    await loadAll()
-    setDeletingId(null)
-  }
+  function handleDeleteNormal(id: string) {
+  setDeleteConfirmModal({ open: true, id })
+}
+
+async function executeDeleteNormal() {
+  const id = deleteConfirmModal.id
+  if (!id) return
+  setDeleteConfirmModal({ open: false, id: null })
+  setDeletingId(id)
+  const { error: err } = await supabase.from('transactions').delete().eq('id', id)
+  if (err) showToast('Erro ao excluir.', 'error')
+  else showToast('Transação excluída.')
+  await loadAll()
+  setDeletingId(null)
+}
 
   async function executeTxDelete(mode: 'single' | 'all') {
     if (!txDeleteModal.tx) return
@@ -870,13 +881,16 @@ export default function TransacoesPage() {
                 </p>
 
                 {/* Linha 3: botões de ação lifecycle — aparecem no hover */}
-                <div className="mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <LifecycleActions
-                    tx={tx}
-                    onTransition={handleTransition}
-                    transitioning={transitioning}
-                  />
-                </div>
+                {/* Botões lifecycle — visíveis sempre para não-terminais, ocultos para CONFIRMED/CANCELLED */}
+{!isTerminal(lcStatus) && (
+  <div className="mt-2">
+    <LifecycleActions
+      tx={tx}
+      onTransition={handleTransition}
+      transitioning={transitioning}
+    />
+  </div>
+)}
               </div>
 
               {/* Valor + data + ações CRUD */}
@@ -1013,6 +1027,35 @@ export default function TransacoesPage() {
       )}
 
       {renderContent()}
+
+{/* ── Modal confirmação exclusão simples ── */}
+{deleteConfirmModal.open && (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
+      <div className="flex items-start gap-3 mb-4">
+        <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0 text-lg">🗑️</div>
+        <div>
+          <h3 className="font-semibold text-gray-800">Excluir transação</h3>
+          <p className="text-sm text-gray-500 mt-0.5">Essa ação não pode ser desfeita.</p>
+        </div>
+      </div>
+      <div className="flex gap-3 mt-6">
+        <button
+          onClick={() => setDeleteConfirmModal({ open: false, id: null })}
+          className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm hover:bg-gray-50 transition-colors"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={executeDeleteNormal}
+          className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-lg py-2 text-sm font-medium transition-colors"
+        >
+          Excluir
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* ── Modal exclusão recorrente ── */}
       {txDeleteModal.open && txDeleteModal.tx && (

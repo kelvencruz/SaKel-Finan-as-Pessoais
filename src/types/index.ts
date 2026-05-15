@@ -7,10 +7,9 @@ export type CategoryType      = 'income' | 'expense' | 'both' | 'investment'
 export type BudgetPeriod      = 'monthly' | 'yearly'
 export type Frequency         = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
-// ─────────────────────────────────────────────────────────────────────────────
+/// ─────────────────────────────────────────────────────────────────────────────
 // Lifecycle engine
-// Antes era `string` solto em vários lugares; agora é union tipada.
-// LIFECYCLE_TRANSITIONS é a fonte de verdade — nada fora disso é transição válida.
+// ...
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type LifecycleStatus =
@@ -34,7 +33,6 @@ export const LIFECYCLE_TRANSITIONS: Record<LifecycleStatus, LifecycleStatus[]> =
   refunded:   [],
 }
 
-/** Retorna true se a transição de `from` → `to` é permitida. */
 export function isValidTransition(from: LifecycleStatus, to: LifecycleStatus): boolean {
   return LIFECYCLE_TRANSITIONS[from]?.includes(to) ?? false
 }
@@ -43,7 +41,7 @@ export interface TransitionResult {
   ok:      boolean
   from:    LifecycleStatus
   to:      LifecycleStatus
-  reason?: string   // preenchido quando ok === false
+  reason?: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
