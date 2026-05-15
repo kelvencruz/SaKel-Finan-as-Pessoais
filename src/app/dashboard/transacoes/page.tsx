@@ -549,7 +549,7 @@ export default function TransacoesPage() {
           installment_current:    i + 1,
           installment_group:      groupId,
           is_recurring:           false,
-          lifecycle_status:       'CONFIRMED',
+          lifecycle_status: form.status === 'pending' || form.status === 'overdue' ? 'PENDING_EXPECTED' : 'CONFIRMED',
         })
       }
 
@@ -629,7 +629,7 @@ export default function TransacoesPage() {
         invoice_id:     invoiceId,
         is_recurring:   true,
         recurrence_id:  recData.id,
-        lifecycle_status: 'CONFIRMED',
+        lifecycle_status: form.status === 'pending' || form.status === 'overdue' ? 'PENDING_EXPECTED' : 'CONFIRMED',
       })
 
       if (txErr) { setFormError(txErr.message); setSaving(false); return }
@@ -679,7 +679,7 @@ export default function TransacoesPage() {
       const { error: err } = await supabase.from('transactions').insert({
         ...payload,
         user_id: user.id,
-        lifecycle_status: 'CONFIRMED',
+        lifecycle_status: form.status === 'pending' || form.status === 'overdue' ? 'PENDING_EXPECTED' : 'CONFIRMED',
       })
       if (err) { setFormError(err.message); setSaving(false); return }
       if (invoiceId) await updateInvoiceTotal(invoiceId)
