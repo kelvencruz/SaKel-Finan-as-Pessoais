@@ -1,17 +1,143 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import Sidebar from '@/components/Sidebar'
+import UserMenu from '@/components/UserMenu'
 import FloatingActionButton from '@/components/FloatingActionButton'
 import { ToastManagerProvider } from '@/components/core/ToastManager'
 
+// Mapa de títulos por rota — adicione conforme criar novas páginas
+const PAGE_TITLES: Record<string, string> = {
+  '/dashboard':                'Dashboard',
+  '/dashboard/transacoes':     'Transações',
+  '/dashboard/recorrencias':   'Recorrências',
+  '/dashboard/contas':         'Contas',
+  '/dashboard/cartoes':        'Cartões',
+  '/dashboard/faturas':        'Faturas',
+  '/dashboard/investimentos':  'Investimentos',
+  '/dashboard/categorias':     'Categorias',
+  '/dashboard/conquistas':     'Conquistas',
+  '/dashboard/importar':       'Importar CSV',
+  '/dashboard/settings':       'Configurações',
+  '/dashboard/perfil':         'Meu Perfil',
+}
+
+function getGreeting(): string {
+  const h = new Date().getHours()
+  if (h < 12) return 'Bom dia'
+  if (h < 18) return 'Boa tarde'
+  return 'Boa noite'
+}
+
+function formatDate(): string {
+  return new Date().toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    day:     'numeric',
+    month:   'long',
+  })
+}
+
+// Capitaliza primeira letra
+function capitalize(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1)
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  const [firstName, setFirstName] = useState<string>('')
+
+  // Carrega só o primeiro nome — leve, sem estado extra
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return
+      supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single()
+        .then(({ data }) => {
+          const raw = data?.full_name ?? user.email ?? ''
+          setFirstName(raw.split(' ')[0])
+        })
+    })
+  }, [])
+
+  const isDashboardHome = pathname === '/dashboard'
+  const pageTitle = PAGE_TITLES[pathname] ?? ''
+
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div
+      className="flex min-h-screen"
+      style={{ background: 'var(--color-bg)' }}
+    >
       <Sidebar />
-      <div className="flex-1 min-w-0 md:ml-0">
-        {/* Espacamento no mobile para nao esconder conteudo atras do hamburguer */}
-        <div className="pt-14 md:pt-0">
+
+      <div className="flex flex-col flex-1 min-w-0">
+
+        {/* ── HEADER GLOBAL ────────────────────────────────────────────── */}
+        {/*
+          Regra de design:
+          - Dashboard home  → greeting personalizado + data
+          - Demais páginas  → título da página (limpo, sem redundância)
+          - NUNCA botão de ação aqui — o FAB é o único ponto de entrada
+        */}
+        <header
+          className="sticky top-0 z-30 flex items-center justify-between shrink-0"
+          style={{
+            height:           '56px',
+            padding:          '0 24px',
+            background:       'var(--color-surface)',
+            borderBottom:     '1px solid var(--color-border)',
+            // Espacamento mobile para nao colidir com o hamburguer
+          }}
+        >
+          {/* Esquerda — contexto da página */}
+          <div className="flex flex-col justify-center pl-10 md:pl-0">
+            {isDashboardHome ? (
+              <>
+                <span
+                  className="text-[11px] leading-none"
+                  style={{ color: 'var(--color-text-muted)', letterSpacing: '0.02em' }}
+                >
+                  {capitalize(formatDate())}
+                </span>
+                <span
+                  className="text-[15px] font-semibold leading-tight mt-0.5"
+                  style={{ color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}
+                >
+                  {getGreeting()}
+                  {firstName && (
+                    <>, <span style={{ color: 'var(--color-brand)' }}>{firstName}</span></>
+                  )}
+                </span>
+              </>
+            ) : (
+              <span
+                className="text-[15px] font-semibold"
+                style={{ color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}
+              >
+                {pageTitle}
+              </span>
+            )}
+          </div>
+
+          {/* Direita — avatar/menu do usuário, sem botões de ação */}
+          <div className="flex items-center gap-3">
+            <UserMenu />
+          </div>
+        </header>
+        {/* ──────────────────────────────────────────────────────────────── */}
+
+        {/* Conteúdo da página */}
+        <main className="flex-1 min-w-0">
           {children}
-        </div>
+        </main>
+
       </div>
+
       <FloatingActionButton />
       <ToastManagerProvider />
     </div>

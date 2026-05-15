@@ -6,7 +6,6 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from 'recharts'
-import UserMenu from '@/components/UserMenu'
 import { awardXP, getGamification, BADGES } from '@/lib/gamification'
 import {
   Bank, CreditCard, Tag, ListBullets, Receipt, TrendUp,
@@ -53,8 +52,8 @@ interface KalContext {
   catAnterior:         Record<string, number>
   recorrenteSugerida:  { descricao: string; valor: number }[]
   mesesPositivos:      number
-  overdueCount:        number   // novo: transações OVERDUE
-  pendingCount:        number   // novo: PENDING_EXPECTED + PENDING_REVIEW
+  overdueCount:        number
+  pendingCount:        number
   xp:        number
   level:     number
   levelName: string
@@ -78,11 +77,8 @@ const LEVEL_NAMES: Record<number, string> = {
   5: 'Mestre do Cofrinho',
 }
 
-// Statuses que representam valor real confirmado
 const CONFIRMED_STATUSES: LifecycleStatus[] = ['CONFIRMED']
-
-// Statuses pendentes (não entram no saldo, mas aparecem em alertas)
-const PENDING_STATUSES: LifecycleStatus[] = ['PENDING_EXPECTED', 'PENDING_REVIEW']
+const PENDING_STATUSES:   LifecycleStatus[] = ['PENDING_EXPECTED', 'PENDING_REVIEW']
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Severidade → tokens CSS
@@ -151,8 +147,6 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 
   const PISO_INV = 200
 
-  // ── Danger ────────────────────────────────────────────────────────────────
-
   if (ctx.saldoLiquido < 0) {
     danger.push({
       id: 'saldo-negativo', severity: 'danger', icon: Warning,
@@ -172,7 +166,6 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
     })
   }
 
-  // Transações OVERDUE do lifecycle
   if (ctx.overdueCount > 0) {
     danger.push({
       id: 'lifecycle-overdue', severity: 'danger', icon: Warning,
@@ -181,8 +174,6 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
       acao: { label: 'Ver transações', href: '/dashboard/transacoes' },
     })
   }
-
-  // ── Warning ───────────────────────────────────────────────────────────────
 
   const fatVencendo = ctx.invoicesDue.filter(i => i.days_until_due >= 0 && i.days_until_due <= 5)
   if (fatVencendo.length > 0) {
@@ -221,8 +212,6 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
       acao: { label: 'Ver transações', href: '/dashboard/transacoes' },
     })
   }
-
-  // ── Info ──────────────────────────────────────────────────────────────────
 
   if (ctx.pendingCount > 0) {
     info.push({
@@ -269,8 +258,6 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
     })
   }
 
-  // ── Positive ──────────────────────────────────────────────────────────────
-
   if (ctx.mesesPositivos >= 3) {
     positive.push({
       id: 'tres-meses-positivos', severity: 'positive', icon: Star,
@@ -304,8 +291,6 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
       acao: { label: 'Ver investimentos', href: '/dashboard/investimentos' },
     })
   }
-
-  // ── Gamification ──────────────────────────────────────────────────────────
 
   if (ctx.leveledUp) {
     gamification.push({
@@ -352,7 +337,6 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
     })
   }
 
-  // Seleciona 3 insights: 1 crítico, 1 de ação, 1 positivo/gamification
   const critico  = danger[0] ?? warning[0] ?? null
   const acao     = (warning[0] !== critico ? warning.find(i => i !== critico) : null) ?? info[0] ?? null
   const positivo = gamification[0] ?? positive[0] ?? null
@@ -367,10 +351,6 @@ function gerarInsights(ctx: KalContext): KalInsight[] {
 function DashboardSkeleton() {
   return (
     <div className="min-h-screen p-6 max-w-5xl mx-auto" style={{ background: 'var(--bg)' }}>
-      <div className="flex items-center justify-between mb-6">
-        <div className="h-7 w-32 rounded-lg skeleton" />
-        <div className="h-9 w-9 rounded-full skeleton" />
-      </div>
       <div className="h-28 rounded-xl skeleton mb-6" />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         {[1,2,3,4].map(i => <div key={i} className="h-20 rounded-xl skeleton" />)}
@@ -388,10 +368,6 @@ function DashboardSkeleton() {
 function DashboardError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="min-h-screen p-6 max-w-5xl mx-auto" style={{ background: 'var(--bg)' }}>
-      <div className="flex items-center justify-between mb-10">
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>Dashboard</h1>
-        <UserMenu />
-      </div>
       <div className="rounded-2xl p-10 text-center"
         style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
         <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
@@ -414,13 +390,6 @@ function DashboardError({ message, onRetry }: { message: string; onRetry: () => 
 function EmptyDashboard() {
   return (
     <div className="min-h-screen p-6 max-w-5xl mx-auto" style={{ background: 'var(--bg)' }}>
-      <div className="flex items-center justify-between mb-10">
-        <div>
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>Dashboard</h1>
-          <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Bem-vindo ao SaKel Finanças</p>
-        </div>
-        <UserMenu />
-      </div>
       <div className="rounded-2xl p-10 text-center mb-6"
         style={{ background: 'var(--surface)', border: '2px dashed var(--border-md)' }}>
         <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
@@ -616,7 +585,7 @@ function InvestimentoCard({ valor }: { valor: number }) {
 }
 
 function InvoiceBadge({ days }: { days: number }) {
-  if (days < 0)  return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--danger-light)',  color: 'var(--danger)'  }}>Vencida</span>
+  if (days < 0)   return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--danger-light)',  color: 'var(--danger)'  }}>Vencida</span>
   if (days === 0) return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--danger-light)',  color: 'var(--danger)'  }}>Vence hoje</span>
   if (days <= 7)  return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--warning-light)', color: 'var(--warning)' }}>Vence em {days}d</span>
   return               <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--border)',        color: 'var(--text-muted)' }}>{days}d</span>
@@ -629,7 +598,6 @@ function InvoiceBadge({ days }: { days: number }) {
 export default function DashboardPage() {
   const supabase = createClient()
 
-  const [email,               setEmail]               = useState('')
   const [saldoContas,         setSaldoContas]         = useState(0)
   const [totalFaturas,        setTotalFaturas]        = useState(0)
   const [patrimonioInvestido, setPatrimonioInvestido] = useState(0)
@@ -655,9 +623,7 @@ export default function DashboardPage() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/auth/login'; return }
-      setEmail(user.email ?? '')
 
-      // ── Datas de referência ─────────────────────────────────────────────
       const now            = new Date()
       const year           = now.getFullYear()
       const month          = now.getMonth()
@@ -669,12 +635,10 @@ export default function DashboardPage() {
       const inicio2m       = new Date(year, month - 1, 1).toISOString().split('T')[0]
       const fimMesAnterior = new Date(year, month, 0).toISOString().split('T')[0]
 
-      // ── Preferências ────────────────────────────────────────────────────
       const { data: prefs } = await supabase
         .from('user_preferences').select('kaldiz_enabled').eq('user_id', user.id).single()
       if (prefs) setKalEnabled(prefs.kaldiz_enabled ?? true)
 
-      // ── Contas ──────────────────────────────────────────────────────────
       const { data: acc, error: accErr } = await supabase
         .from('accounts').select('current_balance')
         .eq('user_id', user.id).eq('is_active', true).neq('type', 'credit')
@@ -686,7 +650,6 @@ export default function DashboardPage() {
       const saldo = accList.reduce((s, a) => s + Number(a.current_balance), 0)
       setSaldoContas(saldo)
 
-      // ── Faturas em aberto ────────────────────────────────────────────────
       const { data: openInv, error: invErr } = await supabase
         .from('credit_card_invoices').select('total_amount')
         .eq('user_id', user.id).in('status', ['open', 'overdue'])
@@ -694,13 +657,11 @@ export default function DashboardPage() {
       const faturas = ((openInv ?? []) as { total_amount: number }[]).reduce((s, i) => s + Number(i.total_amount), 0)
       setTotalFaturas(faturas)
 
-      // ── Investimentos ────────────────────────────────────────────────────
       const { data: invData } = await supabase
         .from('investments').select('current_amount').eq('user_id', user.id).eq('is_active', true)
       const totalInv = ((invData ?? []) as { current_amount: number }[]).reduce((s, i) => s + Number(i.current_amount), 0)
       setPatrimonioInvestido(totalInv)
 
-      // ── Faturas próximas do vencimento ───────────────────────────────────
       const { data: dueInv } = await supabase
         .from('credit_card_invoices').select('id, total_amount, status, due_date, credit_card_id')
         .eq('user_id', user.id).in('status', ['open', 'overdue'])
@@ -720,14 +681,13 @@ export default function DashboardPage() {
         }))
       setInvoicesDue(invoicesFormatted)
 
-      // ── Transações do mês — APENAS CONFIRMED (lifecycle) ─────────────────
       const { data: txMes, error: txErr } = await supabase
         .from('transactions')
         .select('type, amount, category_id, description, lifecycle_status')
         .eq('user_id', user.id)
         .gte('date', inicioMes)
         .lte('date', fimMes)
-        .in('lifecycle_status', CONFIRMED_STATUSES)   // ← lifecycle filter
+        .in('lifecycle_status', CONFIRMED_STATUSES)
         .in('type', ['income', 'expense'])
       if (txErr) throw txErr
 
@@ -741,7 +701,6 @@ export default function DashboardPage() {
       setDespMes(despMesVal)
       const uncategorized = txArr.filter(t => t.type === 'expense' && !t.category_id).length
 
-      // ── Contagem de pendentes e vencidos (lifecycle) ──────────────────────
       const { data: pendingData } = await supabase
         .from('transactions')
         .select('lifecycle_status')
@@ -751,7 +710,6 @@ export default function DashboardPage() {
       const overdueCount = pendingArr.filter(t => t.lifecycle_status === 'OVERDUE').length
       const pendingCount = pendingArr.filter(t => PENDING_STATUSES.includes(t.lifecycle_status)).length
 
-      // ── Histórico 6 meses — APENAS CONFIRMED ─────────────────────────────
       const meses = Array.from({ length: 6 }, (_, i) => {
         const d = new Date(year, month - (5 - i), 1)
         return { key: d.toISOString().slice(0, 7), label: MONTH_NAMES[d.getMonth()] + '/' + String(d.getFullYear()).slice(2) }
@@ -761,7 +719,7 @@ export default function DashboardPage() {
         .select('type, amount, date')
         .eq('user_id', user.id)
         .gte('date', meses[0].key + '-01')
-        .in('lifecycle_status', CONFIRMED_STATUSES)   // ← lifecycle filter
+        .in('lifecycle_status', CONFIRMED_STATUSES)
         .in('type', ['income', 'expense'])
       const histArr = (txHist ?? []) as { type: string; amount: number; date: string }[]
 
@@ -774,7 +732,6 @@ export default function DashboardPage() {
         }
       }))
 
-      // ── Meses consecutivos positivos ──────────────────────────────────────
       let mesesPositivos = 0
       for (let i = 0; i < 3; i++) {
         const key = meses[5 - i]?.key
@@ -785,7 +742,6 @@ export default function DashboardPage() {
         if (rec > desp) mesesPositivos++; else break
       }
 
-      // ── Categorias do mês ─────────────────────────────────────────────────
       const { data: cats } = await supabase.from('categories').select('id, name').eq('user_id', user.id)
       const catNameMap = Object.fromEntries(((cats ?? []) as { id: string; name: string }[]).map(c => [c.id, c.name]))
       const catMap2: Record<string, number> = {}
@@ -798,11 +754,10 @@ export default function DashboardPage() {
           .sort((a, b) => b.value - a.value).slice(0, 7)
       )
 
-      // ── Categorias mês anterior (para comparação no Kal) ─────────────────
       const { data: txAnt } = await supabase
         .from('transactions').select('amount, category_id')
         .eq('user_id', user.id).eq('type', 'expense')
-        .in('lifecycle_status', CONFIRMED_STATUSES)   // ← lifecycle filter
+        .in('lifecycle_status', CONFIRMED_STATUSES)
         .gte('date', fimMesAnterior.slice(0, 7) + '-01')
         .lte('date', fimMesAnterior)
       const catAntMap: Record<string, number> = {}
@@ -811,7 +766,6 @@ export default function DashboardPage() {
         catAntMap[k] = (catAntMap[k] ?? 0) + Number(t.amount)
       })
 
-      // ── Recorrências ──────────────────────────────────────────────────────
       const { data: recRules } = await supabase
         .from('recurrences')
         .select('type, amount, frequency, next_due_date, end_date, is_active')
@@ -834,7 +788,6 @@ export default function DashboardPage() {
         else recSaidas += total
       }
 
-      // Fallback para tabela legada recurring_transactions
       if (recRulesArr.length === 0) {
         const { data: rtData } = await supabase
           .from('recurring_transactions')
@@ -858,11 +811,6 @@ export default function DashboardPage() {
       }
       setRecCount(recCountVal)
 
-      // ── Parcelas pendentes — APENAS CONFIRMED (parcelas já ocorridas) ─────
-      // Nota: parcelas futuras ainda não ocorreram — usamos lifecycle_status
-      // PENDING_EXPECTED para as que estão agendadas mas não confirmadas.
-      // Para projeção, incluímos apenas as confirmadas já ocorridas + as
-      // PENDING_EXPECTED que ainda não venceram (são esperadas).
       const { data: instData } = await supabase
         .from('transactions').select('type, amount')
         .eq('user_id', user.id)
@@ -876,11 +824,10 @@ export default function DashboardPage() {
       const parcelaReceitas = instArr.filter(i => i.type === 'income').reduce((s,  i) => s + Number(i.amount), 0)
       setInstCount(instArr.length)
 
-      // ── Sugestões de recorrência ──────────────────────────────────────────
       const { data: tx60 } = await supabase
         .from('transactions').select('description, amount, date')
         .eq('user_id', user.id).eq('type', 'expense')
-        .in('lifecycle_status', CONFIRMED_STATUSES)   // ← lifecycle filter
+        .in('lifecycle_status', CONFIRMED_STATUSES)
         .gte('date', inicio2m).lte('date', fimMes)
       const tx60Arr = (tx60 ?? []) as { description: string; amount: number; date: string }[]
       const descMesMap: Record<string, Set<string>> = {}
@@ -903,7 +850,6 @@ export default function DashboardPage() {
         }
       }
 
-      // ── Saldo previsto ────────────────────────────────────────────────────
       const previsto = saldo + recEntradas + parcelaReceitas - recSaidas - totalParcelas - faturas
       setSaldoPrevisto(previsto)
       setProjecaoItens([
@@ -914,7 +860,6 @@ export default function DashboardPage() {
         { label: 'Faturas em aberto',          value: faturas,       color: 'var(--primary)', sign: '−' },
       ])
 
-      // ── Gamificação ───────────────────────────────────────────────────────
       let gamCtx = {
         xp: 0, level: 1, levelName: LEVEL_NAMES[1],
         streakDays: 0, badges: [] as string[],
@@ -932,7 +877,7 @@ export default function DashboardPage() {
         }
 
         type AwardableId = Parameters<typeof awardXP>[1]
-const tryAward = async (badgeId: AwardableId, condition: boolean) => {
+        const tryAward = async (badgeId: AwardableId, condition: boolean) => {
           if (!condition || gamCtx.badges.includes(badgeId)) return
           const r = await awardXP(user.id, badgeId, badgeId)
           if (r.newBadge && !gamCtx.newBadge) gamCtx.newBadge = r.newBadge
@@ -940,16 +885,14 @@ const tryAward = async (badgeId: AwardableId, condition: boolean) => {
           gamCtx.xp = r.newXP
         }
 
-        await tryAward('month_positive',   recMesVal > despMesVal && recMesVal > 0)
+        await tryAward('month_positive',    recMesVal > despMesVal && recMesVal > 0)
         await tryAward('three_months_blue', mesesPositivos >= 3)
-        await tryAward('streak_7',         (gam?.streakDays ?? 0) >= 7)
-        await tryAward('streak_30',        (gam?.streakDays ?? 0) >= 30)
+        await tryAward('streak_7',          (gam?.streakDays ?? 0) >= 7)
+        await tryAward('streak_30',         (gam?.streakDays ?? 0) >= 30)
       } catch (e) {
-        // Gamificação nunca trava o dashboard
         console.error('[dashboard] gamification error:', e)
       }
 
-      // ── Contexto do Kal ───────────────────────────────────────────────────
       setKalCtx({
         saldoLiquido:        saldo - faturas,
         saldoContas:         saldo,
@@ -980,49 +923,22 @@ const tryAward = async (badgeId: AwardableId, condition: boolean) => {
 
   useEffect(() => { load() }, [load])
 
-  // ── Estados de controle ──────────────────────────────────────────────────
-
-  if (loading)   return <DashboardSkeleton />
-  if (loadError) return <DashboardError message={loadError} onRetry={load} />
+  if (loading)      return <DashboardSkeleton />
+  if (loadError)    return <DashboardError message={loadError} onRetry={load} />
   if (!hasAccounts) return <EmptyDashboard />
 
-  // ── Valores derivados ────────────────────────────────────────────────────
-
   const saldoLiquido = saldoContas - totalFaturas
-  const now          = new Date()
-
-  // ── Render principal ─────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen p-6 max-w-5xl mx-auto" style={{ background: 'var(--bg)' }}>
 
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>Dashboard</h1>
-          <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            {MONTH_NAMES[now.getMonth()]} de {now.getFullYear()}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <a href="/dashboard/transacoes"
-            className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
-            style={{ background: 'var(--primary)' }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--primary-hover)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'var(--primary)'}>
-            + Nova Transação
-          </a>
-          <UserMenu />
-        </div>
-      </div>
-
-      {/* Kal v3 */}
+      {/* Kal */}
       {kalCtx && <KalDiz ctx={kalCtx} enabled={kalEnabled} />}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         {[
-          { label: 'Saldo em Contas',  value: saldoContas, color: saldoContas >= 0 ? 'var(--primary)' : 'var(--danger)', sub: 'Excluindo cartões' },
+          { label: 'Saldo em Contas',  value: saldoContas,  color: saldoContas >= 0 ? 'var(--primary)' : 'var(--danger)', sub: 'Excluindo cartões' },
           { label: 'Faturas Abertas',  value: totalFaturas, color: 'var(--primary)', sub: 'Total a pagar' },
           { label: 'Receitas do Mês',  value: recMes,       color: 'var(--success)', sub: 'Apenas confirmadas' },
           { label: 'Despesas do Mês',  value: despMes,      color: 'var(--danger)',  sub: 'Apenas confirmadas' },
@@ -1170,6 +1086,7 @@ const tryAward = async (badgeId: AwardableId, condition: boolean) => {
           </a>
         ))}
       </div>
+
     </div>
   )
 }
