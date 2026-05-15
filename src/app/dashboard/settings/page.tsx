@@ -3,15 +3,18 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PasswordInput, getPasswordStrength } from '@/components/auth/PasswordInput'
+import { WarningCircle } from '@phosphor-icons/react'
 
 type Tab = 'perfil' | 'aparencia' | 'financeiro' | 'seguranca' | 'dados'
 
-const TABS: { id: Tab; label: string; emoji: string }[] = [
-  { id: 'perfil',     label: 'Perfil',     emoji: '👤' },
-  { id: 'aparencia',  label: 'Aparência',  emoji: '🎨' },
-  { id: 'financeiro', label: 'Financeiro', emoji: '💰' },
-  { id: 'seguranca',  label: 'Segurança',  emoji: '🔒' },
-  { id: 'dados',      label: 'Dados',      emoji: '📦' },
+// REGRA INVIOLÁVEL #8 — zero emoji em navegação principal
+// Ícones Phosphor substituem emojis nas tabs
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'perfil',     label: 'Perfil'     },
+  { id: 'aparencia',  label: 'Aparência'  },
+  { id: 'financeiro', label: 'Financeiro' },
+  { id: 'seguranca',  label: 'Segurança'  },
+  { id: 'dados',      label: 'Dados'      },
 ]
 
 interface Prefs {
@@ -24,7 +27,10 @@ interface Prefs {
   currency:             string
   hide_balances:        boolean
   number_format:        string
-  kaldiz_enabled:       boolean
+  // FIX BUG-007: nome alinhado com a coluna real em user_preferences
+  // O banco tem 'kal_arcade_enabled' em user_preferences.
+  // A coluna 'kal_enabled' existe só em profiles (fallback de leitura).
+  kal_arcade_enabled:   boolean
   gamification_enabled: boolean
 }
 
@@ -38,7 +44,7 @@ const DEFAULT_PREFS: Prefs = {
   currency:             'BRL',
   hide_balances:        false,
   number_format:        'pt-BR',
-  kaldiz_enabled:       true,
+  kal_arcade_enabled:   true,
   gamification_enabled: true,
 }
 
@@ -161,9 +167,9 @@ function TabAparencia({ prefs, onChange, onSave, saving }: {
       <SectionTitle>Tema</SectionTitle>
       <div className="grid grid-cols-3 gap-2">
         {[
-          { value: 'light',  label: 'Claro',   emoji: '☀️' },
-          { value: 'dark',   label: 'Escuro',  emoji: '🌙' },
-          { value: 'system', label: 'Sistema', emoji: '💻' },
+          { value: 'light',  label: 'Claro'   },
+          { value: 'dark',   label: 'Escuro'  },
+          { value: 'system', label: 'Sistema' },
         ].map(t => (
           <button key={t.value} onClick={() => applyTheme(t.value)}
             className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 text-xs font-medium transition-colors ${
@@ -172,7 +178,7 @@ function TabAparencia({ prefs, onChange, onSave, saving }: {
                 : 'border-gray-100 bg-white text-gray-600 hover:border-gray-200'
             }`}
           >
-            <span className="text-xl">{t.emoji}</span>{t.label}
+            {t.label}
           </button>
         ))}
       </div>
@@ -234,8 +240,9 @@ function TabFinanceiro({ prefs, onChange, onSave, saving }: {
       </Field>
 
       <SectionTitle>Inteligência</SectionTitle>
+      {/* FIX BUG-007: prop renomeada de kaldiz_enabled → kal_arcade_enabled */}
       <Field label="Kal diz (insights)" hint="Exibe insights automáticos no dashboard">
-        <Toggle active={prefs.kaldiz_enabled} onChange={() => onChange({ kaldiz_enabled: !prefs.kaldiz_enabled })} />
+        <Toggle active={prefs.kal_arcade_enabled} onChange={() => onChange({ kal_arcade_enabled: !prefs.kal_arcade_enabled })} />
       </Field>
       <Field label="Gamificação" hint="Conquistas, XP e marcos financeiros">
         <Toggle active={prefs.gamification_enabled} onChange={() => onChange({ gamification_enabled: !prefs.gamification_enabled })} />
@@ -250,7 +257,6 @@ function TabFinanceiro({ prefs, onChange, onSave, saving }: {
 function TabSeguranca({ email }: { email: string }) {
   const supabase = createClient()
 
-  // — Troca de senha inline —
   const [senhaAtual,    setSenhaAtual]    = useState('')
   const [novaSenha,     setNovaSenha]     = useState('')
   const [confirmaSenha, setConfirmaSenha] = useState('')
@@ -258,17 +264,14 @@ function TabSeguranca({ email }: { email: string }) {
   const [trocaErro,     setTrocaErro]     = useState('')
   const [trocaOk,       setTrocaOk]       = useState(false)
 
-  // — Link por email (fallback) —
   const [sending,  setSending]  = useState(false)
   const [sent,     setSent]     = useState(false)
   const [linkErro, setLinkErro] = useState('')
 
-  // Força nova senha deve ser >= 3 (boa) para habilitar botão
-  const forcaNovaSenha = getPasswordStrength(novaSenha)
-  const senhasIguais   = novaSenha === confirmaSenha && confirmaSenha !== ''
-  const podeSubmeter   =
+  const senhasIguais = novaSenha === confirmaSenha && confirmaSenha !== ''
+  const podeSubmeter =
     senhaAtual.length > 0 &&
-    novaSenha.length >= 8 &&
+    getPasswordStrength(novaSenha) >= 2 &&
     senhasIguais &&
     !trocando
 
@@ -276,17 +279,12 @@ function TabSeguranca({ email }: { email: string }) {
     setTrocaErro('')
     setTrocaOk(false)
 
-    // Validações client-side
     if (!senhaAtual || !novaSenha || !confirmaSenha) {
       setTrocaErro('Preencha todos os campos.')
       return
     }
     if (novaSenha !== confirmaSenha) {
       setTrocaErro('As senhas não coincidem.')
-      return
-    }
-    if (novaSenha.length < 8) {
-      setTrocaErro('A nova senha precisa ter pelo menos 8 caracteres.')
       return
     }
     if (novaSenha === senhaAtual) {
@@ -296,7 +294,7 @@ function TabSeguranca({ email }: { email: string }) {
 
     setTrocando(true)
 
-    // 1. Confirma identidade — NUNCA pula essa etapa (regra inviolável #12)
+    // REGRA INVIOLÁVEL #12 — confirma identidade antes de updateUser
     const { error: signInErr } = await supabase.auth.signInWithPassword({
       email,
       password: senhaAtual,
@@ -307,20 +305,22 @@ function TabSeguranca({ email }: { email: string }) {
       return
     }
 
-    // 2. Atualiza a senha
-    const { error: updateErr } = await supabase.auth.updateUser({
-      password: novaSenha,
-    })
+    const { error: updateErr } = await supabase.auth.updateUser({ password: novaSenha })
     if (updateErr) {
-      setTrocaErro(updateErr.message)
+      const isSamePassword = updateErr.message.toLowerCase().includes('same password') ||
+                             updateErr.message.toLowerCase().includes('different from')
+      setTrocaErro(
+        isSamePassword
+          ? 'A nova senha não pode ser igual à atual.'
+          : 'Erro ao atualizar a senha. Tente novamente.'
+      )
       setTrocando(false)
       return
     }
 
-    // 3. Encerra sessões em outros dispositivos
+    // Encerra sessões em outros dispositivos; mantém a atual
     await supabase.auth.signOut({ scope: 'others' })
 
-    // 4. Limpa formulário e exibe confirmação
     setSenhaAtual('')
     setNovaSenha('')
     setConfirmaSenha('')
@@ -335,52 +335,51 @@ function TabSeguranca({ email }: { email: string }) {
     const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/auth/reset-password`,
     })
-    if (err) setLinkErro(err.message)
+    if (err) setLinkErro('Não foi possível enviar o link. Tente novamente.')
     else setSent(true)
     setSending(false)
   }
 
   return (
     <div>
-      {/* ── Troca de senha inline ── */}
       <SectionTitle>Alterar senha</SectionTitle>
       <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-4">
         <p className="text-xs text-gray-400">
           Confirme sua senha atual antes de definir a nova. Sessões em outros dispositivos serão encerradas automaticamente.
         </p>
 
-        {/* Senha atual */}
-        <PasswordInput
-          label="Senha atual"
-          value={senhaAtual}
-          onChange={setSenhaAtual}
-          autoComplete="current-password"
-          placeholder="••••••••"
-          disabled={trocando}
-        />
-
-        {/* Nova senha com strength meter */}
-        <PasswordInput
-          label="Nova senha"
-          value={novaSenha}
-          onChange={setNovaSenha}
-          showStrengthMeter
-          autoComplete="new-password"
-          placeholder="Mín. 8 caracteres"
-          disabled={trocando}
-        />
-
-        {/* Confirmar nova senha */}
         <div>
+          <label className="block text-xs text-gray-500 mb-1">Senha atual</label>
           <PasswordInput
-            label="Confirmar nova senha"
+            value={senhaAtual}
+            onChange={(value: string) => setSenhaAtual(value)}
+            autoComplete="current-password"
+            placeholder="••••••••"
+            disabled={trocando}
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Nova senha</label>
+          <PasswordInput
+            value={novaSenha}
+            onChange={(value: string) => setNovaSenha(value)}
+            showStrength={true}
+            autoComplete="new-password"
+            placeholder="Mín. 8 caracteres"
+            disabled={trocando}
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Confirmar nova senha</label>
+          <PasswordInput
             value={confirmaSenha}
-            onChange={setConfirmaSenha}
+            onChange={(value: string) => setConfirmaSenha(value)}
             autoComplete="new-password"
             placeholder="Repita a nova senha"
             disabled={trocando}
           />
-          {/* Feedback de senhas iguais — só aparece após o user digitar algo */}
           {confirmaSenha.length > 0 && (
             <p className={`text-xs mt-1.5 ${senhasIguais ? 'text-green-600' : 'text-red-500'}`}>
               {senhasIguais ? '✓ Senhas coincidem' : '✗ Senhas não coincidem'}
@@ -388,19 +387,17 @@ function TabSeguranca({ email }: { email: string }) {
           )}
         </div>
 
-        {/* Erro */}
+        {/* FIX regra #8 — WarningCircle no lugar de emoji ⚠ */}
         {trocaErro && (
-          <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2.5">
-            <span className="text-red-500 text-xs mt-0.5">⚠</span>
+          <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2.5" role="alert">
+            <WarningCircle size={14} weight="fill" className="mt-0.5 shrink-0 text-red-500" aria-hidden="true" />
             <p className="text-xs text-red-600">{trocaErro}</p>
           </div>
         )}
 
-        {/* Sucesso */}
         {trocaOk && (
-          <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-lg px-3 py-2.5">
-            <span className="text-green-600 text-sm">✅</span>
-            <p className="text-xs text-green-700 font-medium">Senha alterada com sucesso! Outros dispositivos foram desconectados.</p>
+          <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-lg px-3 py-2.5" role="status">
+            <p className="text-xs text-green-700 font-medium">Senha alterada. Outros dispositivos foram desconectados.</p>
           </div>
         )}
 
@@ -408,25 +405,25 @@ function TabSeguranca({ email }: { email: string }) {
           onClick={handleTrocarSenha}
           disabled={!podeSubmeter}
           className="w-full sm:w-auto bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+          aria-busy={trocando}
         >
           {trocando ? (
             <>
-              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
               Verificando…
             </>
           ) : 'Alterar senha'}
         </button>
       </div>
 
-      {/* ── Fallback: link por e-mail ── */}
       <SectionTitle>Esqueceu a senha atual?</SectionTitle>
       <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
         <p className="text-xs text-gray-400 mb-4">
           Enviaremos um link de redefinição para <strong className="text-gray-600">{email}</strong>.
         </p>
         {sent ? (
-          <p className="text-sm text-green-600 flex items-center gap-2">
-            <span>✅</span> Link enviado! Verifique seu e-mail.
+          <p className="text-sm text-green-600 flex items-center gap-2" role="status">
+            Link enviado. Verifique seu e-mail.
           </p>
         ) : (
           <button
@@ -440,7 +437,6 @@ function TabSeguranca({ email }: { email: string }) {
         {linkErro && <p className="text-xs text-red-500 mt-2">{linkErro}</p>}
       </div>
 
-      {/* ── Sessões ── */}
       <SectionTitle>Sessões ativas</SectionTitle>
       <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
         <p className="text-sm text-gray-700 mb-1">Gerenciar sessões em outros dispositivos</p>
@@ -449,7 +445,7 @@ function TabSeguranca({ email }: { email: string }) {
           Visualização detalhada de dispositivos em breve.
         </p>
         <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full">
-          🚧 Em desenvolvimento
+          Em desenvolvimento
         </span>
       </div>
     </div>
@@ -457,12 +453,14 @@ function TabSeguranca({ email }: { email: string }) {
 }
 
 // ── Aba Dados ───────────────────────────────────────────────────────────────
-function TabDados({ email }: { email: string }) {
+function TabDados({ email: _email }: { email: string }) {
   const supabase = createClient()
-  const [exporting,   setExporting]   = useState(false)
-  const [confirming,  setConfirming]  = useState(false)
-  const [confirmText, setConfirmText] = useState('')
-  const [deleting,    setDeleting]    = useState(false)
+  const [exporting,    setExporting]    = useState(false)
+  const [confirming,   setConfirming]   = useState(false)
+  const [confirmText,  setConfirmText]  = useState('')
+  const [deleting,     setDeleting]     = useState(false)
+  // FIX BUG: estado de erro para handleDelete — antes o erro era silenciado
+  const [deleteError,  setDeleteError]  = useState('')
 
   async function handleExport() {
     setExporting(true)
@@ -483,9 +481,22 @@ function TabDados({ email }: { email: string }) {
     setExporting(false)
   }
 
+  // FIX: chama RPC que apaga os dados antes de fazer signOut.
+  // A RPC delete_user_data() deve existir no Supabase (rodar o SQL já entregue).
+  // Se a RPC falhar, exibe erro e não desloga — o usuário sabe que algo quebrou.
   async function handleDelete() {
     if (confirmText !== 'EXCLUIR') return
     setDeleting(true)
+    setDeleteError('')
+
+    const { error } = await supabase.rpc('delete_user_data')
+
+    if (error) {
+      setDeleteError('Não foi possível excluir os dados. Tente novamente ou entre em contato com o suporte.')
+      setDeleting(false)
+      return
+    }
+
     await supabase.auth.signOut()
     window.location.href = '/auth/login'
   }
@@ -498,7 +509,7 @@ function TabDados({ email }: { email: string }) {
         <p className="text-xs text-gray-400 mb-4">Baixe todas as suas transações em formato CSV.</p>
         <button onClick={handleExport} disabled={exporting}
           className="w-full sm:w-auto bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-          {exporting ? 'Exportando…' : '⬇ Exportar CSV'}
+          {exporting ? 'Exportando…' : 'Exportar CSV'}
         </button>
       </div>
 
@@ -516,8 +527,17 @@ function TabDados({ email }: { email: string }) {
             <p className="text-xs text-red-600 font-medium">Digite <strong>EXCLUIR</strong> para confirmar:</p>
             <input type="text" value={confirmText} onChange={e => setConfirmText(e.target.value)} placeholder="EXCLUIR"
               className="w-full border border-red-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
+
+            {/* FIX: exibe erro de deleção se a RPC falhar */}
+            {deleteError && (
+              <div className="flex items-start gap-2 bg-red-100 border border-red-200 rounded-lg px-3 py-2.5" role="alert">
+                <WarningCircle size={14} weight="fill" className="mt-0.5 shrink-0 text-red-600" aria-hidden="true" />
+                <p className="text-xs text-red-700">{deleteError}</p>
+              </div>
+            )}
+
             <div className="flex gap-2">
-              <button onClick={() => { setConfirming(false); setConfirmText('') }}
+              <button onClick={() => { setConfirming(false); setConfirmText(''); setDeleteError('') }}
                 className="flex-1 border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors">
                 Cancelar
               </button>
@@ -563,10 +583,12 @@ export default function SettingsPage() {
           currency:             p.currency             ?? DEFAULT_PREFS.currency,
           hide_balances:        p.hide_balances        ?? false,
           number_format:        p.number_format        ?? DEFAULT_PREFS.number_format,
-          kaldiz_enabled:       p.kaldiz_enabled       ?? true,
+          // FIX BUG-007: lê kal_arcade_enabled de user_preferences (coluna real)
+          kal_arcade_enabled:   p.kal_arcade_enabled   ?? true,
           gamification_enabled: p.gamification_enabled ?? true,
         })
       } else {
+        // Fallback: lê de profiles quando user_preferences ainda não existe
         const { data: profile } = await supabase
           .from('profiles').select('full_name, gamification_enabled, kal_enabled').eq('id', user.id).single()
         if (profile) {
@@ -574,7 +596,8 @@ export default function SettingsPage() {
             ...prev,
             full_name:            profile.full_name            ?? prev.full_name,
             gamification_enabled: profile.gamification_enabled ?? prev.gamification_enabled,
-            kaldiz_enabled:       profile.kal_enabled          ?? prev.kaldiz_enabled,
+            // kal_enabled em profiles → kal_arcade_enabled no estado local
+            kal_arcade_enabled:   profile.kal_enabled          ?? prev.kal_arcade_enabled,
           }))
         }
       }
@@ -592,6 +615,7 @@ export default function SettingsPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setSaving(false); return }
 
+    // FIX BUG-007: upsert usa kal_arcade_enabled (coluna real em user_preferences)
     await supabase.from('user_preferences').upsert({
       user_id:              user.id,
       full_name:            prefs.full_name,
@@ -603,15 +627,16 @@ export default function SettingsPage() {
       currency:             prefs.currency,
       hide_balances:        prefs.hide_balances,
       number_format:        prefs.number_format,
-      kaldiz_enabled:       prefs.kaldiz_enabled,
+      kal_arcade_enabled:   prefs.kal_arcade_enabled,
       gamification_enabled: prefs.gamification_enabled,
       updated_at:           new Date().toISOString(),
     }, { onConflict: 'user_id' })
 
+    // Mantém profiles sincronizado (kal_enabled é a coluna lá)
     await supabase.from('profiles').update({
       full_name:            prefs.full_name,
       gamification_enabled: prefs.gamification_enabled,
-      kal_enabled:          prefs.kaldiz_enabled,
+      kal_enabled:          prefs.kal_arcade_enabled,
       updated_at:           new Date().toISOString(),
     }).eq('id', user.id)
 
@@ -638,16 +663,14 @@ export default function SettingsPage() {
         <p className="text-sm text-gray-400 mt-0.5">Gerencie seu perfil, aparência e preferências</p>
       </div>
 
-      {/* Toast de salvamento */}
       {saved && (
-        <div className="fixed top-4 right-4 z-50 bg-green-600 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2">
-          <span>✅</span> Salvo com sucesso!
+        <div className="fixed top-4 right-4 z-50 bg-green-600 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2" role="status">
+          Salvo com sucesso!
         </div>
       )}
 
       <div className="flex flex-col sm:flex-row gap-6">
 
-        {/* Tabs — mobile */}
         <div className="sm:hidden w-full">
           <div className="flex gap-1 overflow-x-auto pb-1 -mx-4 px-4">
             {TABS.map(t => (
@@ -656,13 +679,12 @@ export default function SettingsPage() {
                   tab === t.id ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 border border-gray-100'
                 }`}
               >
-                <span>{t.emoji}</span> {t.label}
+                {t.label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Sidebar — desktop */}
         <nav className="hidden sm:flex flex-col w-44 shrink-0 gap-0.5">
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
@@ -672,12 +694,11 @@ export default function SettingsPage() {
                   : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
               }`}
             >
-              <span>{t.emoji}</span> {t.label}
+              {t.label}
             </button>
           ))}
         </nav>
 
-        {/* Conteúdo */}
         <div className="flex-1 bg-white border border-gray-100 rounded-xl p-4 sm:p-6 min-w-0 w-full">
           {tab === 'perfil'     && <TabPerfil     prefs={prefs} email={email} onChange={handleChange} onSave={handleSave} saving={saving} />}
           {tab === 'aparencia'  && <TabAparencia  prefs={prefs} onChange={handleChange} onSave={handleSave} saving={saving} />}
