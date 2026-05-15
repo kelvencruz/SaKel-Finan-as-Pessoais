@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useThemeStore } from '@/stores/useThemeStore'
 import Sidebar from '@/components/Sidebar'
 import UserMenu from '@/components/UserMenu'
 import FloatingActionButton from '@/components/FloatingActionButton'
@@ -39,16 +40,28 @@ function formatDate(): string {
   })
 }
 
-// Capitaliza primeira letra
 function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1)
+}
+
+// Inicializa o tema assim que o usuário é identificado
+function ThemeBootstrap() {
+  const load = useThemeStore(s => s.load)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) load(user.id)
+    })
+  }, [load])
+
+  return null
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [firstName, setFirstName] = useState<string>('')
 
-  // Carrega só o primeiro nome — leve, sem estado extra
   useEffect(() => {
     const supabase = createClient()
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -73,28 +86,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       className="flex min-h-screen"
       style={{ background: 'var(--color-bg)' }}
     >
+      {/* Inicializa tema do Supabase — sem renderizar nada */}
+      <ThemeBootstrap />
+
       <Sidebar />
 
       <div className="flex flex-col flex-1 min-w-0">
 
         {/* ── HEADER GLOBAL ────────────────────────────────────────────── */}
-        {/*
-          Regra de design:
-          - Dashboard home  → greeting personalizado + data
-          - Demais páginas  → título da página (limpo, sem redundância)
-          - NUNCA botão de ação aqui — o FAB é o único ponto de entrada
-        */}
         <header
           className="sticky top-0 z-30 flex items-center justify-between shrink-0"
           style={{
-            height:           '56px',
-            padding:          '0 24px',
-            background:       'var(--color-surface)',
-            borderBottom:     '1px solid var(--color-border)',
-            // Espacamento mobile para nao colidir com o hamburguer
+            height:       '56px',
+            padding:      '0 24px',
+            background:   'var(--color-surface)',
+            borderBottom: '1px solid var(--color-border)',
           }}
         >
-          {/* Esquerda — contexto da página */}
           <div className="flex flex-col justify-center pl-10 md:pl-0">
             {isDashboardHome ? (
               <>
@@ -124,14 +132,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             )}
           </div>
 
-          {/* Direita — avatar/menu do usuário, sem botões de ação */}
           <div className="flex items-center gap-3">
             <UserMenu />
           </div>
         </header>
-        {/* ──────────────────────────────────────────────────────────────── */}
 
-        {/* Conteúdo da página */}
         <main className="flex-1 min-w-0">
           {children}
         </main>

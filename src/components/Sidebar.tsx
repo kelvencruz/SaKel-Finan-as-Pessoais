@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useThemeStore } from '@/stores/useThemeStore'
 import ThemeToggle from './ThemeToggle'
 import { getGamification, getLevelInfo } from '@/lib/gamification'
 import {
@@ -35,18 +36,11 @@ const navItems = [
 export default function Sidebar() {
   const pathname = usePathname()
   const [open,       setOpen]       = useState(false)
-  const [isDark,     setIsDark]     = useState(false)
   const [gamEnabled, setGamEnabled] = useState(false)
   const [xp,         setXp]         = useState(0)
   const [streakDays, setStreakDays] = useState(0)
 
-  useEffect(() => {
-    const check = () => setIsDark(document.documentElement.getAttribute('data-theme') === 'dark')
-    check()
-    const observer = new MutationObserver(check)
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
-    return () => observer.disconnect()
-  }, [])
+  const isDark = useThemeStore(s => s.themeMode === 'dark')
 
   useEffect(() => {
     async function loadGam() {
@@ -109,10 +103,10 @@ export default function Sidebar() {
     <aside
       className="flex flex-col w-56 h-full"
       style={{
-        background:   'var(--color-surface)',
-        borderRight:  '1px solid var(--color-border)',
-        fontFamily:   'var(--font-main)',
-        overflow:     'hidden', // contém o layout interno
+        background:  'var(--color-surface)',
+        borderRight: '1px solid var(--color-border)',
+        fontFamily:  'var(--font-main)',
+        overflow:    'hidden',
       }}
     >
       {/* Logo */}
@@ -175,12 +169,12 @@ export default function Sidebar() {
         Menu
       </p>
 
-      {/* Nav items — rola se necessário, não empurra o rodapé */}
+      {/* Nav items */}
       <nav className="flex flex-col gap-0 px-2 overflow-y-auto flex-1 min-h-0">
         {navItems.map(item => <NavLink key={item.href} item={item} />)}
       </nav>
 
-      {/* ── Rodapé SEMPRE visível ── */}
+      {/* Rodapé */}
       <div className="shrink-0 px-2 pb-3 pt-1" style={{ borderTop: '1px solid var(--color-border)' }}>
         <a
           href="/dashboard/settings"
