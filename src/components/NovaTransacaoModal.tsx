@@ -181,6 +181,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     const isFirstTx = (txCount ?? 0) === 0
     const goalId = isInvestmentCategory && form.goal_id ? form.goal_id : null
 
+    // ─── RECORRÊNCIA (inalterado) ─────────────────────────────────────────────
     if (form.is_recurring) {
       function calcNextDue(startDate: string, frequency: string): string {
         const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -251,47 +252,53 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       return
     }
 
+    // ─── PARCELAMENTO — DT-009 ────────────────────────────────────────────────
+    // Usa colunas nativas de `transactions`:
+    //   installment_group   uuid    — UUID único do grupo, vincula todas as parcelas
+    //   installment_current integer — índice desta parcela (1, 2, 3…)
+    //   installment_total   integer — total de parcelas do grupo
+    // Não depende de installment_groups nem installments (tabelas inexistentes).
     if (form.is_installment) {
-      const dates = getInstallmentDates()
-      const { data: group, error: groupErr } = await supabase
-        .from('installment_groups')
-        .insert({
-          user_id: user.id, description: form.description.trim(),
-          total_amount: amount, count: form.installment_count,
-          category_id: form.category_id || null,
-          account_id: form.account_id || null,
-          notes: form.notes?.trim() || null,
-        })
-        .select('id').single()
-
-      if (groupErr || !group) { setError(groupErr?.message ?? 'Erro ao criar parcelamento.'); setSaving(false); return }
+      const dates     = getInstallmentDates()
+      const groupId   = crypto.randomUUID()               // UUID do grupo — rastreável via filtro
+      const parcela   = parseFloat(valorParcela.toFixed(2))
 
       for (let i = 0; i < dates.length; i++) {
         let invoiceId: string | null = null
         let accountId = form.account_id || null
+
         if (form.use_credit_card && form.type === 'expense') {
           invoiceId = await getOrCreateInvoice(form.credit_card_id, dates[i], user.id)
           accountId = null
         }
+
         const txPayload = {
-          user_id: user.id, type: form.type,
-          description: `${form.description.trim()} (${i + 1}/${form.installment_count})`,
-          amount: parseFloat(valorParcela.toFixed(2)), date: dates[i],
-          account_id: accountId, category_id: form.category_id || null,
-          goal_id: goalId, notes: form.notes?.trim() || null,
-          status: i === 0 ? form.status : 'pending',
-          credit_card_id: form.use_credit_card ? form.credit_card_id : null,
-          invoice_id: invoiceId, is_installment: true,
-          installment_group_id: group.id, installment_index: i + 1,
+          user_id:             user.id,
+          type:                form.type,
+          description:         `${form.description.trim()} (${i + 1}/${form.installment_count})`,
+          amount:              parcela,
+          date:                dates[i],
+          account_id:          accountId,
+          category_id:         form.category_id || null,
+          goal_id:             goalId,
+          notes:               form.notes?.trim() || null,
+          status:              i === 0 ? form.status : 'pending',
+          credit_card_id:      form.use_credit_card ? form.credit_card_id : null,
+          invoice_id:          invoiceId,
+          is_installment:      true,
+          installment_group:   groupId,
+          installment_current: i + 1,
+          installment_total:   form.installment_count,
         }
-        const { data: tx } = await supabase.from('transactions').insert(txPayload).select('id').single()
-        await supabase.from('installments').insert({
-          user_id: user.id, transaction_id: tx?.id ?? null,
-          installment_group_id: group.id,
-          amount: parseFloat(valorParcela.toFixed(2)), due_date: dates[i],
-          status: i === 0 ? (form.status === 'paid' ? 'paid' : 'pending') : 'pending',
-          installment_index: i + 1,
-        })
+
+        const { error: txErr } = await supabase.from('transactions').insert(txPayload)
+
+        if (txErr) {
+          setError(`Erro na parcela ${i + 1}: ${txErr.message}`)
+          setSaving(false)
+          return
+        }
+
         if (invoiceId) {
           const { data } = await supabase.from('transactions').select('amount').eq('invoice_id', invoiceId)
           const total = (data ?? []).reduce((s: number, t: any) => s + Number(t.amount), 0)
@@ -303,6 +310,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       return
     }
 
+    // ─── TRANSAÇÃO SIMPLES (inalterado) ──────────────────────────────────────
     let invoiceId: string | null = null
     let accountId = form.account_id || null
     if (form.use_credit_card && form.type === 'expense') {
