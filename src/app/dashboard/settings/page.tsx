@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PasswordInput, getPasswordStrength } from '@/components/auth/PasswordInput'
 import { WarningCircle } from '@phosphor-icons/react'
+import { PageContainer } from '@/components/layout/PageContainer'
+import { PageHeader } from '@/components/layout/PageHeader'
 
 // ── Adicionado 'membros' ao tipo e array de tabs ──────────────────────────────
 type Tab = 'perfil' | 'aparencia' | 'financeiro' | 'seguranca' | 'membros' | 'dados'
@@ -445,9 +447,6 @@ function TabSeguranca({ email }: { email: string }) {
 }
 
 // ── Aba Membros ─────────────────────────────────────────────────────────────
-// Visível para todos, mas a API route rejeita quem não é 'owner'.
-// O token é passado no header Authorization para a route server-side
-// que usa a service_role key — jamais exposta no client.
 function TabMembros() {
   const supabase = createClient()
   const [email,   setEmail]   = useState('')
@@ -461,7 +460,6 @@ function TabMembros() {
     setError('')
     setSent(false)
 
-    // Obtém token da sessão atual para passar à API route (que roda server-side)
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) {
       setError('Sessão expirada. Faça login novamente.')
@@ -670,7 +668,6 @@ export default function SettingsPage() {
           gamification_enabled: p.gamification_enabled ?? true,
         })
       } else {
-        // Fallback: lê de profiles quando user_preferences ainda não existe
         const { data: profile } = await supabase
           .from('profiles').select('full_name, gamification_enabled, kal_enabled').eq('id', user.id).single()
         if (profile) {
@@ -726,38 +723,46 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4 max-w-4xl mx-auto">
+      <PageContainer>
         <div className="space-y-4">
-          {[1,2,3].map(i => <div key={i} className="h-16 bg-white border border-gray-100 rounded-xl animate-pulse" />)}
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-16 bg-white border border-gray-100 rounded-xl animate-pulse" />
+          ))}
         </div>
-      </div>
+      </PageContainer>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 max-w-4xl mx-auto">
-
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">Configurações</h1>
-        <p className="text-sm text-gray-400 mt-0.5">Gerencie seu perfil, aparência e preferências</p>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="Configurações"
+        description="Gerencie seu perfil, aparência e preferências"
+      />
 
       {saved && (
-        <div className="fixed top-4 right-4 z-50 bg-green-600 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2" role="status">
+        <div
+          className="fixed top-4 right-4 z-50 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2"
+          style={{ background: 'var(--success)' }}
+          role="status"
+        >
           Salvo com sucesso!
         </div>
       )}
 
       <div className="flex flex-col sm:flex-row gap-6">
-
         {/* Mobile: scroll horizontal */}
         <div className="sm:hidden w-full">
           <div className="flex gap-1 overflow-x-auto pb-1 -mx-4 px-4">
             {TABS.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${
-                  tab === t.id ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 border border-gray-100'
-                }`}
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors shrink-0"
+                style={tab === t.id
+                  ? { background: 'var(--accent-primary)', color: '#fff' }
+                  : { background: 'var(--bg-surface)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }
+                }
               >
                 {t.label}
               </button>
@@ -768,19 +773,24 @@ export default function SettingsPage() {
         {/* Desktop: sidebar vertical */}
         <nav className="hidden sm:flex flex-col w-44 shrink-0 gap-0.5">
           {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-colors ${
-                tab === t.id
-                  ? 'bg-indigo-50 text-indigo-700 font-semibold'
-                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
-              }`}
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-colors"
+              style={tab === t.id
+                ? { background: 'var(--accent-primary)1a', color: 'var(--accent-primary)', fontWeight: 600 }
+                : { color: 'var(--text-secondary)' }
+              }
             >
               {t.label}
             </button>
           ))}
         </nav>
 
-        <div className="flex-1 bg-white border border-gray-100 rounded-xl p-4 sm:p-6 min-w-0 w-full">
+        <div
+          className="flex-1 rounded-xl p-4 sm:p-6 min-w-0 w-full"
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+        >
           {tab === 'perfil'     && <TabPerfil     prefs={prefs} email={email} onChange={handleChange} onSave={handleSave} saving={saving} />}
           {tab === 'aparencia'  && <TabAparencia  prefs={prefs} onChange={handleChange} onSave={handleSave} saving={saving} />}
           {tab === 'financeiro' && <TabFinanceiro prefs={prefs} onChange={handleChange} onSave={handleSave} saving={saving} />}
@@ -788,8 +798,7 @@ export default function SettingsPage() {
           {tab === 'membros'    && <TabMembros />}
           {tab === 'dados'      && <TabDados      email={email} />}
         </div>
-
       </div>
-    </div>
+    </PageContainer>
   )
 }

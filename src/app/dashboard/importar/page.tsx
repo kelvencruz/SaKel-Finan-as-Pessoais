@@ -4,6 +4,21 @@ import { useState, useRef, useEffect } from 'react'
 import Papa from 'papaparse'
 import { createClient } from '@/lib/supabase/client'
 import type { ReportData } from '@/components/RelatorioFinanceiroPDF'
+import {
+  ChartBar,
+  Lightbulb,
+  FileCsv,
+  Tag,
+  Warning,
+  FileText,
+  CheckCircle,
+  UploadSimple,
+  Lock,
+  ArrowDown,
+  SpinnerGap,
+} from '@phosphor-icons/react'
+import { PageContainer } from '@/components/layout/PageContainer'
+import { PageHeader } from '@/components/layout/PageHeader'
 
 // ── tipos ─────────────────────────────────────────────────────────────────────
 interface ParsedRow {
@@ -71,10 +86,8 @@ function ExportTab() {
   const [PDFLink,       setPDFLink]       = useState<any>(null)
   const [PDFDoc,        setPDFDoc]        = useState<any>(null)
   const [pdfReady,      setPdfReady]      = useState(false)
-  const [kalAvatarSrc,  setKalAvatarSrc]  = useState<string | undefined>(undefined)
 
   useEffect(() => {
-    // Carrega o renderer e o componente PDF
     Promise.all([
       import('@react-pdf/renderer').then(m => m.PDFDownloadLink),
       import('@/components/RelatorioFinanceiroPDF').then(m => m.default),
@@ -83,18 +96,6 @@ function ExportTab() {
       setPDFDoc(() => doc)
       setPdfReady(true)
     }).catch(() => console.error('Erro ao carregar @react-pdf/renderer'))
-
-    // Carrega o avatar via fetch → ArrayBuffer → base64
-    // Mais confiável que import estático para o @react-pdf/renderer
-    fetch('/kal-avatar.png')
-      .then(res => res.arrayBuffer())
-      .then(buffer => {
-        const bytes = new Uint8Array(buffer)
-        let binary = ''
-        bytes.forEach(b => { binary += String.fromCharCode(b) })
-        setKalAvatarSrc(`data:image/png;base64,${btoa(binary)}`)
-      })
-      .catch(() => console.warn('kal-avatar.png não encontrado em /public'))
   }, [])
 
   const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -166,11 +167,11 @@ function ExportTab() {
       {/* Info banner */}
       <div className="rounded-2xl p-5 flex gap-4 items-start"
         style={{ background: 'var(--color-brand-light)', border: '1px solid var(--color-brand)20' }}>
-        <span className="text-2xl">📊</span>
+        <ChartBar size={24} weight="duotone" style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
         <div>
           <p className="text-sm font-semibold" style={{ color: 'var(--color-brand)' }}>Relatório Financeiro PDF</p>
           <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-            Gera um relatório completo com resumo executivo, insights do Kal, despesas por categoria, saldo por conta e tabela detalhada de transações.
+            Gera um relatório completo com resumo executivo, despesas por categoria, saldo por conta e tabela detalhada de transações.
           </p>
         </div>
       </div>
@@ -205,10 +206,13 @@ function ExportTab() {
         <button
           onClick={handleGenerateReport}
           disabled={exportLoading}
-          className="w-full rounded-xl py-3 text-sm font-semibold transition-all disabled:opacity-50"
+          className="w-full rounded-xl py-3 text-sm font-semibold transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           style={{ background: 'var(--color-brand)', color: '#fff' }}
         >
-          {exportLoading ? '⏳ Carregando dados…' : '🔍 Gerar relatório'}
+          {exportLoading
+            ? <><SpinnerGap size={16} weight="bold" className="animate-spin" /> Carregando dados…</>
+            : 'Gerar relatório'
+          }
         </button>
       </div>
 
@@ -267,21 +271,21 @@ function ExportTab() {
             </div>
           )}
 
+          {/* Banner informativo — sem referência ao Kal */}
           <div className="rounded-xl p-4 flex gap-3 items-start"
             style={{ background: '#f5f3ff', border: '1px solid #ede9fe' }}>
-            <span className="text-xl">🦎</span>
+            <FileText size={20} weight="duotone" style={{ color: '#4f46e5', flexShrink: 0, marginTop: 1 }} />
             <div>
-              <p className="text-xs font-semibold mb-1" style={{ color: '#4f46e5' }}>Insights do Kal incluídos no PDF</p>
+              <p className="text-xs font-semibold mb-1" style={{ color: '#4f46e5' }}>Relatório consolidado incluído no PDF</p>
               <p className="text-xs" style={{ color: '#6b7280' }}>
-                Análise automática do período com dicas personalizadas baseadas nos seus dados.
+                Visão geral do período com resumo executivo, distribuição por categoria e extrato completo de transações.
               </p>
             </div>
           </div>
 
-          {/* Botão download — passa kalAvatarSrc como prop */}
           {pdfReady && PDFLink && PDFDoc ? (
             <PDFLink
-              document={<PDFDoc data={reportData} kalAvatarSrc={kalAvatarSrc} />}
+              document={<PDFDoc data={reportData} />}
               fileName={`sakel-relatorio-${MONTH_NAMES[exportMonth].toLowerCase()}-${exportYear}.pdf`}
             >
               {({ loading }: { loading: boolean }) => (
@@ -290,7 +294,10 @@ function ExportTab() {
                   className="w-full rounded-xl py-3.5 text-sm font-semibold transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                   style={{ background: '#16a34a', color: '#fff' }}
                 >
-                  {loading ? '⏳ Preparando PDF…' : '⬇ Baixar Relatório PDF'}
+                  {loading
+                    ? <><SpinnerGap size={16} weight="bold" className="animate-spin" /> Preparando PDF…</>
+                    : <><ArrowDown size={16} weight="bold" /> Baixar Relatório PDF</>
+                  }
                 </button>
               )}
             </PDFLink>
@@ -301,8 +308,9 @@ function ExportTab() {
             </div>
           )}
 
-          <p className="text-[11px] text-center" style={{ color: 'var(--color-text-muted)' }}>
-            🔒 PDF gerado localmente — nenhum dado é enviado para servidores externos.
+          <p className="text-[11px] text-center flex items-center justify-center gap-1.5" style={{ color: 'var(--color-text-muted)' }}>
+            <Lock size={11} weight="duotone" />
+            PDF gerado localmente — nenhum dado é enviado para servidores externos.
           </p>
         </div>
       )}
@@ -413,7 +421,10 @@ export default function ImportarPage() {
   const DoneCard = ({ r }: { r: ImportResult }) => (
     <div className="space-y-4">
       <div className={`rounded-2xl p-6 text-center border ${r.errors===0 ? 'bg-green-50 border-green-100' : 'bg-amber-50 border-amber-100'}`}>
-        <span className="text-4xl block mb-3">{r.errors===0 ? '✅' : '⚠️'}</span>
+        {r.errors === 0
+          ? <CheckCircle size={40} weight="duotone" className="mx-auto mb-3 text-green-600" />
+          : <Warning size={40} weight="duotone" className="mx-auto mb-3 text-amber-500" />
+        }
         <p className="text-base font-semibold mb-4" style={{ color: 'var(--color-text-primary)' }}>Importação concluída!</p>
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-xl p-3" style={{ background: 'var(--color-surface)' }}>
@@ -446,35 +457,29 @@ export default function ImportarPage() {
   )
 
   return (
-    <div className="min-h-screen p-4 sm:p-6 max-w-3xl mx-auto" style={{ background: 'var(--color-bg)' }}>
-
-      {/* Cabeçalho */}
-      <div className="mb-6">
-        <a href="/dashboard" className="text-sm transition-colors"
-          style={{ color: 'var(--color-text-muted)' }}>← Dashboard</a>
-        <h1 className="text-xl font-semibold mt-2" style={{ color: 'var(--color-text-primary)' }}>
-          Importar &amp; Exportar
-        </h1>
-        <p className="text-sm mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-          Importe extratos CSV ou exporte relatórios financeiros em PDF
-        </p>
-      </div>
+    <PageContainer maxWidth="2xl">
+      <PageHeader
+        title="Importar & Exportar"
+        description="Importe extratos CSV ou exporte relatórios financeiros em PDF"
+        backHref="/dashboard"
+      />
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6 p-1 rounded-2xl w-fit" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
         {([
-          { id: 'csv',    label: 'Importar CSV', emoji: '📊' },
-          { id: 'export', label: 'Exportar PDF', emoji: '📤' },
+          { id: 'csv',    label: 'Importar CSV', Icon: FileCsv },
+          { id: 'export', label: 'Exportar PDF', Icon: UploadSimple },
         ] as const).map(t => (
           <button key={t.id}
             onClick={() => { setTab(t.id); reset() }}
-            className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
+            className="px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2"
             style={tab === t.id
               ? { background: 'var(--color-brand)', color: '#fff', boxShadow: '0 1px 4px rgba(79,70,229,.25)' }
               : { color: 'var(--color-text-muted)', background: 'transparent' }
             }
           >
-            {t.emoji} {t.label}
+            <t.Icon size={15} weight="duotone" />
+            {t.label}
           </button>
         ))}
       </div>
@@ -489,7 +494,7 @@ export default function ImportarPage() {
             <div className="space-y-4">
               <div className="rounded-2xl p-4 flex gap-3 items-start"
                 style={{ background: 'var(--color-brand-light)', border: '1px solid var(--color-brand)20' }}>
-                <span className="text-xl">💡</span>
+                <Lightbulb size={20} weight="duotone" style={{ color: 'var(--color-brand)', flexShrink: 0, marginTop: 1 }} />
                 <div>
                   <p className="text-sm font-semibold" style={{ color: 'var(--color-brand)' }}>Bancos suportados</p>
                   <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
@@ -500,12 +505,12 @@ export default function ImportarPage() {
 
               <div
                 onClick={() => fileRef.current?.click()}
-                className="rounded-2xl p-10 text-center cursor-pointer transition-all group"
+                className="rounded-2xl p-10 text-center cursor-pointer transition-all"
                 style={{ border: '2px dashed var(--color-border)', background: 'var(--color-surface)' }}
                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)'}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border)'}
               >
-                <span className="text-4xl block mb-3">📊</span>
+                <FileCsv size={40} weight="duotone" className="mx-auto mb-3" style={{ color: 'var(--color-brand)' }} />
                 <p className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
                   {fileName || 'Clique para selecionar o arquivo CSV'}
                 </p>
@@ -639,10 +644,18 @@ export default function ImportarPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>{row.description}</p>
-                        <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                        <p className="text-xs flex items-center gap-1" style={{ color: 'var(--color-text-muted)' }}>
                           {row.date}
-                          {row.category_suggestion && ` · 🏷️ ${row.category_suggestion}`}
-                          {row.error && ` · ⚠️ ${row.error}`}
+                          {row.category_suggestion && (
+                            <span className="flex items-center gap-0.5">
+                              · <Tag size={10} weight="duotone" /> {row.category_suggestion}
+                            </span>
+                          )}
+                          {row.error && (
+                            <span className="flex items-center gap-0.5 text-red-400">
+                              · <Warning size={10} weight="duotone" /> {row.error}
+                            </span>
+                          )}
                         </p>
                       </div>
                       <p className={`text-sm font-semibold shrink-0 ${row.type==='income'?'text-green-600':'text-red-500'}`}>
@@ -665,9 +678,12 @@ export default function ImportarPage() {
                   ← Voltar
                 </button>
                 <button onClick={handleImport} disabled={importing || okRows.length === 0}
-                  className="flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50 transition-all"
+                  className="flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50 transition-all flex items-center justify-center gap-2"
                   style={{ background: 'var(--color-brand)', color: '#fff' }}>
-                  {importing ? 'Importando…' : `Importar ${okRows.length} transações`}
+                  {importing
+                    ? <><SpinnerGap size={15} weight="bold" className="animate-spin" /> Importando…</>
+                    : `Importar ${okRows.length} transações`
+                  }
                 </button>
               </div>
             </div>
@@ -676,6 +692,6 @@ export default function ImportarPage() {
           {step === 'done' && result && <DoneCard r={result} />}
         </>
       )}
-    </div>
+    </PageContainer>
   )
 }
