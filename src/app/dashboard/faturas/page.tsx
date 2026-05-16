@@ -2,6 +2,16 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { PageContainer } from '@/components/layout/PageContainer'
+import { PageHeader } from '@/components/layout/PageHeader'
+import {
+  CreditCard,
+  CaretLeft,
+  CaretRight,
+  Warning,
+  ArrowsClockwise,
+  CheckCircle,
+} from '@phosphor-icons/react'
 
 interface CreditCard {
   id: string
@@ -68,49 +78,46 @@ const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S1-007 — Loading skeleton (página inteira)
+// Loading skeleton (página inteira)
 // ─────────────────────────────────────────────────────────────────────────────
 function FaturasSkeleton() {
   return (
-    <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto space-y-4">
-      <div className="h-8 w-24 bg-gray-100 rounded-lg animate-pulse" />
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="space-y-4">
-          <div className="h-40 bg-white border border-gray-100 rounded-xl animate-pulse" />
-          <div className="h-24 bg-white border border-gray-100 rounded-xl animate-pulse" />
-        </div>
-        <div className="lg:col-span-2 space-y-4">
-          <div className="h-36 bg-gray-200 rounded-xl animate-pulse" />
-          <div className="h-48 bg-white border border-gray-100 rounded-xl animate-pulse" />
+    <PageContainer>
+      <div className="space-y-4">
+        <div className="h-8 w-24 bg-bg-surface rounded-lg animate-pulse" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="space-y-4">
+            <div className="h-40 bg-bg-surface rounded-xl animate-pulse" />
+            <div className="h-24 bg-bg-surface rounded-xl animate-pulse" />
+          </div>
+          <div className="lg:col-span-2 space-y-4">
+            <div className="h-36 bg-bg-surface rounded-xl animate-pulse" />
+            <div className="h-48 bg-bg-surface rounded-xl animate-pulse" />
+          </div>
         </div>
       </div>
-    </div>
+    </PageContainer>
   )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S1-007 — Error state
+// Error state
 // ─────────────────────────────────────────────────────────────────────────────
 function FaturasError({ message, onRetry }: { message?: string; onRetry: () => void }) {
   return (
-    <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <a href="/dashboard" className="text-sm text-gray-400 hover:text-gray-600">← Dashboard</a>
-          <h1 className="text-xl font-semibold mt-1">Faturas</h1>
-        </div>
-      </div>
-      <div className="bg-white border border-dashed border-red-100 rounded-xl p-10 text-center">
-        <p className="text-2xl mb-2">⚠️</p>
-        <p className="text-sm font-medium text-gray-600 mb-1">Erro ao carregar faturas</p>
-        <p className="text-xs text-gray-400 mb-5">
+    <PageContainer>
+      <PageHeader title="Faturas" />
+      <div className="bg-bg-surface border border-dashed border-danger/30 rounded-xl p-10 text-center">
+        <Warning size={32} weight="duotone" className="text-danger mx-auto mb-2" />
+        <p className="text-sm font-medium text-text-primary mb-1">Erro ao carregar faturas</p>
+        <p className="text-xs text-text-secondary mb-5">
           {message ?? 'Não foi possível buscar os dados. Verifique sua conexão.'}
         </p>
-        <button onClick={onRetry} className="text-sm font-medium text-indigo-600 hover:underline">
+        <button onClick={onRetry} className="text-sm font-medium text-accent-primary hover:underline">
           Tentar novamente
         </button>
       </div>
-    </div>
+    </PageContainer>
   )
 }
 
@@ -124,7 +131,6 @@ export default function FaturasPage() {
   const [viewMonth,    setViewMonth]    = useState(() => new Date().getMonth() + 1)
   const [viewYear,     setViewYear]     = useState(() => new Date().getFullYear())
 
-  // S1-007: três estados explícitos
   const [pageLoading,  setPageLoading]  = useState(true)
   const [loadError,    setLoadError]    = useState<string | null>(null)
 
@@ -192,7 +198,6 @@ export default function FaturasPage() {
     setHistory(data ?? [])
   }, [])
 
-  // S1-007: boot com try/catch/finally
   async function boot() {
     setPageLoading(true)
     setLoadError(null)
@@ -276,75 +281,86 @@ export default function FaturasPage() {
   const isLoading = invStatus === 'loading'
   const isEmpty   = invStatus === 'empty' || invStatus === 'idle'
 
-  // S1-007: loading → skeleton | error → error state
   if (pageLoading) return <FaturasSkeleton />
   if (loadError)   return <FaturasError message={loadError} onRetry={boot} />
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 max-w-5xl mx-auto">
+    <PageContainer>
+      <PageHeader
+        title="Faturas"
+        action={
+          <a href="/dashboard/cartoes" className="text-sm text-accent-primary hover:underline">
+            Gerenciar cartões →
+          </a>
+        }
+      />
 
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <a href="/dashboard" className="text-sm text-gray-400 hover:text-gray-600">← Dashboard</a>
-          <h1 className="text-xl font-semibold mt-1">Faturas</h1>
-        </div>
-        <a href="/dashboard/cartoes" className="text-sm text-indigo-600 hover:underline">Gerenciar cartões →</a>
-      </div>
-
-      {/* S1-007: empty — sem cartões cadastrados */}
+      {/* Sem cartões cadastrados */}
       {cards.length === 0 ? (
-        <div className="bg-white border border-dashed border-gray-200 rounded-xl p-10 text-center">
-          <p className="text-4xl mb-3">💳</p>
-          <p className="text-gray-400 text-sm">Nenhum cartão ativo.</p>
-          <a href="/dashboard/cartoes" className="mt-3 text-indigo-600 text-sm hover:underline block">Cadastrar cartão</a>
+        <div className="bg-bg-surface border border-dashed border-text-secondary/20 rounded-xl p-10 text-center">
+          <CreditCard size={40} weight="duotone" className="text-text-secondary mx-auto mb-3" />
+          <p className="text-text-secondary text-sm">Nenhum cartão ativo.</p>
+          <a href="/dashboard/cartoes" className="mt-3 text-accent-primary text-sm hover:underline block">
+            Cadastrar cartão
+          </a>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
           {/* Coluna esquerda */}
           <div className="space-y-4">
-            <div className="bg-white border border-gray-100 rounded-xl p-4">
-              <p className="text-xs text-gray-400 mb-3 uppercase tracking-wide">Cartão</p>
+            <div className="bg-bg-surface rounded-xl p-4">
+              <p className="text-xs text-text-secondary mb-3 uppercase tracking-wide">Cartão</p>
               <div className="space-y-2">
                 {cards.map(card => (
                   <button key={card.id} onClick={() => setSelectedCard(card)}
                     className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${
                       selectedCard?.id === card.id
-                        ? 'bg-indigo-50 border border-indigo-200'
-                        : 'hover:bg-gray-50 border border-transparent'
+                        ? 'bg-accent-primary/10 border border-accent-primary/30'
+                        : 'hover:bg-white/5 border border-transparent'
                     }`}>
-                    <div className="w-8 h-6 rounded flex items-center justify-center text-white text-xs flex-shrink-0"
-                      style={{ backgroundColor: card.color }}>💳</div>
+                    <div className="w-8 h-6 rounded flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: card.color }}>
+                      <CreditCard size={14} weight="duotone" className="text-white" />
+                    </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-800">{card.name}</p>
-                      <p className="text-xs text-gray-400">Limite {fmt(Number(card.limit_amount))}</p>
+                      <p className="text-sm font-medium text-text-primary">{card.name}</p>
+                      <p className="text-xs text-text-secondary">Limite {fmt(Number(card.limit_amount))}</p>
                     </div>
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="bg-white border border-gray-100 rounded-xl p-4">
-              <p className="text-xs text-gray-400 mb-3 uppercase tracking-wide">Período</p>
+            <div className="bg-bg-surface rounded-xl p-4">
+              <p className="text-xs text-text-secondary mb-3 uppercase tracking-wide">Período</p>
               <div className="flex items-center justify-between">
-                <button onClick={prevMonth} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-colors">‹</button>
-                <span className="text-sm font-semibold text-gray-800">{MONTHS[viewMonth - 1]} {viewYear}</span>
-                <button onClick={nextMonth} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-colors">›</button>
+                <button onClick={prevMonth}
+                  className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-text-secondary transition-colors">
+                  <CaretLeft size={16} weight="bold" />
+                </button>
+                <span className="text-sm font-semibold text-text-primary">
+                  {MONTHS[viewMonth - 1]} {viewYear}
+                </span>
+                <button onClick={nextMonth}
+                  className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-text-secondary transition-colors">
+                  <CaretRight size={16} weight="bold" />
+                </button>
               </div>
             </div>
 
             {history.length > 0 && (
-              <div className="bg-white border border-gray-100 rounded-xl p-4">
-                <p className="text-xs text-gray-400 mb-3 uppercase tracking-wide">Histórico</p>
+              <div className="bg-bg-surface rounded-xl p-4">
+                <p className="text-xs text-text-secondary mb-3 uppercase tracking-wide">Histórico</p>
                 <div className="space-y-1">
                   {history.slice(0, 6).map(inv => (
                     <button key={inv.id} onClick={() => selectFromHistory(inv)}
                       className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg transition-colors text-left ${
-                        invoice?.id === inv.id ? 'bg-indigo-50' : 'hover:bg-gray-50'
+                        invoice?.id === inv.id ? 'bg-accent-primary/10' : 'hover:bg-white/5'
                       }`}>
-                      <span className="text-xs text-gray-600">{MONTHS[inv.month - 1]}/{inv.year}</span>
+                      <span className="text-xs text-text-secondary">{MONTHS[inv.month - 1]}/{inv.year}</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-gray-700">{fmt(Number(inv.total_amount))}</span>
+                        <span className="text-xs font-medium text-text-primary">{fmt(Number(inv.total_amount))}</span>
                         <span className={`text-xs px-1.5 py-0.5 rounded-full ${STATUS_COLORS[inv.status]}`}>
                           {STATUS_LABELS[inv.status]}
                         </span>
@@ -360,22 +376,20 @@ export default function FaturasPage() {
           <div className="lg:col-span-2 space-y-4">
 
             <div className="rounded-xl p-5 text-white relative overflow-hidden"
-              style={{ backgroundColor: selectedCard?.color ?? '#6366f1' }}>
+              style={{ backgroundColor: selectedCard?.color ?? '#7C3AED' }}>
 
               {isLoading && (
                 <div className="absolute inset-0 bg-black/10 flex items-center justify-center rounded-xl">
-                  <div className="flex gap-1">
-                    {[0,1,2].map(i => (
-                      <div key={i} className="w-2 h-2 bg-white/60 rounded-full animate-bounce"
-                        style={{ animationDelay: `${i * 0.15}s` }} />
-                    ))}
-                  </div>
+                  <ArrowsClockwise size={24} weight="duotone" className="text-white/70 animate-spin" />
                 </div>
               )}
 
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <p className="text-white/70 text-sm">💳 {selectedCard?.name}</p>
+                  <div className="flex items-center gap-1.5">
+                    <CreditCard size={14} weight="duotone" className="text-white/70" />
+                    <p className="text-white/70 text-sm">{selectedCard?.name}</p>
+                  </div>
                   <p className="text-xl font-bold mt-1">{MONTHS[viewMonth - 1]} {viewYear}</p>
                 </div>
                 {invoice && (
@@ -410,20 +424,21 @@ export default function FaturasPage() {
 
             <div className="flex gap-3">
               {isLoading ? (
-                <div className="h-10 flex-1 bg-gray-100 rounded-lg animate-pulse" />
+                <div className="h-10 flex-1 bg-bg-surface rounded-lg animate-pulse" />
               ) : isEmpty ? (
-                <p className="text-sm text-gray-400 py-2">Nenhuma despesa registrada neste mês.</p>
+                <p className="text-sm text-text-secondary py-2">Nenhuma despesa registrada neste mês.</p>
               ) : (
                 <>
                   {invoice && invoice.status !== 'paid' && invoice.status !== 'cancelled' && computedTotal > 0 && (
                     <button onClick={() => { setShowPayModal(true); setPayError(null) }}
-                      className="flex-1 bg-green-600 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-green-700 transition-colors">
+                      className="flex-1 bg-success text-white rounded-lg py-2.5 text-sm font-medium hover:opacity-90 transition-opacity">
                       Pagar fatura
                     </button>
                   )}
                   {invoice?.status === 'paid' && (
-                    <div className="flex-1 flex items-center gap-2 justify-center border border-green-200 bg-green-50 rounded-lg py-2.5 text-sm font-medium text-green-700">
-                      ✅ Fatura paga
+                    <div className="flex-1 flex items-center gap-2 justify-center border border-success/30 bg-success/10 rounded-lg py-2.5 text-sm font-medium text-success">
+                      <CheckCircle size={16} weight="duotone" />
+                      Fatura paga
                     </div>
                   )}
                 </>
@@ -431,38 +446,38 @@ export default function FaturasPage() {
             </div>
 
             {invStatus === 'loaded' && invoice && (
-              <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-                <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
-                  <p className="text-sm font-medium text-gray-700">
+              <div className="bg-bg-surface rounded-xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-white/5 flex items-center justify-between">
+                  <p className="text-sm font-medium text-text-primary">
                     Lançamentos — {MONTHS[invoice.month - 1]}/{invoice.year}
                   </p>
-                  <span className="text-xs text-gray-400">{transactions.length} item(ns)</span>
+                  <span className="text-xs text-text-secondary">{transactions.length} item(ns)</span>
                 </div>
                 {transactions.length === 0 ? (
                   <div className="p-8 text-center">
-                    <p className="text-gray-400 text-sm">Nenhum lançamento nesta fatura.</p>
+                    <p className="text-text-secondary text-sm">Nenhum lançamento nesta fatura.</p>
                   </div>
                 ) : (
                   <div>
                     {transactions.map((tx, i) => (
                       <div key={tx.id}
-                        className={`flex items-center gap-4 px-5 py-3 ${i < transactions.length - 1 ? 'border-b border-gray-50' : ''}`}>
-                        <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-sm flex-shrink-0">
-                          {tx.category?.icon ?? '💸'}
+                        className={`flex items-center gap-4 px-5 py-3 ${i < transactions.length - 1 ? 'border-b border-white/5' : ''}`}>
+                        <div className="w-8 h-8 rounded-full bg-danger/10 flex items-center justify-center text-sm flex-shrink-0">
+                          {tx.category?.icon ?? ''}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-800 truncate">{tx.description}</p>
-                          <p className="text-xs text-gray-400">
+                          <p className="text-sm font-medium text-text-primary truncate">{tx.description}</p>
+                          <p className="text-xs text-text-secondary">
                             {new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR')}
                             {tx.category?.name ? ` · ${tx.category.name}` : ''}
                           </p>
                         </div>
-                        <p className="text-sm font-semibold text-red-500 flex-shrink-0">-{fmt(Number(tx.amount))}</p>
+                        <p className="text-sm font-semibold text-danger flex-shrink-0">-{fmt(Number(tx.amount))}</p>
                       </div>
                     ))}
-                    <div className="px-5 py-3 bg-gray-50 flex justify-between items-center">
-                      <p className="text-sm text-gray-500">Total</p>
-                      <p className="text-sm font-bold text-gray-800">{fmt(computedTotal)}</p>
+                    <div className="px-5 py-3 bg-white/5 flex justify-between items-center">
+                      <p className="text-sm text-text-secondary">Total</p>
+                      <p className="text-sm font-bold text-text-primary">{fmt(computedTotal)}</p>
                     </div>
                   </div>
                 )}
@@ -470,18 +485,18 @@ export default function FaturasPage() {
             )}
 
             {isLoading && (
-              <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-                <div className="px-5 py-3 border-b border-gray-50">
-                  <div className="h-4 w-40 bg-gray-100 rounded animate-pulse" />
+              <div className="bg-bg-surface rounded-xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-white/5">
+                  <div className="h-4 w-40 bg-white/10 rounded animate-pulse" />
                 </div>
                 {[1,2,3].map(i => (
-                  <div key={i} className="flex items-center gap-4 px-5 py-3 border-b border-gray-50">
-                    <div className="w-8 h-8 rounded-full bg-gray-100 animate-pulse flex-shrink-0" />
+                  <div key={i} className="flex items-center gap-4 px-5 py-3 border-b border-white/5">
+                    <div className="w-8 h-8 rounded-full bg-white/10 animate-pulse flex-shrink-0" />
                     <div className="flex-1 space-y-1.5">
-                      <div className="h-3 w-3/4 bg-gray-100 rounded animate-pulse" />
-                      <div className="h-3 w-1/3 bg-gray-100 rounded animate-pulse" />
+                      <div className="h-3 w-3/4 bg-white/10 rounded animate-pulse" />
+                      <div className="h-3 w-1/3 bg-white/10 rounded animate-pulse" />
                     </div>
-                    <div className="h-3 w-16 bg-gray-100 rounded animate-pulse" />
+                    <div className="h-3 w-16 bg-white/10 rounded animate-pulse" />
                   </div>
                 ))}
               </div>
@@ -492,35 +507,35 @@ export default function FaturasPage() {
 
       {/* Modal pagar fatura */}
       {showPayModal && invoice && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
-            <h2 className="text-lg font-semibold mb-2">Pagar fatura</h2>
-            <p className="text-sm text-gray-500 mb-5">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-bg-surface rounded-2xl w-full max-w-sm p-6 shadow-xl border border-white/10">
+            <h2 className="text-lg font-semibold text-text-primary mb-2">Pagar fatura</h2>
+            <p className="text-sm text-text-secondary mb-5">
               {selectedCard?.name} · {MONTHS[invoice.month - 1]}/{invoice.year} ·{' '}
-              <span className="font-semibold text-gray-700">{fmt(computedTotal)}</span>
+              <span className="font-semibold text-text-primary">{fmt(computedTotal)}</span>
             </p>
             <div>
-              <label className="block text-sm text-gray-600 mb-1">Débitar da conta</label>
+              <label className="block text-sm text-text-secondary mb-1">Débitar da conta</label>
               <select value={payAccountId} onChange={e => setPayAccountId(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary">
                 <option value="">Selecione a conta</option>
                 {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
-            {payError && <p className="text-sm text-red-500 mt-3">{payError}</p>}
+            {payError && <p className="text-sm text-danger mt-3">{payError}</p>}
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowPayModal(false)}
-                className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm hover:bg-gray-50 transition-colors">
+                className="flex-1 border border-white/10 text-text-secondary rounded-lg py-2 text-sm hover:bg-white/5 transition-colors">
                 Cancelar
               </button>
               <button onClick={handlePayInvoice} disabled={paying}
-                className="flex-1 bg-green-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors">
+                className="flex-1 bg-success text-white rounded-lg py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity">
                 {paying ? 'Processando...' : 'Confirmar pagamento'}
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }
