@@ -1,3 +1,4 @@
+// src/app/dashboard/layout.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -8,8 +9,11 @@ import Sidebar from '@/components/Sidebar'
 import UserMenu from '@/components/UserMenu'
 import FloatingActionButton from '@/components/FloatingActionButton'
 import { ToastManagerProvider } from '@/components/core/ToastManager'
+import { initGamificacaoListener } from '@/features/gamificacao/listeners/gamificacaoListener'
 
-// Mapa de títulos por rota — adicione conforme criar novas páginas
+// Registrado no escopo do módulo — roda uma vez só, sobrevive a re-renders e HMR
+initGamificacaoListener()
+
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard':                'Dashboard',
   '/dashboard/transacoes':     'Transações',
@@ -24,6 +28,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/settings':       'Configurações',
   '/dashboard/perfil':         'Meu Perfil',
 }
+
+// ... resto do arquivo sem nenhuma alteração
 
 function getGreeting(): string {
   const h = new Date().getHours()
