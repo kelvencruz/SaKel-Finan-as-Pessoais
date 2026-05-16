@@ -1,31 +1,13 @@
 'use client'
 
-import { useCallback } from 'react'
-import { toastManager } from '@/components/core/ToastManager'
-import { processTransactionCreated } from '@/features/gamificacao/services/gamificacaoService'
+// src/features/gamificacao/hooks/useGamification.ts
+// Hook de LEITURA apenas — não dispara mais XP diretamente.
+// DT-003: pushXPToast removido. A gamificação agora é acionada pelo
+// gamificacaoListener via Event Bus, após commit no Supabase.
+// Manter este hook para futura exposição de dados de gamificação na UI
+// (XP atual, nível, badges, etc).
 
 export function useGamification() {
-  /**
-   * Dispara o toast de XP após uma transação ser criada.
-   * Chame apenas em criações — nunca em edições (regra inviolável).
-   */
-  const pushXPToast = useCallback(
-    async (userId: string, isFirstTx: boolean): Promise<void> => {
-      try {
-        const { totalXP, badgeEarned } = await processTransactionCreated(
-          userId,
-          isFirstTx,
-        )
-        if (totalXP > 0) {
-          toastManager.push({ kind: 'xp', xp: totalXP, badge: badgeEarned })
-        }
-      } catch (err) {
-        // Gamificação nunca pode quebrar o fluxo principal
-        console.error('[useGamification] erro ao processar XP:', err)
-      }
-    },
-    [],
-  )
-
-  return { pushXPToast }
+  // Hook de leitura — expansível para expor xp, level, badges via Supabase
+  return {}
 }

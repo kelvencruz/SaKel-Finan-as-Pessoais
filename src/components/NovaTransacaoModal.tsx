@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toastManager } from '@/components/core/ToastManager'
-import { useGamification } from '@/features/gamificacao/hooks/useGamification'
+import { saveTransaction } from '@/features/financas/services/transactionService'
 
 type TxType = 'income' | 'expense' | 'transfer'
 type Frequency = 'daily' | 'weekly' | 'monthly' | 'yearly'
@@ -66,7 +66,6 @@ function Toggle({ active, onChange }: { active: boolean; onChange: () => void })
 
 export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
   const supabase = createClient()
-  const { pushXPToast } = useGamification()
 
   const [accounts,    setAccounts]    = useState<Account[]>([])
   const [categories,  setCategories]  = useState<Category[]>([])
@@ -148,9 +147,8 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     return dates
   }
 
-  async function finish(userId: string, isFirstTx: boolean, confirmMessage: string) {
+  async function finish(confirmMessage: string) {
     toastManager.push({ kind: 'confirm', message: confirmMessage })
-    await pushXPToast(userId, isFirstTx)
     await new Promise(resolve => setTimeout(resolve, 300))
     onSaved?.()
     onClose()
@@ -176,12 +174,9 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setError('Não autenticado.'); setSaving(false); return }
 
-    const { count: txCount } = await supabase
-      .from('transactions').select('*', { count: 'exact', head: true }).eq('user_id', user.id)
-    const isFirstTx = (txCount ?? 0) === 0
     const goalId = isInvestmentCategory && form.goal_id ? form.goal_id : null
 
-    // ─── RECORRÊNCIA (inalterado) ─────────────────────────────────────────────
+    // ─── RECORRÊNCIA ─────────────────────────────────────────────────────────
     if (form.is_recurring) {
       function calcNextDue(startDate: string, frequency: string): string {
         const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -248,20 +243,15 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
       }
 
-      await finish(user.id, isFirstTx, 'Recorrência salva ✓')
+      await finish('Recorrência salva ✓')
       return
     }
 
-    // ─── PARCELAMENTO — DT-009 ────────────────────────────────────────────────
-    // Usa colunas nativas de `transactions`:
-    //   installment_group   uuid    — UUID único do grupo, vincula todas as parcelas
-    //   installment_current integer — índice desta parcela (1, 2, 3…)
-    //   installment_total   integer — total de parcelas do grupo
-    // Não depende de installment_groups nem installments (tabelas inexistentes).
+    // ─── PARCELAMENTO (DT-009 + DT-003) ──────────────────────────────────────
     if (form.is_installment) {
-      const dates     = getInstallmentDates()
-      const groupId   = crypto.randomUUID()               // UUID do grupo — rastreável via filtro
-      const parcela   = parseFloat(valorParcela.toFixed(2))
+      const dates   = getInstallmentDates()
+      const groupId = crypto.randomUUID()
+      const parcela = parseFloat(valorParcela.toFixed(2))
 
       for (let i = 0; i < dates.length; i++) {
         let invoiceId: string | null = null
@@ -291,12 +281,13 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
           installment_total:   form.installment_count,
         }
 
-        const { error: txErr } = await supabase.from('transactions').insert(txPayload)
-
-        if (txErr) {
-          setError(`Erro na parcela ${i + 1}: ${txErr.message}`)
-          setSaving(false)
-          return
+        // Primeira parcela dispara o evento (gamificação) — as demais não
+        if (i === 0) {
+          const { error: txErr } = await saveTransaction({ userId: user.id, payload: txPayload })
+          if (txErr) { setError(`Erro na parcela 1: ${txErr}`); setSaving(false); return }
+        } else {
+          const { error: txErr } = await supabase.from('transactions').insert(txPayload)
+          if (txErr) { setError(`Erro na parcela ${i + 1}: ${txErr.message}`); setSaving(false); return }
         }
 
         if (invoiceId) {
@@ -306,11 +297,11 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         }
       }
 
-      await finish(user.id, isFirstTx, `${form.installment_count}x parcelas salvas ✓`)
+      await finish(`${form.installment_count}x parcelas salvas ✓`)
       return
     }
 
-    // ─── TRANSAÇÃO SIMPLES (inalterado) ──────────────────────────────────────
+    // ─── TRANSAÇÃO SIMPLES (DT-003) ───────────────────────────────────────────
     let invoiceId: string | null = null
     let accountId = form.account_id || null
     if (form.use_credit_card && form.type === 'expense') {
@@ -318,19 +309,25 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       accountId = null
     }
 
-    const payload: any = {
-      user_id: user.id, type: form.type, description: form.description.trim(),
-      amount, date: form.date, account_id: accountId,
+    const payload: Record<string, unknown> = {
+      user_id:                user.id,
+      type:                   form.type,
+      description:            form.description.trim(),
+      amount,
+      date:                   form.date,
+      account_id:             accountId,
       destination_account_id: form.type === 'transfer' ? form.destination_account_id : null,
-      category_id: form.category_id || null, goal_id: goalId,
-      notes: form.notes?.trim() || null,
-      status: form.use_credit_card ? 'posted' : form.status,
-      credit_card_id: form.use_credit_card ? form.credit_card_id : null,
-      invoice_id: invoiceId,
+      category_id:            form.category_id || null,
+      goal_id:                goalId,
+      notes:                  form.notes?.trim() || null,
+      status:                 form.use_credit_card ? 'posted' : form.status,
+      credit_card_id:         form.use_credit_card ? form.credit_card_id : null,
+      invoice_id:             invoiceId,
     }
 
-    const { error: err } = await supabase.from('transactions').insert(payload)
-    if (err) { setError(err.message); setSaving(false); return }
+    // saveTransaction grava no Supabase e emite transaction.created após commit
+    const { error: txErr } = await saveTransaction({ userId: user.id, payload })
+    if (txErr) { setError(txErr); setSaving(false); return }
 
     if (invoiceId) {
       const { data } = await supabase.from('transactions').select('amount').eq('invoice_id', invoiceId)
@@ -338,7 +335,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
     }
 
-    await finish(user.id, isFirstTx, 'Transação salva ✓')
+    await finish('Transação salva ✓')
   }
 
   const catsFiltradas = categories.filter(c => {
