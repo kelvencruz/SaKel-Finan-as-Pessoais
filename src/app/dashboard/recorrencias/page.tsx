@@ -4,7 +4,10 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { awardXP } from '@/lib/gamification'
 import type { Account, Category, CreditCard, Recorrencia, Frequency } from '@/types'
-
+import { PageContainer } from '@/components/layout/PageContainer'
+import { PageHeader } from '@/components/layout/PageHeader'
+// linha 31 — troca por:
+import { Warning, ArrowsClockwise } from '@phosphor-icons/react'
 type TxType = 'income' | 'expense'
 type Toast  = { message: string; type: 'success' | 'error' }
 
@@ -23,13 +26,6 @@ const FREQ_LABELS: Record<Frequency, string> = {
   weekly:  'Semanal',
   monthly: 'Mensal',
   yearly:  'Anual',
-}
-
-const FREQ_ICONS: Record<Frequency, string> = {
-  daily:   '📅',
-  weekly:  '📅',
-  monthly: '🔁',
-  yearly:  '🗓️',
 }
 
 function nextDueDate(startDate: string, frequency: Frequency): string {
@@ -60,30 +56,22 @@ const emptyForm = {
   end_date:        '',
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S1-007 — Error state
-// ─────────────────────────────────────────────────────────────────────────────
 function RecorrenciasError({ message, onRetry }: { message?: string; onRetry: () => void }) {
   return (
-    <div className="min-h-screen p-6 max-w-4xl mx-auto" style={{ background: 'var(--color-bg)' }}>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <a href="/dashboard" className="text-sm hover:underline" style={{ color: 'var(--color-text-muted)' }}>← Dashboard</a>
-          <h1 className="text-xl font-semibold mt-1" style={{ color: 'var(--color-text-primary)' }}>Recorrências</h1>
-        </div>
-      </div>
+    <PageContainer maxWidth="lg">
+      <PageHeader title="Recorrências" />
       <div className="rounded-2xl p-10 text-center"
-        style={{ background: 'var(--color-surface)', border: '1px dashed #fca5a5' }}>
-        <p className="text-2xl mb-2">⚠️</p>
-        <p className="text-sm font-medium mb-1" style={{ color: 'var(--color-text-primary)' }}>Erro ao carregar recorrências</p>
-        <p className="text-xs mb-5" style={{ color: 'var(--color-text-muted)' }}>
+        style={{ background: 'var(--surface)', border: '1px dashed #fca5a5' }}>
+        <Warning weight="duotone" size={32} style={{ color: 'var(--danger)' }} className="mx-auto mb-2" />
+        <p className="text-sm font-medium mb-1" style={{ color: 'var(--text)' }}>Erro ao carregar recorrências</p>
+        <p className="text-xs mb-5" style={{ color: 'var(--text-muted)' }}>
           {message ?? 'Não foi possível buscar os dados. Verifique sua conexão.'}
         </p>
-        <button onClick={onRetry} className="text-sm font-medium" style={{ color: 'var(--color-brand)' }}>
+        <button onClick={onRetry} className="text-sm font-medium" style={{ color: 'var(--primary)' }}>
           Tentar novamente
         </button>
       </div>
-    </div>
+    </PageContainer>
   )
 }
 
@@ -94,11 +82,8 @@ export default function RecorrenciasPage() {
   const [accounts,     setAccounts]     = useState<Account[]>([])
   const [categories,   setCategories]   = useState<Category[]>([])
   const [creditCards,  setCreditCards]  = useState<CreditCard[]>([])
-
-  // S1-007: três estados explícitos
   const [loading,      setLoading]      = useState(true)
   const [loadError,    setLoadError]    = useState<string | null>(null)
-
   const [saving,       setSaving]       = useState(false)
   const [toast,        setToast]        = useState<Toast | null>(null)
   const [showModal,    setShowModal]    = useState(false)
@@ -116,11 +101,9 @@ export default function RecorrenciasPage() {
     setTimeout(() => setToast(null), 3500)
   }
 
-  // S1-007: loadAll com try/catch/finally
   async function loadAll() {
     setLoading(true)
     setLoadError(null)
-
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/auth/login'; return }
@@ -153,8 +136,8 @@ export default function RecorrenciasPage() {
       setAccounts(accList)
       setCategories(catList)
       setCreditCards(cardList)
-    } catch (e: any) {
-      setLoadError(e?.message ?? 'Erro inesperado ao carregar dados.')
+    } catch (e: unknown) {
+      setLoadError(e instanceof Error ? e.message : 'Erro inesperado ao carregar dados.')
     } finally {
       setLoading(false)
     }
@@ -221,7 +204,6 @@ export default function RecorrenciasPage() {
       const { error: err } = await supabase
         .from('recurrences').insert({ ...payload, user_id: user.id, next_due_date: next })
       if (err) { setFormError(err.message); setSaving(false); return }
-
       try {
         const result = await awardXP(user.id, 'first_recurring', 'first_recurring')
         if (result.newBadge) showToast('🔁 Badge desbloqueado: Automatizador! +20 XP')
@@ -336,10 +318,8 @@ export default function RecorrenciasPage() {
     }
 
     await awardXP(user.id, 'transaction_created').catch(() => {})
-
     const next = nextDueDate(today, r.frequency)
     await supabase.from('recurrences').update({ next_due_date: next }).eq('id', r.id)
-
     showToast(r.credit_card_id ? 'Transação gerada e lançada na fatura!' : 'Transação gerada com sucesso!')
     await loadAll()
     setGeneratingId(null)
@@ -349,11 +329,10 @@ export default function RecorrenciasPage() {
   const ativas        = recorrencias.filter(r =>  r.is_active)
   const inativas      = recorrencias.filter(r => !r.is_active)
 
-  // S1-007: error state — antes do render principal
   if (loadError) return <RecorrenciasError message={loadError} onRetry={loadAll} />
 
   return (
-    <div className="min-h-screen p-6 max-w-4xl mx-auto" style={{ background: 'var(--color-bg)' }}>
+    <PageContainer maxWidth="lg">
 
       {toast && (
         <div className={`fixed top-5 right-5 z-[60] px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${
@@ -365,42 +344,34 @@ export default function RecorrenciasPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <a href="/dashboard" className="text-sm hover:underline" style={{ color: 'var(--color-text-muted)' }}>← Dashboard</a>
-          <h1 className="text-xl font-semibold mt-1" style={{ color: 'var(--color-text-primary)' }}>Recorrências</h1>
-          <p className="text-sm mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-            Gerencie salário, aluguel, assinaturas e contas fixas.
-          </p>
-        </div>
-        <button onClick={openCreate}
-          className="text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          style={{ background: 'var(--color-brand)' }}>
-          + Nova Recorrência
-        </button>
-      </div>
+      <PageHeader
+        title="Recorrências"
+        description="Gerencie salário, aluguel, assinaturas e contas fixas."
+        action={
+          <button onClick={openCreate} className="btn-primary">
+            + Nova Recorrência
+          </button>
+        }
+      />
 
-      {/* S1-007: loading → skeleton | empty → empty state */}
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map(i => (
             <div key={i} className="h-20 rounded-xl animate-pulse"
-              style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }} />
+              style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
           ))}
         </div>
       ) : recorrencias.length === 0 ? (
         <div className="rounded-2xl p-12 text-center"
-          style={{ background: 'var(--color-surface)', border: '1px dashed var(--color-border)' }}>
+          style={{ background: 'var(--surface)', border: '1px dashed var(--border)' }}>
           <p className="text-4xl mb-3">🔁</p>
-          <p className="text-base font-semibold mb-1" style={{ color: 'var(--color-text-primary)' }}>
+          <p className="text-base font-semibold mb-1" style={{ color: 'var(--text)' }}>
             Nenhuma recorrência ainda
           </p>
-          <p className="text-sm mb-5" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
             Cadastre salário, aluguel, assinaturas e o sistema gera as transações automaticamente.
           </p>
-          <button onClick={openCreate}
-            className="text-white px-5 py-2.5 rounded-lg text-sm font-medium"
-            style={{ background: 'var(--color-brand)' }}>
+          <button onClick={openCreate} className="btn-primary">
             Criar primeira recorrência
           </button>
         </div>
@@ -408,8 +379,7 @@ export default function RecorrenciasPage() {
         <div className="space-y-6">
           {ativas.length > 0 && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-3"
-                style={{ color: 'var(--color-text-muted)' }}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)' }}>
                 Ativas ({ativas.length})
               </p>
               <div className="space-y-2">
@@ -424,8 +394,7 @@ export default function RecorrenciasPage() {
           )}
           {inativas.length > 0 && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-3"
-                style={{ color: 'var(--color-text-muted)' }}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)' }}>
                 Pausadas ({inativas.length})
               </p>
               <div className="space-y-2 opacity-60">
@@ -444,49 +413,53 @@ export default function RecorrenciasPage() {
       {/* Modal exclusão */}
       {deleteModal.open && deleteModal.recorrencia && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
+          <div className="rounded-2xl w-full max-w-sm p-6 shadow-xl" style={{ background: 'var(--surface)' }}>
             <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0 text-lg">⚠️</div>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-lg"
+                style={{ background: 'var(--danger-light)' }}>⚠️</div>
               <div>
-                <h3 className="font-semibold text-gray-800">Excluir recorrência</h3>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  <span className="font-medium text-gray-700">"{deleteModal.recorrencia.description}"</span>
+                <h3 className="font-semibold" style={{ color: 'var(--text)' }}>Excluir recorrência</h3>
+                <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                  <span className="font-medium" style={{ color: 'var(--text)' }}>"{deleteModal.recorrencia.description}"</span>
                   {' · '}{fmt(deleteModal.recorrencia.amount)}{' · '}{FREQ_LABELS[deleteModal.recorrencia.frequency]}
                 </p>
               </div>
             </div>
 
             {deleteModal.txCount > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-xs text-amber-800 space-y-1">
+              <div className="rounded-xl px-4 py-3 mb-4 text-xs space-y-1"
+                style={{ background: 'var(--warning-light)', border: '1px solid var(--warning)', color: 'var(--text)' }}>
                 <p className="font-semibold">⚠️ Esta recorrência possui lançamentos vinculados:</p>
                 <p>• <span className="font-medium">{deleteModal.txCount} transação(ões)</span> no total</p>
                 {deleteModal.futureTxCount > 0 && (
                   <p>• <span className="font-medium">{deleteModal.futureTxCount} futura(s)</span> (data ≥ hoje)</p>
                 )}
-                <p className="mt-1 text-amber-700">Excluir pode afetar <strong>faturas, saldo e relatórios</strong>.</p>
               </div>
             )}
 
             <div className="space-y-2 mb-5">
               <button onClick={() => executeDelete('pause')} disabled={deleting}
-                className="w-full text-left rounded-xl border-2 border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 px-4 py-3 transition-colors disabled:opacity-40">
-                <p className="text-sm font-semibold text-gray-800">⏸ Pausar automação</p>
-                <p className="text-xs text-gray-500 mt-0.5">Para de gerar novas transações. Histórico completo preservado.</p>
+                className="w-full text-left rounded-xl px-4 py-3 transition-colors disabled:opacity-40"
+                style={{ border: '1px solid var(--border)', background: 'var(--bg)' }}>
+                <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>⏸ Pausar automação</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Para de gerar novas transações. Histórico completo preservado.</p>
               </button>
               {deleteModal.futureTxCount > 0 && (
                 <button onClick={() => executeDelete('future')} disabled={deleting}
-                  className="w-full text-left rounded-xl border-2 border-gray-100 hover:border-orange-200 hover:bg-orange-50 px-4 py-3 transition-colors disabled:opacity-40">
-                  <p className="text-sm font-semibold text-gray-800">🗓️ Pausar + remover futuras</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Remove {deleteModal.futureTxCount} lançamento(s) com data ≥ hoje. Histórico passado preservado.
+                  className="w-full text-left rounded-xl px-4 py-3 transition-colors disabled:opacity-40"
+                  style={{ border: '1px solid var(--border)', background: 'var(--bg)' }}>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>🗓️ Pausar + remover futuras</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    Remove {deleteModal.futureTxCount} lançamento(s) com data ≥ hoje.
                   </p>
                 </button>
               )}
               <button onClick={() => executeDelete('all')} disabled={deleting}
-                className="w-full text-left rounded-xl border-2 border-gray-100 hover:border-red-200 hover:bg-red-50 px-4 py-3 transition-colors disabled:opacity-40">
-                <p className="text-sm font-semibold text-red-600">🗑️ Excluir tudo</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Remove a recorrência e <strong>todos os {deleteModal.txCount} lançamento(s)</strong> vinculados. Irreversível.
+                className="w-full text-left rounded-xl px-4 py-3 transition-colors disabled:opacity-40"
+                style={{ border: '1px solid var(--danger)', background: 'var(--danger-light)' }}>
+                <p className="text-sm font-semibold" style={{ color: 'var(--danger)' }}>🗑️ Excluir tudo</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                  Remove a recorrência e todos os {deleteModal.txCount} lançamento(s). Irreversível.
                 </p>
               </button>
             </div>
@@ -494,7 +467,8 @@ export default function RecorrenciasPage() {
             <button
               onClick={() => setDeleteModal({ open: false, recorrencia: null, txCount: 0, futureTxCount: 0 })}
               disabled={deleting}
-              className="w-full border border-gray-200 text-gray-500 rounded-lg py-2 text-sm hover:bg-gray-50 transition-colors disabled:opacity-40">
+              className="w-full rounded-lg py-2 text-sm disabled:opacity-40"
+              style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
               {deleting ? 'Processando...' : 'Cancelar'}
             </button>
           </div>
@@ -505,22 +479,22 @@ export default function RecorrenciasPage() {
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto"
-            style={{ background: 'var(--color-surface)' }}>
-            <h2 className="text-lg font-semibold mb-5" style={{ color: 'var(--color-text-primary)' }}>
+            style={{ background: 'var(--surface)' }}>
+            <h2 className="text-lg font-semibold mb-5" style={{ color: 'var(--text)' }}>
               {editingId ? 'Editar Recorrência' : 'Nova Recorrência'}
             </h2>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Tipo</label>
+                <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Tipo</label>
                 <div className="flex gap-2">
                   {(['expense', 'income'] as TxType[]).map(t => (
                     <button key={t} onClick={() => setForm({ ...form, type: t, category_id: '' })}
                       className="flex-1 py-2 rounded-lg text-xs font-medium transition-colors border"
                       style={{
-                        background:  form.type === t ? (t === 'income' ? '#dcfce7' : '#fee2e2') : 'transparent',
-                        color:       form.type === t ? (t === 'income' ? '#166534' : '#991b1b') : 'var(--color-text-muted)',
-                        borderColor: form.type === t ? 'transparent' : 'var(--color-border)',
+                        background:  form.type === t ? (t === 'income' ? 'var(--success-light)' : 'var(--danger-light)') : 'transparent',
+                        color:       form.type === t ? (t === 'income' ? 'var(--success)' : 'var(--danger)') : 'var(--text-muted)',
+                        borderColor: form.type === t ? 'transparent' : 'var(--border)',
                       }}>
                       {t === 'income' ? '↑ Receita' : '↓ Despesa'}
                     </button>
@@ -529,29 +503,26 @@ export default function RecorrenciasPage() {
               </div>
 
               <div>
-                <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Descrição</label>
+                <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Descrição</label>
                 <input type="text" value={form.description}
                   onChange={e => setForm({ ...form, description: e.target.value })}
                   placeholder={form.type === 'income' ? 'Ex: Salário, Aluguel recebido...' : 'Ex: Aluguel, Netflix, Academia...'}
-                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} />
+                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none" />
               </div>
 
               <div>
-                <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Valor (R$)</label>
+                <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Valor (R$)</label>
                 <input type="text" inputMode="decimal" value={form.amount}
                   onChange={e => setForm({ ...form, amount: e.target.value })}
                   placeholder="0,00"
-                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} />
+                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Frequência</label>
+                  <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Frequência</label>
                   <select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value as Frequency })}
-                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                    style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }}>
+                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none">
                     <option value="daily">Diária</option>
                     <option value="weekly">Semanal</option>
                     <option value="monthly">Mensal</option>
@@ -559,35 +530,33 @@ export default function RecorrenciasPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Data início</label>
+                  <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Data início</label>
                   <input type="date" value={form.start_date}
                     onChange={e => setForm({ ...form, start_date: e.target.value })}
-                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                    style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} />
+                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none" />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>
-                  Data fim <span style={{ color: 'var(--color-text-muted)' }}>(opcional)</span>
+                <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>
+                  Data fim <span style={{ color: 'var(--text-muted)' }}>(opcional)</span>
                 </label>
                 <input type="date" value={form.end_date}
                   onChange={e => setForm({ ...form, end_date: e.target.value })}
-                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} />
+                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none" />
               </div>
 
               {form.type === 'expense' && creditCards.length > 0 && (
                 <div className="flex items-center justify-between rounded-lg px-3 py-2.5"
-                  style={{ background: '#f5f3ff', border: '1px solid #e9d5ff' }}>
+                  style={{ background: 'var(--primary-light)', border: '1px solid var(--border)' }}>
                   <div className="flex items-center gap-2">
                     <span>💳</span>
-                    <span className="text-sm font-medium" style={{ color: '#6d28d9' }}>Pagar com cartão</span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--primary)' }}>Pagar com cartão</span>
                   </div>
                   <button
                     onClick={() => setForm({ ...form, use_credit_card: !form.use_credit_card, credit_card_id: creditCards[0]?.id ?? '' })}
                     className="relative w-10 h-5 rounded-full transition-colors"
-                    style={{ background: form.use_credit_card ? '#8b5cf6' : 'var(--color-border-md, #d1d5db)' }}>
+                    style={{ background: form.use_credit_card ? 'var(--primary)' : 'var(--border-md)' }}>
                     <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.use_credit_card ? 'translate-x-5' : 'translate-x-0.5'}`} />
                   </button>
                 </div>
@@ -595,20 +564,18 @@ export default function RecorrenciasPage() {
 
               {form.use_credit_card && form.type === 'expense' ? (
                 <div>
-                  <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Cartão</label>
+                  <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Cartão</label>
                   <select value={form.credit_card_id} onChange={e => setForm({ ...form, credit_card_id: e.target.value })}
-                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                    style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }}>
+                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none">
                     <option value="">Selecione...</option>
                     {creditCards.map(c => <option key={c.id} value={c.id}>💳 {c.name}</option>)}
                   </select>
                 </div>
               ) : (
                 <div>
-                  <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Conta</label>
+                  <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Conta</label>
                   <select value={form.account_id} onChange={e => setForm({ ...form, account_id: e.target.value })}
-                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                    style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }}>
+                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none">
                     <option value="">Selecione...</option>
                     {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
@@ -616,42 +583,38 @@ export default function RecorrenciasPage() {
               )}
 
               <div>
-                <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>
-                  Categoria <span style={{ color: 'var(--color-text-muted)' }}>(opcional)</span>
+                <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>
+                  Categoria <span style={{ color: 'var(--text-muted)' }}>(opcional)</span>
                 </label>
                 <select value={form.category_id} onChange={e => setForm({ ...form, category_id: e.target.value })}
-                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }}>
+                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none">
                   <option value="">Sem categoria</option>
                   {catsFiltradas.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
                 </select>
               </div>
 
-              {formError && <p className="text-sm text-red-500">{formError}</p>}
+              {formError && <p className="text-sm" style={{ color: 'var(--danger)' }}>{formError}</p>}
             </div>
 
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowModal(false)}
-                className="flex-1 rounded-lg py-2 text-sm transition-colors"
-                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}>
+                className="flex-1 rounded-lg py-2 text-sm"
+                style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
                 Cancelar
               </button>
               <button onClick={handleSave} disabled={saving}
-                className="flex-1 text-white rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-50"
-                style={{ background: form.type === 'income' ? '#16a34a' : 'var(--color-brand)' }}>
+                className="flex-1 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-50"
+                style={{ background: form.type === 'income' ? 'var(--success)' : 'var(--primary)' }}>
                 {saving ? 'Salvando...' : editingId ? 'Salvar alterações' : 'Criar recorrência'}
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+
+    </PageContainer>
   )
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// RecorrenciaCard — sem alterações
-// ─────────────────────────────────────────────────────────────────────────────
 
 function RecorrenciaCard({
   r, onEdit, onToggle, onDelete, onGenerate, generatingId,
@@ -671,37 +634,43 @@ function RecorrenciaCard({
 
   return (
     <div className="rounded-xl px-4 py-3 flex items-center gap-4 group transition-colors"
-      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
       <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
-        style={{ background: r.type === 'income' ? '#dcfce7' : '#fee2e2' }}>
-        {r.category_icon ?? FREQ_ICONS[r.frequency]}
+        style={{ background: r.type === 'income' ? 'var(--success-light)' : 'var(--danger-light)' }}>
+        {r.category_icon
+  ? <span>{r.category_icon}</span>
+  : <ArrowsClockwise weight="duotone" size={18} style={{ color: 'var(--primary)' }} />
+}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
+          <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>
             {r.description}
           </p>
           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0"
-            style={{ background: 'var(--color-brand-light)', color: 'var(--color-brand)' }}>
+            style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>
             {FREQ_LABELS[r.frequency]}
           </span>
           {r.credit_card_id && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-600 shrink-0">
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0"
+              style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>
               💳 Cartão
             </span>
           )}
           {isOverdue && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 shrink-0">
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0"
+              style={{ background: 'var(--danger-light)', color: 'var(--danger)' }}>
               Atrasada
             </span>
           )}
           {isDueSoon && !isOverdue && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600 shrink-0">
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0"
+              style={{ background: 'var(--warning-light)', color: 'var(--warning)' }}>
               Vence em {daysUntil}d
             </span>
           )}
         </div>
-        <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
           {r.credit_card_name ? `💳 ${r.credit_card_name}` : (r.account_name ?? '—')}
           {r.category_name ? ` · ${r.category_name}` : ''}
           {' · Próxima: '}{fmtDate(r.next_due_date)}
@@ -709,7 +678,7 @@ function RecorrenciaCard({
       </div>
       <div className="text-right shrink-0">
         <p className="text-sm font-semibold"
-          style={{ color: r.type === 'income' ? '#16a34a' : '#ef4444' }}>
+          style={{ color: r.type === 'income' ? 'var(--success)' : 'var(--danger)' }}>
           {r.type === 'income' ? '+' : '−'} {fmt(r.amount)}
         </p>
       </div>
@@ -717,20 +686,20 @@ function RecorrenciaCard({
         <button onClick={() => onGenerate(r)} disabled={generatingId === r.id}
           title="Gerar transação agora"
           className="text-xs px-2 py-1 rounded-lg transition-colors disabled:opacity-30"
-          style={{ background: 'var(--color-brand-light)', color: 'var(--color-brand)' }}>
+          style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>
           {generatingId === r.id ? '...' : '▶'}
         </button>
         <button onClick={() => onToggle(r)} title={r.is_active ? 'Pausar' : 'Ativar'}
           className="text-xs px-2 py-1 rounded-lg transition-colors"
-          style={{ background: 'var(--color-bg)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>
+          style={{ background: 'var(--bg)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
           {r.is_active ? '⏸' : '▶'}
         </button>
         <button onClick={() => onEdit(r)} title="Editar"
           className="text-sm px-1.5 py-1 rounded transition-colors"
-          style={{ color: 'var(--color-text-muted)' }}>✏️</button>
+          style={{ color: 'var(--text-muted)' }}>✏️</button>
         <button onClick={() => onDelete(r)} title="Excluir"
           className="text-sm px-1.5 py-1 rounded transition-colors"
-          style={{ color: 'var(--color-text-muted)' }}>🗑️</button>
+          style={{ color: 'var(--text-muted)' }}>🗑️</button>
       </div>
     </div>
   )
