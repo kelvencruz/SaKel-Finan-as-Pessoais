@@ -9,8 +9,33 @@ import {
   type LifecycleStatus,
 } from '@/features/financas/services/lifecycleEngine'
 
-// TODO S1-005: mover handleTransactionGamification para useGamification
+// TODO S1-005 (Etapa 2): remover handleTransactionGamification daqui e garantir
+// que o EventBus cobre o fluxo via gamificacaoListener.
 import { awardXP, getGamification } from '@/lib/gamification'
+
+import {
+  MagnifyingGlass,
+  ArrowUp,
+  ArrowDown,
+  ArrowsLeftRight,
+  ArrowCounterClockwise,
+  CreditCard,
+  Repeat,
+  CalendarBlank,
+  PencilSimple,
+  Trash,
+  Warning,
+  CheckCircle,
+  Clock,
+  XCircle,
+  Receipt,
+  Spinner,
+} from '@phosphor-icons/react'
+
+import { PageContainer } from '@/components/layout/PageContainer'
+import { PageHeader }    from '@/components/layout/PageHeader'
+
+// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type TxType = 'income' | 'expense' | 'transfer'
 
@@ -59,6 +84,8 @@ interface DeleteConfirmModal {
   id: string | null
 }
 
+// ─── Helpers de formatação ────────────────────────────────────────────────────
+
 const fmt     = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtDate = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString('pt-BR')
 
@@ -68,44 +95,33 @@ const TYPE_LABELS: Record<TxType, string> = {
   transfer: 'Transferencia',
 }
 
-const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  paid:      { label: 'Pago',      className: 'bg-green-50 text-green-600' },
-  pending:   { label: 'Pendente',  className: 'bg-yellow-50 text-yellow-600' },
-  overdue:   { label: 'Vencido',   className: 'bg-red-50 text-red-500' },
-  cancelled: { label: 'Cancelado', className: 'bg-gray-100 text-gray-400' },
-  posted:    { label: 'Na fatura', className: 'bg-purple-50 text-purple-600' },
-}
-
-// ─── Lifecycle ────────────────────────────────────────────────────────────────
+// ─── Lifecycle config ─────────────────────────────────────────────────────────
 
 const LIFECYCLE_CONFIG: Record<LifecycleStatus, {
   label: string
-  className: string       // badge
-  dotColor: string        // indicador lateral
+  className: string
+  dotColor: string
+  Icon: React.ElementType
 }> = {
-  CONFIRMED:        { label: 'Confirmado',   className: 'bg-green-50 text-green-700 border-green-200',    dotColor: 'bg-green-400' },
-  PENDING_EXPECTED: { label: 'Esperado',     className: 'bg-blue-50 text-blue-600 border-blue-200',       dotColor: 'bg-blue-400'  },
-  PENDING_REVIEW:   { label: 'Em revisão',   className: 'bg-yellow-50 text-yellow-700 border-yellow-200', dotColor: 'bg-yellow-400' },
-  OVERDUE:          { label: 'Vencido',      className: 'bg-red-50 text-red-600 border-red-200',          dotColor: 'bg-red-400'   },
-  CANCELLED:        { label: 'Cancelado',    className: 'bg-gray-100 text-gray-500 border-gray-200',      dotColor: 'bg-gray-300'  },
+  CONFIRMED:        { label: 'Confirmado',  className: 'bg-green-50 text-green-700 border-green-200',    dotColor: 'bg-green-400',  Icon: CheckCircle  },
+  PENDING_EXPECTED: { label: 'Esperado',    className: 'bg-blue-50 text-blue-600 border-blue-200',       dotColor: 'bg-blue-400',   Icon: Clock        },
+  PENDING_REVIEW:   { label: 'Em revisao',  className: 'bg-yellow-50 text-yellow-700 border-yellow-200', dotColor: 'bg-yellow-400', Icon: Warning      },
+  OVERDUE:          { label: 'Vencido',     className: 'bg-red-50 text-red-600 border-red-200',          dotColor: 'bg-red-400',    Icon: Warning      },
+  CANCELLED:        { label: 'Cancelado',   className: 'bg-gray-100 text-gray-500 border-gray-200',      dotColor: 'bg-gray-300',   Icon: XCircle      },
 }
 
-// Rótulos e estilos dos botões de ação de transição.
-// A chave é o status de DESTINO — o label descreve a ação, não o estado.
-// OVERDUE como destino manual existe (PENDING_EXPECTED → OVERDUE é válido),
-// mas só aparece se availableTransitions() retorná-lo — sem lógica extra aqui.
 const TRANSITION_BUTTON_CONFIG: Record<LifecycleStatus, {
   label: string
   className: string
 }> = {
-  CONFIRMED:        { label: 'Confirmar pagamento', className: 'text-green-700 bg-green-50 hover:bg-green-100 border-green-200'    },
-  CANCELLED:        { label: 'Cancelar',            className: 'text-gray-500 bg-gray-50 hover:bg-gray-100 border-gray-200'        },
-  OVERDUE:          { label: 'Marcar como vencido', className: 'text-red-600 bg-red-50 hover:bg-red-100 border-red-200'            },
-  PENDING_EXPECTED: { label: 'Marcar como esperado', className: 'text-blue-600 bg-blue-50 hover:bg-blue-100 border-blue-200'      },
-  PENDING_REVIEW:   { label: 'Colocar em revisão',  className: 'text-yellow-700 bg-yellow-50 hover:bg-yellow-100 border-yellow-200' },
+  CONFIRMED:        { label: 'Confirmar pagamento',  className: 'text-green-700 bg-green-50 hover:bg-green-100 border-green-200'     },
+  CANCELLED:        { label: 'Cancelar',             className: 'text-gray-500 bg-gray-50 hover:bg-gray-100 border-gray-200'         },
+  OVERDUE:          { label: 'Marcar como vencido',  className: 'text-red-600 bg-red-50 hover:bg-red-100 border-red-200'             },
+  PENDING_EXPECTED: { label: 'Marcar como esperado', className: 'text-blue-600 bg-blue-50 hover:bg-blue-100 border-blue-200'         },
+  PENDING_REVIEW:   { label: 'Colocar em revisao',   className: 'text-yellow-700 bg-yellow-50 hover:bg-yellow-100 border-yellow-200' },
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Form default ─────────────────────────────────────────────────────────────
 
 const emptyForm = {
   type: 'expense' as TxType,
@@ -126,6 +142,8 @@ const emptyForm = {
   installment_total: '2',
 }
 
+// ─── Utils de data ────────────────────────────────────────────────────────────
+
 function getMonthOptions() {
   const opts: { value: string; label: string }[] = [{ value: '', label: 'Todos os meses' }]
   const now = new Date()
@@ -144,23 +162,7 @@ function addMonths(dateStr: string, months: number): string {
   return d.toISOString().split('T')[0]
 }
 
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr + 'T12:00:00')
-  d.setDate(d.getDate() + days)
-  return d.toISOString().split('T')[0]
-}
-
-function addWeeks(dateStr: string, weeks: number): string {
-  return addDays(dateStr, weeks * 7)
-}
-
-function addYears(dateStr: string, years: number): string {
-  const d = new Date(dateStr + 'T12:00:00')
-  d.setFullYear(d.getFullYear() + years)
-  return d.toISOString().split('T')[0]
-}
-
-// ─── Componentes auxiliares (S1-007) ──────────────────────────────────────────
+// ─── Componentes auxiliares ───────────────────────────────────────────────────
 
 function SkeletonRow() {
   return (
@@ -179,16 +181,18 @@ function SkeletonRow() {
 }
 
 interface PageEmptyStateProps {
-  icon: string
+  Icon: React.ElementType
   title: string
   description?: string
   action?: { label: string; onClick: () => void }
 }
 
-function PageEmptyState({ icon, title, description, action }: PageEmptyStateProps) {
+function PageEmptyState({ Icon, title, description, action }: PageEmptyStateProps) {
   return (
     <div className="bg-white border border-dashed border-gray-200 rounded-xl p-10 text-center">
-      <p className="text-2xl mb-2">{icon}</p>
+      <div className="flex justify-center mb-3">
+        <Icon size={28} weight="duotone" className="text-gray-300" />
+      </div>
       <p className="text-gray-600 text-sm font-medium">{title}</p>
       {description && <p className="text-gray-400 text-xs mt-1 mb-4">{description}</p>}
       {action && (
@@ -208,10 +212,12 @@ interface PageErrorStateProps {
 function PageErrorState({ message, onRetry }: PageErrorStateProps) {
   return (
     <div className="bg-white border border-dashed border-red-100 rounded-xl p-10 text-center">
-      <p className="text-2xl mb-2">⚠️</p>
+      <div className="flex justify-center mb-3">
+        <Warning size={28} weight="duotone" className="text-red-300" />
+      </div>
       <p className="text-gray-600 text-sm font-medium">Erro ao carregar</p>
       <p className="text-gray-400 text-xs mt-1 mb-4">
-        {message ?? 'Não foi possível buscar os dados. Verifique sua conexão.'}
+        {message ?? 'Nao foi possivel buscar os dados. Verifique sua conexao.'}
       </p>
       <button onClick={onRetry} className="text-sm font-medium text-indigo-600 hover:underline">
         Tentar novamente
@@ -231,7 +237,9 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
   )
 }
 
-// ─── Gamificação ──────────────────────────────────────────────────────────────
+// ─── Gamificação (Etapa 2 irá remover isso) ───────────────────────────────────
+// TODO S1-005 (Etapa 2): mover para gamificacaoListener via EventBus.
+// A página não deve conhecer gamificação diretamente.
 
 async function handleTransactionGamification(
   userId: string,
@@ -270,7 +278,7 @@ async function handleTransactionGamification(
   }
 }
 
-// ─── Componente de ações lifecycle ────────────────────────────────────────────
+// ─── Componente LifecycleActions ──────────────────────────────────────────────
 
 interface LifecycleActionsProps {
   tx: Transaction
@@ -298,14 +306,22 @@ function LifecycleActions({ tx, onTransition, transitioning }: LifecycleActionsP
             className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium border transition-colors disabled:opacity-40 ${cfg.className}`}
           >
             {isLoading && (
-  <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-)}
+              <Spinner size={12} weight="bold" className="animate-spin" />
+            )}
             {cfg.label}
           </button>
         )
       })}
     </div>
   )
+}
+
+// ─── Ícone de tipo de transação ───────────────────────────────────────────────
+
+function TxTypeIcon({ type }: { type: TxType }) {
+  if (type === 'income')   return <ArrowUp   size={16} weight="duotone" />
+  if (type === 'expense')  return <ArrowDown size={16} weight="duotone" />
+  return <ArrowsLeftRight size={16} weight="duotone" />
 }
 
 // ─── Página principal ─────────────────────────────────────────────────────────
@@ -318,35 +334,38 @@ export default function TransacoesPage() {
   const [categories,   setCategories]   = useState<Category[]>([])
   const [creditCards,  setCreditCards]  = useState<CreditCard[]>([])
 
-  const [loading,      setLoading]      = useState(true)
-  const [loadError,    setLoadError]    = useState<string | null>(null)
-  const [saving,       setSaving]       = useState(false)
-  const [deletingId,   setDeletingId]   = useState<string | null>(null)
-  const [transitioning, setTransitioning] = useState<string | null>(null) // id da tx em transição
-  const [toast,        setToast]        = useState<Toast | null>(null)
+  const [loading,       setLoading]       = useState(true)
+  const [loadError,     setLoadError]     = useState<string | null>(null)
+  const [saving,        setSaving]        = useState(false)
+  const [deletingId,    setDeletingId]    = useState<string | null>(null)
+  const [transitioning, setTransitioning] = useState<string | null>(null)
+  const [toast,         setToast]         = useState<Toast | null>(null)
 
-  const [search,            setSearch]            = useState('')
-  const [filterType,        setFilterType]        = useState<TxType | ''>('')
-  const [filterAccount,     setFilterAccount]     = useState('')
-  const [filterCategory,    setFilterCategory]    = useState('')
-  const [filterLifecycle,   setFilterLifecycle]   = useState<LifecycleStatus | ''>('')
-  const [filterMonth,       setFilterMonth]       = useState(() => {
+  const [search,          setSearch]          = useState('')
+  const [filterType,      setFilterType]      = useState<TxType | ''>('')
+  const [filterAccount,   setFilterAccount]   = useState('')
+  const [filterCategory,  setFilterCategory]  = useState('')
+  const [filterLifecycle, setFilterLifecycle] = useState<LifecycleStatus | ''>('')
+  const [filterMonth,     setFilterMonth]     = useState(() => {
     const now = new Date()
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   })
 
-  const [showModal,     setShowModal]     = useState(false)
-  const [editingId,     setEditingId]     = useState<string | null>(null)
-  const [form,          setForm]          = useState(emptyForm)
-  const [formError,     setFormError]     = useState<string | null>(null)
-  const [txDeleteModal, setTxDeleteModal] = useState<TxDeleteModal>({ open: false, tx: null })
+  const [showModal,          setShowModal]          = useState(false)
+  const [editingId,          setEditingId]          = useState<string | null>(null)
+  const [form,               setForm]               = useState(emptyForm)
+  const [formError,          setFormError]          = useState<string | null>(null)
+  const [txDeleteModal,      setTxDeleteModal]      = useState<TxDeleteModal>({ open: false, tx: null })
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<DeleteConfirmModal>({ open: false, id: null })
+
   const monthOptions = useMemo(() => getMonthOptions(), [])
 
   function showToast(message: string, type: Toast['type'] = 'success') {
     setToast({ message, type })
     setTimeout(() => setToast(null), 3500)
   }
+
+  // ─── Carregar dados ─────────────────────────────────────────────────────────
 
   async function loadAll() {
     setLoading(true)
@@ -356,7 +375,12 @@ export default function TransacoesPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/auth/login'; return }
 
-      const [{ data: tx, error: txErr }, { data: acc }, { data: cat }, { data: cards }] = await Promise.all([
+      const [
+        { data: tx, error: txErr },
+        { data: acc },
+        { data: cat },
+        { data: cards },
+      ] = await Promise.all([
         supabase
           .from('transactions')
           .select('id, type, description, amount, date, account_id, destination_account_id, category_id, notes, status, lifecycle_status, credit_card_id, invoice_id, is_recurring, recurrence_id, recurrence, recurrence_start, recurrence_end, installment_total, installment_current, installment_group')
@@ -381,14 +405,15 @@ export default function TransacoesPage() {
 
       setTransactions(txRaw.map(t => ({
         ...t,
-        type: t.type as TxType,
-        lifecycle_status: (t.lifecycle_status ?? 'CONFIRMED') as LifecycleStatus,
+        type:                     t.type as TxType,
+        lifecycle_status:         (t.lifecycle_status ?? 'CONFIRMED') as LifecycleStatus,
         account_name:             accMap[t.account_id]?.name ?? '-',
         destination_account_name: t.destination_account_id ? (accMap[t.destination_account_id]?.name ?? '-') : undefined,
-        category_name:            t.category_id    ? catMap[t.category_id]?.name    : undefined,
-        category_icon:            t.category_id    ? catMap[t.category_id]?.icon    : undefined,
+        category_name:            t.category_id    ? catMap[t.category_id]?.name     : undefined,
+        category_icon:            t.category_id    ? catMap[t.category_id]?.icon     : undefined,
         credit_card_name:         t.credit_card_id ? cardMap[t.credit_card_id]?.name : undefined,
       })))
+
       setAccounts(accList)
       setCategories(catList)
       setCreditCards(cardList)
@@ -406,19 +431,17 @@ export default function TransacoesPage() {
     return () => window.removeEventListener('transacao-criada', handler)
   }, [])
 
-  // ─── Transição de lifecycle ─────────────────────────────────────────────────
+  // ─── Transição lifecycle ────────────────────────────────────────────────────
 
   async function handleTransition(id: string, to: LifecycleStatus) {
     setTransitioning(id)
     try {
       const result = await transitionStatus(id, to)
       if (result.success) {
-        // Atualiza localmente sem refetch completo — snappy UX
         setTransactions(prev =>
           prev.map(tx => tx.id === id ? { ...tx, lifecycle_status: to } : tx)
         )
-        const cfg = LIFECYCLE_CONFIG[to]
-        showToast(`Status atualizado: ${cfg.label}`)
+        showToast(`Status atualizado: ${LIFECYCLE_CONFIG[to].label}`)
       } else {
         showToast(result.error ?? 'Erro ao atualizar status.', 'error')
       }
@@ -516,11 +539,11 @@ export default function TransacoesPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setFormError('Nao autenticado.'); setSaving(false); return }
 
-    // ── PARCELAMENTO ──────────────────────────────────────────
+    // ── PARCELAMENTO ───────────────────────────────────────────
     if (form.is_installment && !editingId && form.type !== 'transfer') {
-      const total = parseInt(form.installment_total)
+      const total   = parseInt(form.installment_total)
       const groupId = crypto.randomUUID()
-      const rows = []
+      const rows    = []
 
       for (let i = 0; i < total; i++) {
         const installDate = addMonths(form.date, i)
@@ -549,7 +572,7 @@ export default function TransacoesPage() {
           installment_current:    i + 1,
           installment_group:      groupId,
           is_recurring:           false,
-          lifecycle_status: form.status === 'pending' || form.status === 'overdue' ? 'PENDING_EXPECTED' : 'CONFIRMED',
+          lifecycle_status:       form.status === 'pending' || form.status === 'overdue' ? 'PENDING_EXPECTED' : 'CONFIRMED',
         })
       }
 
@@ -570,7 +593,7 @@ export default function TransacoesPage() {
       return
     }
 
-    // ── RECORRENTE ────────────────────────────────────────────
+    // ── RECORRENTE ─────────────────────────────────────────────
     if (form.is_recurring && !editingId) {
       function calcNextDue(startDate: string, frequency: string): string {
         const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -615,21 +638,21 @@ export default function TransacoesPage() {
       }
 
       const { error: txErr } = await supabase.from('transactions').insert({
-        user_id:        user.id,
-        type:           form.type,
-        description:    form.description.trim(),
+        user_id:                user.id,
+        type:                   form.type,
+        description:            form.description.trim(),
         amount,
-        date:           form.date,
-        account_id:     accountId,
+        date:                   form.date,
+        account_id:             accountId,
         destination_account_id: null,
-        category_id:    form.category_id || null,
-        notes:          form.notes?.trim() || null,
-        status:         form.use_credit_card ? 'posted' : form.status,
-        credit_card_id: form.use_credit_card ? form.credit_card_id : null,
-        invoice_id:     invoiceId,
-        is_recurring:   true,
-        recurrence_id:  recData.id,
-        lifecycle_status: form.status === 'pending' || form.status === 'overdue' ? 'PENDING_EXPECTED' : 'CONFIRMED',
+        category_id:            form.category_id || null,
+        notes:                  form.notes?.trim() || null,
+        status:                 form.use_credit_card ? 'posted' : form.status,
+        credit_card_id:         form.use_credit_card ? form.credit_card_id : null,
+        invoice_id:             invoiceId,
+        is_recurring:           true,
+        recurrence_id:          recData.id,
+        lifecycle_status:       form.status === 'pending' || form.status === 'overdue' ? 'PENDING_EXPECTED' : 'CONFIRMED',
       })
 
       if (txErr) { setFormError(txErr.message); setSaving(false); return }
@@ -646,7 +669,7 @@ export default function TransacoesPage() {
       return
     }
 
-    // ── TRANSACAO NORMAL ──────────────────────────────────────
+    // ── TRANSACAO NORMAL ───────────────────────────────────────
     let invoiceId: string | null = null
     let accountId = form.account_id || null
 
@@ -678,7 +701,7 @@ export default function TransacoesPage() {
     } else {
       const { error: err } = await supabase.from('transactions').insert({
         ...payload,
-        user_id: user.id,
+        user_id:          user.id,
         lifecycle_status: form.status === 'pending' || form.status === 'overdue' ? 'PENDING_EXPECTED' : 'CONFIRMED',
       })
       if (err) { setFormError(err.message); setSaving(false); return }
@@ -702,25 +725,21 @@ export default function TransacoesPage() {
     if (tx.is_recurring && tx.recurrence_id) {
       setTxDeleteModal({ open: true, tx })
     } else {
-      handleDeleteNormal(tx.id)
+      setDeleteConfirmModal({ open: true, id: tx.id })
     }
   }
 
-  function handleDeleteNormal(id: string) {
-  setDeleteConfirmModal({ open: true, id })
-}
-
-async function executeDeleteNormal() {
-  const id = deleteConfirmModal.id
-  if (!id) return
-  setDeleteConfirmModal({ open: false, id: null })
-  setDeletingId(id)
-  const { error: err } = await supabase.from('transactions').delete().eq('id', id)
-  if (err) showToast('Erro ao excluir.', 'error')
-  else showToast('Transação excluída.')
-  await loadAll()
-  setDeletingId(null)
-}
+  async function executeDeleteNormal() {
+    const id = deleteConfirmModal.id
+    if (!id) return
+    setDeleteConfirmModal({ open: false, id: null })
+    setDeletingId(id)
+    const { error: err } = await supabase.from('transactions').delete().eq('id', id)
+    if (err) showToast('Erro ao excluir.', 'error')
+    else showToast('Transacao excluida.')
+    await loadAll()
+    setDeletingId(null)
+  }
 
   async function executeTxDelete(mode: 'single' | 'all') {
     if (!txDeleteModal.tx) return
@@ -731,13 +750,13 @@ async function executeDeleteNormal() {
     if (mode === 'single') {
       const { error: err } = await supabase.from('transactions').delete().eq('id', id)
       if (err) showToast('Erro ao excluir.', 'error')
-      else showToast('Lançamento excluído. Recorrência mantida.')
+      else showToast('Lancamento excluido. Recorrencia mantida.')
     } else {
       await supabase.from('transactions').delete().eq('id', id)
       if (recurrence_id) {
         await supabase.from('recurrences').update({ is_active: false }).eq('id', recurrence_id)
       }
-      showToast('Lançamento excluído e recorrência pausada.')
+      showToast('Lancamento excluido e recorrencia pausada.')
     }
 
     await loadAll()
@@ -757,9 +776,9 @@ async function executeDeleteNormal() {
         const q = search.toLowerCase()
         if (
           !tx.description.toLowerCase().includes(q) &&
-          !(tx.account_name ?? '').toLowerCase().includes(q) &&
-          !(tx.category_name ?? '').toLowerCase().includes(q) &&
-          !(tx.credit_card_name ?? '').toLowerCase().includes(q)
+          !(tx.account_name       ?? '').toLowerCase().includes(q) &&
+          !(tx.category_name      ?? '').toLowerCase().includes(q) &&
+          !(tx.credit_card_name   ?? '').toLowerCase().includes(q)
         ) return false
       }
       return true
@@ -767,11 +786,11 @@ async function executeDeleteNormal() {
   }, [transactions, filterType, filterAccount, filterCategory, filterLifecycle, filterMonth, search])
 
   const summary = useMemo(() => {
-  const confirmed = filtered.filter(t => t.lifecycle_status === 'CONFIRMED')
-  const income  = confirmed.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-  const expense = confirmed.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-  return { income, expense, balance: income - expense }
-}, [filtered])
+    const confirmed = filtered.filter(t => t.lifecycle_status === 'CONFIRMED')
+    const income  = confirmed.filter(t => t.type === 'income').reduce((s, t)  => s + t.amount, 0)
+    const expense = confirmed.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+    return { income, expense, balance: income - expense }
+  }, [filtered])
 
   const hasActiveFilters = filterType || filterAccount || filterCategory || filterLifecycle || search
   function clearFilters() {
@@ -786,7 +805,7 @@ async function executeDeleteNormal() {
   const amountPrefix = (type: TxType) => type === 'income' ? '+' : type === 'expense' ? '-' : ''
   const catsFiltradas = categories.filter(c => form.type !== 'transfer' && (c.type === form.type || c.type === 'both'))
 
-  // ─── Render ──────────────────────────────────────────────────────────────────
+  // ─── Conteúdo da lista ───────────────────────────────────────────────────────
 
   function renderContent() {
     if (loading) {
@@ -805,7 +824,7 @@ async function executeDeleteNormal() {
       if (transactions.length === 0) {
         return (
           <PageEmptyState
-            icon="📭"
+            Icon={Receipt}
             title="Nenhuma transacao ainda"
             description="Registre sua primeira receita ou despesa para comecar."
           />
@@ -813,7 +832,7 @@ async function executeDeleteNormal() {
       }
       return (
         <PageEmptyState
-          icon="🔍"
+          Icon={MagnifyingGlass}
           title="Nenhum resultado"
           action={{ label: 'Limpar filtros', onClick: clearFilters }}
         />
@@ -826,9 +845,8 @@ async function executeDeleteNormal() {
           {filtered.length} transacao{filtered.length !== 1 ? 'oes' : ''}
         </p>
         {filtered.map(tx => {
-          const statusInfo  = tx.status ? STATUS_LABELS[tx.status] : null
-          const lcStatus    = tx.lifecycle_status ?? 'CONFIRMED'
-          const lcCfg       = LIFECYCLE_CONFIG[lcStatus]
+          const lcStatus     = tx.lifecycle_status ?? 'CONFIRMED'
+          const lcCfg        = LIFECYCLE_CONFIG[lcStatus]
           const isNonDefault = lcStatus !== 'CONFIRMED'
 
           return (
@@ -836,16 +854,24 @@ async function executeDeleteNormal() {
               key={tx.id}
               className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex gap-4 group hover:border-gray-200 transition-colors"
             >
-              {/* Indicador lateral de lifecycle — só aparece em status não-default */}
+              {/* Indicador lateral lifecycle */}
               {isNonDefault && (
                 <div className={`w-1 rounded-full shrink-0 self-stretch ${lcCfg.dotColor}`} />
               )}
 
-              {/* Ícone */}
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 self-start mt-0.5 ${
-                tx.type === 'income' ? 'bg-green-50 text-green-600' : tx.type === 'expense' ? 'bg-red-50 text-red-500' : 'bg-indigo-50 text-indigo-600'
+              {/* Ícone de tipo / categoria */}
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 self-start mt-0.5 ${
+                tx.type === 'income'
+                  ? 'bg-green-50 text-green-600'
+                  : tx.type === 'expense'
+                  ? 'bg-red-50 text-red-500'
+                  : 'bg-indigo-50 text-indigo-600'
               }`}>
-                {tx.category_icon ?? (tx.type === 'income' ? '↑' : tx.type === 'expense' ? '↓' : '⇄')}
+                {/* category_icon é emoji vindo do banco — exceção permitida pelo Master */}
+                {tx.category_icon
+                  ? <span className="text-sm">{tx.category_icon}</span>
+                  : <TxTypeIcon type={tx.type} />
+                }
               </div>
 
               {/* Corpo */}
@@ -853,45 +879,49 @@ async function executeDeleteNormal() {
                 {/* Linha 1: descrição + badges */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-medium text-gray-800 truncate">{tx.description}</p>
+
                   {tx.is_recurring && tx.recurrence_id && (
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 shrink-0">🔁 Recorrente</span>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 shrink-0">
+                      <Repeat size={10} weight="duotone" />
+                      Recorrente
+                    </span>
                   )}
+
                   {tx.installment_total && tx.installment_current && (
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600 shrink-0">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600 shrink-0">
+                      <CalendarBlank size={10} weight="duotone" />
                       {tx.installment_current}/{tx.installment_total}x
                     </span>
                   )}
-                  {/* Badge lifecycle — só para estados não-default */}
+
                   {isNonDefault && (
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border shrink-0 ${lcCfg.className}`}>
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full border shrink-0 ${lcCfg.className}`}>
+                      <lcCfg.Icon size={10} weight="duotone" />
                       {lcCfg.label}
-                    </span>
-                  )}
-                  {statusInfo && tx.status !== 'paid' && lcStatus === 'CONFIRMED' && (
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${statusInfo.className}`}>
-                      {statusInfo.label}
                     </span>
                   )}
                 </div>
 
                 {/* Linha 2: conta / cartão / categoria */}
-                <p className="text-xs text-gray-400 mt-0.5 truncate">
-                  {tx.credit_card_name ? `💳 ${tx.credit_card_name}` : tx.account_name}
+                <p className="text-xs text-gray-400 mt-0.5 truncate flex items-center gap-1">
+                  {tx.credit_card_name
+                    ? <><CreditCard size={11} weight="duotone" /> {tx.credit_card_name}</>
+                    : tx.account_name
+                  }
                   {tx.type === 'transfer' && tx.destination_account_name ? ` → ${tx.destination_account_name}` : ''}
                   {tx.category_name ? ` · ${tx.category_name}` : ''}
                 </p>
 
-                {/* Linha 3: botões de ação lifecycle — aparecem no hover */}
-                {/* Botões lifecycle — visíveis sempre para não-terminais, ocultos para CONFIRMED/CANCELLED */}
-{!isTerminal(lcStatus) && (
-  <div className="mt-2">
-    <LifecycleActions
-      tx={tx}
-      onTransition={handleTransition}
-      transitioning={transitioning}
-    />
-  </div>
-)}
+                {/* Botões lifecycle */}
+                {!isTerminal(lcStatus) && (
+                  <div className="mt-2">
+                    <LifecycleActions
+                      tx={tx}
+                      onTransition={handleTransition}
+                      transitioning={transitioning}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Valor + data + ações CRUD */}
@@ -903,15 +933,22 @@ async function executeDeleteNormal() {
                 <div className="opacity-0 group-hover:opacity-100 transition-all flex gap-1 mt-1">
                   <button
                     onClick={() => openEdit(tx)}
-                    className="text-gray-300 hover:text-indigo-500 text-sm px-1.5 py-1 rounded hover:bg-indigo-50 transition-colors"
+                    className="text-gray-300 hover:text-indigo-500 p-1.5 rounded hover:bg-indigo-50 transition-colors"
                     title="Editar"
-                  >✏️</button>
+                  >
+                    <PencilSimple size={14} weight="duotone" />
+                  </button>
                   <button
                     onClick={() => handleDeleteClick(tx)}
                     disabled={deletingId === tx.id}
-                    className="text-gray-300 hover:text-red-400 text-sm px-1.5 py-1 rounded hover:bg-red-50 transition-colors disabled:opacity-30"
+                    className="text-gray-300 hover:text-red-400 p-1.5 rounded hover:bg-red-50 transition-colors disabled:opacity-30"
                     title="Excluir"
-                  >{deletingId === tx.id ? '…' : '🗑️'}</button>
+                  >
+                    {deletingId === tx.id
+                      ? <Spinner size={14} weight="bold" className="animate-spin" />
+                      : <Trash size={14} weight="duotone" />
+                    }
+                  </button>
                 </div>
               </div>
             </div>
@@ -921,30 +958,45 @@ async function executeDeleteNormal() {
     )
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 max-w-4xl mx-auto">
-
+    <PageContainer>
+      {/* Toast */}
       {toast && (
         <div className={`fixed top-5 right-5 z-[60] px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${
-          toast.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+          toast.type === 'success'
+            ? 'bg-green-50 text-green-700 border border-green-200'
+            : 'bg-red-50 text-red-700 border border-red-200'
         }`}>
-          {toast.type === 'success' ? '✓ ' : '✕ '}{toast.message}
+          {toast.type === 'success'
+            ? <CheckCircle size={14} weight="duotone" className="inline mr-1.5" />
+            : <Warning     size={14} weight="duotone" className="inline mr-1.5" />
+          }
+          {toast.message}
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <a href="/dashboard" className="text-sm text-gray-400 hover:text-gray-600">Dashboard</a>
-          <h1 className="text-xl font-semibold mt-1">Transacoes</h1>
-        </div>
-      </div>
+      <PageHeader
+        title="Transacoes"
+        action={
+          <button
+            onClick={() => { setEditingId(null); setForm(emptyForm); setFormError(null); setShowModal(true) }}
+            className="btn-primary"
+          >
+            Nova transacao
+          </button>
+        }
+      />
 
       {/* ── Filtros ── */}
       <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 space-y-3">
         <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 text-sm">🔍</span>
+          <MagnifyingGlass
+            size={16}
+            weight="duotone"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300"
+          />
           <input
             type="text"
             value={search}
@@ -959,7 +1011,11 @@ async function executeDeleteNormal() {
           <div className="flex gap-1.5">
             {([['', 'Todas'], ['income', 'Receitas'], ['expense', 'Despesas'], ['transfer', 'Transf.']] as [TxType | '', string][]).map(([val, label]) => (
               <button key={val} onClick={() => setFilterType(val)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterType === val ? 'bg-indigo-600 text-white' : 'bg-gray-50 border border-gray-200 text-gray-500 hover:bg-gray-100'}`}>
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  filterType === val
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-50 border border-gray-200 text-gray-500 hover:bg-gray-100'
+                }`}>
                 {label}
               </button>
             ))}
@@ -1002,7 +1058,8 @@ async function executeDeleteNormal() {
           )}
 
           {hasActiveFilters && (
-            <button onClick={clearFilters} className="px-3 py-1.5 rounded-lg text-xs text-red-400 hover:text-red-600 hover:bg-red-50 border border-red-100 transition-colors">
+            <button onClick={clearFilters}
+              className="px-3 py-1.5 rounded-lg text-xs text-red-400 hover:text-red-600 hover:bg-red-50 border border-red-100 transition-colors">
               Limpar
             </button>
           )}
@@ -1022,50 +1079,56 @@ async function executeDeleteNormal() {
           </div>
           <div className="bg-white border border-gray-100 rounded-xl px-4 py-3">
             <p className="text-xs text-gray-400">Saldo</p>
-            <p className={`text-sm font-semibold mt-0.5 ${summary.balance >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>{fmt(summary.balance)}</p>
+            <p className={`text-sm font-semibold mt-0.5 ${summary.balance >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>
+              {fmt(summary.balance)}
+            </p>
           </div>
         </div>
       )}
 
       {renderContent()}
 
-{/* ── Modal confirmação exclusão simples ── */}
-{deleteConfirmModal.open && (
-  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-    <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
-      <div className="flex items-start gap-3 mb-4">
-        <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0 text-lg">🗑️</div>
-        <div>
-          <h3 className="font-semibold text-gray-800">Excluir transação</h3>
-          <p className="text-sm text-gray-500 mt-0.5">Essa ação não pode ser desfeita.</p>
+      {/* ── Modal confirmação exclusão simples ── */}
+      {deleteConfirmModal.open && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                <Trash size={20} weight="duotone" className="text-red-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-800">Excluir transacao</h3>
+                <p className="text-sm text-gray-500 mt-0.5">Essa acao nao pode ser desfeita.</p>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setDeleteConfirmModal({ open: false, id: null })}
+                className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={executeDeleteNormal}
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-lg py-2 text-sm font-medium transition-colors"
+              >
+                Excluir
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
-      <div className="flex gap-3 mt-6">
-        <button
-          onClick={() => setDeleteConfirmModal({ open: false, id: null })}
-          className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm hover:bg-gray-50 transition-colors"
-        >
-          Cancelar
-        </button>
-        <button
-          onClick={executeDeleteNormal}
-          className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-lg py-2 text-sm font-medium transition-colors"
-        >
-          Excluir
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+      )}
 
       {/* ── Modal exclusão recorrente ── */}
       {txDeleteModal.open && txDeleteModal.tx && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
             <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0 text-lg">🔁</div>
+              <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+                <Repeat size={20} weight="duotone" className="text-blue-500" />
+              </div>
               <div>
-                <h3 className="font-semibold text-gray-800">Excluir lançamento recorrente</h3>
+                <h3 className="font-semibold text-gray-800">Excluir lancamento recorrente</h3>
                 <p className="text-sm text-gray-500 mt-0.5">
                   <span className="font-medium text-gray-700">"{txDeleteModal.tx.description}"</span>
                   {' · '}{fmtDate(txDeleteModal.tx.date)}
@@ -1073,20 +1136,33 @@ async function executeDeleteNormal() {
               </div>
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4 text-xs text-blue-800">
-              <p className="font-semibold mb-1">⚠️ Este lançamento faz parte de uma recorrência ativa.</p>
-              <p>Excluir apenas este lançamento não afeta os demais nem a automação futura.</p>
-              <p className="mt-1">Para gerenciar a recorrência completa, acesse <strong>Recorrências</strong>.</p>
+              <p className="font-semibold mb-1 flex items-center gap-1">
+                <Warning size={12} weight="duotone" />
+                Este lancamento faz parte de uma recorrencia ativa.
+              </p>
+              <p>Excluir apenas este lancamento nao afeta os demais nem a automacao futura.</p>
+              <p className="mt-1">Para gerenciar a recorrencia completa, acesse <strong>Recorrencias</strong>.</p>
             </div>
             <div className="space-y-2 mb-5">
               <button onClick={() => executeTxDelete('single')}
                 className="w-full text-left rounded-xl border-2 border-gray-100 hover:border-orange-200 hover:bg-orange-50 px-4 py-3 transition-colors">
-                <p className="text-sm font-semibold text-gray-800">🗑️ Excluir só este lançamento</p>
-                <p className="text-xs text-gray-500 mt-0.5">Remove {fmtDate(txDeleteModal.tx.date)}. Recorrência continua gerando normalmente.</p>
+                <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                  <Trash size={14} weight="duotone" className="text-orange-400" />
+                  Excluir so este lancamento
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Remove {fmtDate(txDeleteModal.tx.date)}. Recorrencia continua gerando normalmente.
+                </p>
               </button>
               <button onClick={() => executeTxDelete('all')}
                 className="w-full text-left rounded-xl border-2 border-gray-100 hover:border-red-200 hover:bg-red-50 px-4 py-3 transition-colors">
-                <p className="text-sm font-semibold text-red-600">⏸ Excluir e pausar recorrência</p>
-                <p className="text-xs text-gray-500 mt-0.5">Remove este lançamento e para de gerar novos. Histórico passado preservado.</p>
+                <p className="text-sm font-semibold text-red-600 flex items-center gap-2">
+                  <ArrowCounterClockwise size={14} weight="duotone" />
+                  Excluir e pausar recorrencia
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Remove este lancamento e para de gerar novos. Historico passado preservado.
+                </p>
               </button>
             </div>
             <button onClick={() => setTxDeleteModal({ open: false, tx: null })}
@@ -1101,17 +1177,22 @@ async function executeDeleteNormal() {
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-semibold mb-5">{editingId ? 'Editar Transacao' : 'Nova Transacao'}</h2>
+            <h2 className="text-lg font-semibold mb-5">
+              {editingId ? 'Editar Transacao' : 'Nova Transacao'}
+            </h2>
             <div className="space-y-4">
 
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Tipo</label>
                 <div className="flex gap-2">
                   {(['expense', 'income', 'transfer'] as TxType[]).map(t => (
-                    <button key={t} onClick={() => setForm({ ...form, type: t, category_id: '', use_credit_card: false, is_installment: false, is_recurring: false })}
+                    <button key={t}
+                      onClick={() => setForm({ ...form, type: t, category_id: '', use_credit_card: false, is_installment: false, is_recurring: false })}
                       className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
                         form.type === t
-                          ? t === 'income' ? 'bg-green-100 text-green-700' : t === 'expense' ? 'bg-red-100 text-red-600' : 'bg-indigo-100 text-indigo-700'
+                          ? t === 'income'   ? 'bg-green-100 text-green-700'
+                          : t === 'expense'  ? 'bg-red-100 text-red-600'
+                          : 'bg-indigo-100 text-indigo-700'
                           : 'border border-gray-200 text-gray-500 hover:bg-gray-50'
                       }`}>
                       {TYPE_LABELS[t]}
@@ -1123,16 +1204,20 @@ async function executeDeleteNormal() {
               {form.type === 'expense' && creditCards.length > 0 && (
                 <div className="flex items-center justify-between bg-purple-50 border border-purple-100 rounded-lg px-3 py-2.5">
                   <div className="flex items-center gap-2">
-                    <span className="text-base">💳</span>
+                    <CreditCard size={16} weight="duotone" className="text-purple-500" />
                     <span className="text-sm text-purple-700 font-medium">Pagar com cartao de credito</span>
                   </div>
-                  <Toggle checked={form.use_credit_card} onChange={() => setForm({ ...form, use_credit_card: !form.use_credit_card, credit_card_id: creditCards[0]?.id ?? '' })} />
+                  <Toggle
+                    checked={form.use_credit_card}
+                    onChange={() => setForm({ ...form, use_credit_card: !form.use_credit_card, credit_card_id: creditCards[0]?.id ?? '' })}
+                  />
                 </div>
               )}
 
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Descricao</label>
-                <input type="text" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
+                <input type="text" value={form.description}
+                  onChange={e => setForm({ ...form, description: e.target.value })}
                   placeholder={form.type === 'income' ? 'Ex: Salario, Freelance...' : form.type === 'expense' ? 'Ex: Mercado, Aluguel...' : 'Ex: Para reserva...'}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
@@ -1140,13 +1225,15 @@ async function executeDeleteNormal() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Valor (R$)</label>
-                  <input type="text" inputMode="decimal" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })}
+                  <input type="text" inputMode="decimal" value={form.amount}
+                    onChange={e => setForm({ ...form, amount: e.target.value })}
                     placeholder="0,00"
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Data</label>
-                  <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })}
+                  <input type="date" value={form.date}
+                    onChange={e => setForm({ ...form, date: e.target.value })}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
               </div>
@@ -1154,10 +1241,15 @@ async function executeDeleteNormal() {
               {form.use_credit_card && form.type === 'expense' ? (
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Cartao</label>
-                  <select value={form.credit_card_id} onChange={e => setForm({ ...form, credit_card_id: e.target.value })}
+                  <select value={form.credit_card_id}
+                    onChange={e => setForm({ ...form, credit_card_id: e.target.value })}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
                     <option value="">Selecione o cartao...</option>
-                    {creditCards.map(c => <option key={c.id} value={c.id}>💳 {c.name}</option>)}
+                    {creditCards.map(c => (
+                      <option key={c.id} value={c.id}>
+                        <CreditCard weight="duotone" /> {c.name}
+                      </option>
+                    ))}
                   </select>
                   <p className="text-xs text-purple-500 mt-1">A despesa sera lancada na fatura do cartao.</p>
                 </div>
@@ -1165,7 +1257,8 @@ async function executeDeleteNormal() {
                 <>
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">Status</label>
-                    <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}
+                    <select value={form.status}
+                      onChange={e => setForm({ ...form, status: e.target.value })}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
                       <option value="paid">Pago</option>
                       <option value="pending">Pendente</option>
@@ -1177,7 +1270,8 @@ async function executeDeleteNormal() {
                     <label className="block text-sm text-gray-600 mb-1">
                       {form.type === 'transfer' ? 'Conta de Origem' : 'Conta'}
                     </label>
-                    <select value={form.account_id} onChange={e => setForm({ ...form, account_id: e.target.value })}
+                    <select value={form.account_id}
+                      onChange={e => setForm({ ...form, account_id: e.target.value })}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
                       <option value="">Selecione...</option>
                       {accounts.map(a => <option key={a.id} value={a.id}>{a.name} — {fmt(a.current_balance)}</option>)}
@@ -1186,7 +1280,8 @@ async function executeDeleteNormal() {
                   {form.type === 'transfer' && (
                     <div>
                       <label className="block text-sm text-gray-600 mb-1">Conta de Destino</label>
-                      <select value={form.destination_account_id} onChange={e => setForm({ ...form, destination_account_id: e.target.value })}
+                      <select value={form.destination_account_id}
+                        onChange={e => setForm({ ...form, destination_account_id: e.target.value })}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
                         <option value="">Selecione...</option>
                         {accounts.filter(a => a.id !== form.account_id).map(a => (
@@ -1200,8 +1295,11 @@ async function executeDeleteNormal() {
 
               {form.type !== 'transfer' && (
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Categoria <span className="text-gray-400">(opcional)</span></label>
-                  <select value={form.category_id} onChange={e => setForm({ ...form, category_id: e.target.value })}
+                  <label className="block text-sm text-gray-600 mb-1">
+                    Categoria <span className="text-gray-400">(opcional)</span>
+                  </label>
+                  <select value={form.category_id}
+                    onChange={e => setForm({ ...form, category_id: e.target.value })}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
                     <option value="">Sem categoria</option>
                     {catsFiltradas.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
@@ -1213,16 +1311,20 @@ async function executeDeleteNormal() {
                 <div className="border border-gray-100 rounded-xl p-3 space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="text-base">🔁</span>
+                      <Repeat size={16} weight="duotone" className="text-gray-400" />
                       <span className="text-sm font-medium text-gray-700">Recorrente</span>
                     </div>
-                    <Toggle checked={form.is_recurring} onChange={() => setForm({ ...form, is_recurring: !form.is_recurring })} />
+                    <Toggle
+                      checked={form.is_recurring}
+                      onChange={() => setForm({ ...form, is_recurring: !form.is_recurring })}
+                    />
                   </div>
                   {form.is_recurring && (
                     <div className="grid grid-cols-2 gap-3 pt-1">
                       <div>
                         <label className="block text-xs text-gray-500 mb-1">Frequencia</label>
-                        <select value={form.recurrence} onChange={e => setForm({ ...form, recurrence: e.target.value })}
+                        <select value={form.recurrence}
+                          onChange={e => setForm({ ...form, recurrence: e.target.value })}
                           className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
                           <option value="daily">Diaria</option>
                           <option value="weekly">Semanal</option>
@@ -1232,7 +1334,8 @@ async function executeDeleteNormal() {
                       </div>
                       <div>
                         <label className="block text-xs text-gray-500 mb-1">Data fim (opcional)</label>
-                        <input type="date" value={form.recurrence_end} onChange={e => setForm({ ...form, recurrence_end: e.target.value })}
+                        <input type="date" value={form.recurrence_end}
+                          onChange={e => setForm({ ...form, recurrence_end: e.target.value })}
                           className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                       </div>
                     </div>
@@ -1244,10 +1347,13 @@ async function executeDeleteNormal() {
                 <div className="border border-gray-100 rounded-xl p-3 space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="text-base">📅</span>
+                      <CalendarBlank size={16} weight="duotone" className="text-gray-400" />
                       <span className="text-sm font-medium text-gray-700">Parcelado</span>
                     </div>
-                    <Toggle checked={form.is_installment} onChange={() => setForm({ ...form, is_installment: !form.is_installment })} />
+                    <Toggle
+                      checked={form.is_installment}
+                      onChange={() => setForm({ ...form, is_installment: !form.is_installment })}
+                    />
                   </div>
                   {form.is_installment && (
                     <div className="pt-1">
@@ -1267,8 +1373,11 @@ async function executeDeleteNormal() {
               )}
 
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Observacao <span className="text-gray-400">(opcional)</span></label>
-                <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
+                <label className="block text-sm text-gray-600 mb-1">
+                  Observacao <span className="text-gray-400">(opcional)</span>
+                </label>
+                <textarea value={form.notes}
+                  onChange={e => setForm({ ...form, notes: e.target.value })}
                   rows={2} placeholder="Notas adicionais..."
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none" />
               </div>
@@ -1283,17 +1392,26 @@ async function executeDeleteNormal() {
               </button>
               <button onClick={handleSave} disabled={saving}
                 className={`flex-1 text-white rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
-                  form.use_credit_card    ? 'bg-purple-600 hover:bg-purple-700' :
-                  form.type === 'income'  ? 'bg-green-600 hover:bg-green-700'  :
-                  form.type === 'expense' ? 'bg-red-500 hover:bg-red-600'      :
-                  'bg-indigo-600 hover:bg-indigo-700'
+                  form.use_credit_card    ? 'bg-purple-600 hover:bg-purple-700'
+                  : form.type === 'income'  ? 'bg-green-600 hover:bg-green-700'
+                  : form.type === 'expense' ? 'bg-red-500 hover:bg-red-600'
+                  : 'bg-indigo-600 hover:bg-indigo-700'
                 }`}>
-                {saving ? 'Salvando...' : form.is_installment ? `Criar ${form.installment_total || '?'} parcelas` : form.is_recurring ? 'Salvar recorrencia' : editingId ? 'Salvar alteracoes' : 'Salvar'}
+                {saving
+                  ? 'Salvando...'
+                  : form.is_installment
+                  ? `Criar ${form.installment_total || '?'} parcelas`
+                  : form.is_recurring
+                  ? 'Salvar recorrencia'
+                  : editingId
+                  ? 'Salvar alteracoes'
+                  : 'Salvar'
+                }
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }
