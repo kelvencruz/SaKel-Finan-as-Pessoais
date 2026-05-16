@@ -4,16 +4,15 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell, Legend,
+  ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts'
 import {
   Bank, CreditCard, Tag, ListBullets, Receipt, TrendUp,
-  Wallet, Warning, CalendarCheck, ArrowClockwise,
-  ArrowUp, ArrowDown, Eye, EyeSlash, ArrowUpRight,
+  Wallet, Warning, ArrowClockwise,
+  ArrowUp, ArrowDown, ArrowUpRight, CalendarCheck, Eye, EyeSlash,
 } from '@phosphor-icons/react'
 
 import { PageContainer } from '@/components/layout/PageContainer'
-import { PageHeader }    from '@/components/layout/PageHeader'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -21,18 +20,18 @@ import { PageHeader }    from '@/components/layout/PageHeader'
 
 type LifecycleStatus = 'CONFIRMED' | 'PENDING_EXPECTED' | 'PENDING_REVIEW' | 'OVERDUE' | 'CANCELLED'
 
-interface MonthLine     { mes: string; saldo: number }
-interface CatSlice      { name: string; value: number }
-interface InvoiceDue    { id: string; card_name: string; card_color: string; due_date: string; total_amount: number; days_until_due: number }
-interface ProjecaoItem  { label: string; value: number; color: string; sign: string }
-interface RecentTx      { id: string; description: string; amount: number; type: 'income' | 'expense' | 'transfer'; category_name?: string; category_icon?: string; date: string }
+interface MonthLine    { mes: string; saldo: number }
+interface CatSlice     { name: string; value: number }
+interface InvoiceDue   { id: string; card_name: string; card_color: string; due_date: string; total_amount: number; days_until_due: number }
+interface ProjecaoItem { label: string; value: number; color: string; sign: string }
+interface RecentTx     { id: string; description: string; amount: number; type: 'income' | 'expense' | 'transfer'; category_name?: string; category_icon?: string; date: string }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constantes
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SLICE_COLORS   = ['#7C3AED','#f97316','#22c55e','#f59e0b','#3b82f6','#ec4899','#14b8a6']
-const MONTH_NAMES    = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+const SLICE_COLORS        = ['#7C3AED', '#f97316', '#22c55e', '#f59e0b', '#3b82f6', '#ec4899']
+const MONTH_NAMES         = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 const CONFIRMED_STATUSES: LifecycleStatus[] = ['CONFIRMED']
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,28 +65,26 @@ function occurrencesInWindow(nextDueDate: string, frequency: string, horizonDate
   return count
 }
 
-function greeting() {
-  const h = new Date().getHours()
-  if (h < 12) return 'Bom dia'
-  if (h < 18) return 'Boa tarde'
-  return 'Boa noite'
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Sub-componentes
+// Sub-componentes utilitários
 // ─────────────────────────────────────────────────────────────────────────────
 
 function DashboardSkeleton() {
   return (
     <PageContainer>
-      <div className="animate-pulse space-y-4">
-        <div className="h-8 rounded-lg bg-gray-100 w-48" />
+      <div className="animate-pulse space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1,2,3,4].map(i => <div key={i} className="h-24 rounded-xl bg-gray-100" />)}
+          {[1,2,3,4].map(i => <div key={i} className="h-24 rounded-xl bg-[var(--color-surface-raised,#1E293B)] opacity-60" />)}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <div className="lg:col-span-2 h-72 rounded-xl bg-gray-100" />
-          <div className="h-72 rounded-xl bg-gray-100" />
+          <div className="lg:col-span-2 space-y-5">
+            <div className="h-64 rounded-xl bg-[var(--color-surface-raised,#1E293B)] opacity-60" />
+            <div className="h-48 rounded-xl bg-[var(--color-surface-raised,#1E293B)] opacity-60" />
+          </div>
+          <div className="space-y-5">
+            <div className="h-64 rounded-xl bg-[var(--color-surface-raised,#1E293B)] opacity-60" />
+            <div className="h-40 rounded-xl bg-[var(--color-surface-raised,#1E293B)] opacity-60" />
+          </div>
         </div>
       </div>
     </PageContainer>
@@ -97,14 +94,19 @@ function DashboardSkeleton() {
 function DashboardError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <PageContainer>
-      <div className="rounded-2xl p-10 text-center bg-white border border-dashed border-red-100">
-        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-red-50">
-          <Warning weight="duotone" size={26} className="text-red-400" />
+      <div className="rounded-2xl p-10 text-center border border-dashed"
+        style={{ background: 'var(--color-surface)', borderColor: 'var(--color-danger,#DC2626)22' }}>
+        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+          style={{ background: 'var(--color-danger,#DC2626)18' }}>
+          <Warning weight="duotone" size={26} style={{ color: 'var(--color-danger,#DC2626)' }} />
         </div>
-        <p className="text-sm font-semibold mb-1 text-gray-800">Erro ao carregar o dashboard</p>
-        <p className="text-xs mb-6 max-w-xs mx-auto text-gray-400">{message}</p>
+        <p className="text-sm font-semibold mb-1" style={{ color: 'var(--color-text-primary)' }}>
+          Erro ao carregar o dashboard
+        </p>
+        <p className="text-xs mb-6 max-w-xs mx-auto" style={{ color: 'var(--color-text-muted)' }}>{message}</p>
         <button onClick={onRetry}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors">
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
+          style={{ background: 'var(--color-brand,#7C3AED)' }}>
           <ArrowClockwise size={14} weight="bold" />
           Tentar novamente
         </button>
@@ -116,17 +118,21 @@ function DashboardError({ message, onRetry }: { message: string; onRetry: () => 
 function EmptyDashboard() {
   return (
     <PageContainer>
-      <PageHeader title="Dashboard" />
-      <div className="rounded-2xl p-10 text-center mb-6 bg-white border-2 border-dashed border-gray-200">
-        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-indigo-50">
-          <Bank weight="duotone" size={28} className="text-indigo-500" />
+      <div className="rounded-2xl p-10 text-center mb-6 border-2 border-dashed"
+        style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
+          style={{ background: 'var(--color-brand,#7C3AED)18' }}>
+          <Bank weight="duotone" size={28} style={{ color: 'var(--color-brand,#7C3AED)' }} />
         </div>
-        <h2 className="text-lg font-semibold mb-2 text-gray-800">Sua central financeira começa aqui</h2>
-        <p className="text-sm max-w-sm mx-auto mb-6 text-gray-400">
+        <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
+          Sua central financeira começa aqui
+        </h2>
+        <p className="text-sm max-w-sm mx-auto mb-6" style={{ color: 'var(--color-text-muted)' }}>
           Adicione uma conta para acompanhar saldo, transações e investimentos.
         </p>
         <a href="/dashboard/contas"
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors">
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
+          style={{ background: 'var(--color-brand,#7C3AED)' }}>
           Criar minha primeira conta
         </a>
       </div>
@@ -137,10 +143,11 @@ function EmptyDashboard() {
           { icon: Tag,        title: 'Ver categorias',    desc: '14 categorias padrão já foram criadas para você.',         href: '/dashboard/categorias' },
         ].map(item => (
           <a key={item.href} href={item.href}
-            className="rounded-xl p-4 bg-white border border-gray-100 hover:border-indigo-300 hover:bg-indigo-50 transition-colors">
-            <item.icon weight="duotone" size={24} className="text-indigo-500 mb-2" />
-            <p className="text-sm font-medium mb-1 text-gray-800">{item.title}</p>
-            <p className="text-xs text-gray-400">{item.desc}</p>
+            className="rounded-xl p-4 border transition-colors"
+            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+            <item.icon weight="duotone" size={24} className="mb-2" style={{ color: 'var(--color-brand,#7C3AED)' }} />
+            <p className="text-sm font-medium mb-1" style={{ color: 'var(--color-text-primary)' }}>{item.title}</p>
+            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{item.desc}</p>
           </a>
         ))}
       </div>
@@ -149,10 +156,10 @@ function EmptyDashboard() {
 }
 
 function InvoiceBadge({ days }: { days: number }) {
-  if (days < 0)   return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-50 text-red-500">Vencida</span>
-  if (days === 0) return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-50 text-red-500">Vence hoje</span>
-  if (days <= 7)  return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-600">Vence em {days}d</span>
-  return               <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">{days}d</span>
+  if (days < 0)   return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-500/10 text-red-400">Vencida</span>
+  if (days === 0) return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-500/10 text-red-400">Hoje</span>
+  if (days <= 7)  return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400">Em {days}d</span>
+  return               <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-[var(--color-text-muted)]">{days}d</span>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -162,7 +169,6 @@ function InvoiceBadge({ days }: { days: number }) {
 export default function DashboardPage() {
   const supabase = createClient()
 
-  const [userName,            setUserName]            = useState('')
   const [saldoContas,         setSaldoContas]         = useState(0)
   const [totalFaturas,        setTotalFaturas]        = useState(0)
   const [patrimonioInvestido, setPatrimonioInvestido] = useState(0)
@@ -188,11 +194,6 @@ export default function DashboardPage() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/auth/login'; return }
-
-      // Nome do usuário para o saudação
-      const { data: profile } = await supabase
-        .from('profiles').select('full_name').eq('id', user.id).single()
-      setUserName((profile?.full_name ?? '').split(' ')[0] ?? '')
 
       const now       = new Date()
       const year      = now.getFullYear()
@@ -237,16 +238,17 @@ export default function DashboardPage() {
       const cardMap = Object.fromEntries(
         ((cards ?? []) as { id: string; name: string; color: string }[]).map(c => [c.id, c])
       )
-      const invoicesFormatted = ((dueInv ?? []) as { id: string; total_amount: number; due_date: string; credit_card_id: string }[])
-        .map(inv => ({
-          id:             inv.id,
-          card_name:      cardMap[inv.credit_card_id]?.name  ?? 'Cartão',
-          card_color:     cardMap[inv.credit_card_id]?.color ?? '#7C3AED',
-          due_date:       inv.due_date,
-          total_amount:   Number(inv.total_amount),
-          days_until_due: daysUntil(inv.due_date),
-        }))
-      setInvoicesDue(invoicesFormatted)
+      setInvoicesDue(
+        ((dueInv ?? []) as { id: string; total_amount: number; due_date: string; credit_card_id: string }[])
+          .map(inv => ({
+            id:             inv.id,
+            card_name:      cardMap[inv.credit_card_id]?.name  ?? 'Cartão',
+            card_color:     cardMap[inv.credit_card_id]?.color ?? '#7C3AED',
+            due_date:       inv.due_date,
+            total_amount:   Number(inv.total_amount),
+            days_until_due: daysUntil(inv.due_date),
+          }))
+      )
 
       // ── Transações do mês ────────────────────────────────────
       const { data: txMes, error: txErr } = await supabase
@@ -264,7 +266,7 @@ export default function DashboardPage() {
       setRecMes(recMesVal)
       setDespMes(despMesVal)
 
-      // ── Histórico 6 meses → gráfico de linha (saldo acumulado) ──
+      // ── Histórico 6 meses → gráfico de linha ──────────────────
       const meses = Array.from({ length: 6 }, (_, i) => {
         const d = new Date(year, month - (5 - i), 1)
         return { key: d.toISOString().slice(0, 7), label: MONTH_NAMES[d.getMonth()] }
@@ -364,11 +366,11 @@ export default function DashboardPage() {
       const previsto = saldo + recEntradas + parcRec - recSaidas - totalParcelas - faturas
       setSaldoPrevisto(previsto)
       setProjecaoItens([
-        { label: 'Saldo atual em contas',      value: saldo,         color: 'var(--primary)', sign: ''  },
-        { label: 'Receitas recorrentes (30d)', value: recEntradas,   color: 'var(--success)', sign: '+' },
-        { label: 'Despesas recorrentes (30d)', value: recSaidas,     color: 'var(--danger)',  sign: '−' },
-        { label: 'Parcelas pendentes (30d)',   value: totalParcelas, color: 'var(--warning)', sign: '−' },
-        { label: 'Faturas em aberto',          value: faturas,       color: 'var(--primary)', sign: '−' },
+        { label: 'Saldo atual em contas',      value: saldo,         color: 'var(--color-brand,#7C3AED)',   sign: ''  },
+        { label: 'Receitas recorrentes (30d)', value: recEntradas,   color: 'var(--color-success,#16A34A)', sign: '+' },
+        { label: 'Despesas recorrentes (30d)', value: recSaidas,     color: 'var(--color-danger,#DC2626)',  sign: '−' },
+        { label: 'Parcelas pendentes (30d)',   value: totalParcelas, color: 'var(--color-warning,#D97706)', sign: '−' },
+        { label: 'Faturas em aberto',          value: faturas,       color: 'var(--color-danger,#DC2626)',  sign: '−' },
       ])
 
     } catch (err: unknown) {
@@ -384,134 +386,172 @@ export default function DashboardPage() {
   if (loadError)    return <DashboardError message={loadError} onRetry={load} />
   if (!hasAccounts) return <EmptyDashboard />
 
-  const saldoLiquido = saldoContas - totalFaturas
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render
+  // Sem PageHeader — o layout.tsx já entrega saudação + contexto temporal.
+  // O dashboard começa direto nos KPIs.
+  // ─────────────────────────────────────────────────────────────────────────
 
   return (
     <PageContainer>
-      {/* ── Header ── */}
-      <PageHeader
-        title={`${greeting()}${userName ? `, ${userName}` : ''}`}
-        description="Aqui está o resumo da sua vida financeira."
-      />
 
-      {/* ── KPIs ── */}
+      {/* ── KPIs — 4 cards de igual peso ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
           {
-            label: 'Saldo Total',
-            value: saldoContas,
-            color: saldoContas >= 0 ? 'text-indigo-600' : 'text-red-500',
-            sub:   'Excluindo cartões',
-            icon:  Wallet,
-            iconBg: 'bg-indigo-50 text-indigo-400',
+            label:   'Saldo Total',
+            value:   saldoContas,
+            sub:     'Excluindo cartões',
+            icon:    Wallet,
+            color:   saldoContas >= 0
+                       ? 'var(--color-brand,#7C3AED)'
+                       : 'var(--color-danger,#DC2626)',
+            iconBg:  'rgba(124,58,237,0.12)',
           },
           {
-            label: 'Receitas',
-            value: recMes,
-            color: 'text-green-600',
-            sub:   'Este mês',
-            icon:  ArrowUp,
-            iconBg: 'bg-green-50 text-green-400',
+            label:   'Receitas',
+            value:   recMes,
+            sub:     'Este mês',
+            icon:    ArrowUp,
+            color:   'var(--color-success,#16A34A)',
+            iconBg:  'rgba(22,163,74,0.12)',
           },
           {
-            label: 'Despesas',
-            value: despMes,
-            color: 'text-red-500',
-            sub:   'Este mês',
-            icon:  ArrowDown,
-            iconBg: 'bg-red-50 text-red-400',
+            label:   'Despesas',
+            value:   despMes,
+            sub:     'Este mês',
+            icon:    ArrowDown,
+            color:   'var(--color-danger,#DC2626)',
+            iconBg:  'rgba(220,38,38,0.12)',
           },
           {
-            label: 'Investimentos',
-            value: patrimonioInvestido,
-            color: 'text-violet-600',
-            sub:   'Total investido',
-            icon:  TrendUp,
-            iconBg: 'bg-violet-50 text-violet-400',
+            label:   'Investimentos',
+            value:   patrimonioInvestido,
+            sub:     'Total investido',
+            icon:    TrendUp,
+            color:   '#a78bfa',
+            iconBg:  'rgba(167,139,250,0.12)',
           },
         ].map(kpi => (
           <div key={kpi.label}
-            className="bg-white border border-gray-100 rounded-xl p-4 flex flex-col gap-3"
-            style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            className="rounded-xl p-4 flex flex-col gap-3 border"
+            style={{
+              background:   'var(--color-surface)',
+              borderColor:  'var(--color-border)',
+            }}>
             <div className="flex items-center justify-between">
-              <p className="text-xs text-gray-400">{kpi.label}</p>
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${kpi.iconBg}`}>
-                <kpi.icon size={16} weight="duotone" />
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{kpi.label}</p>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ background: kpi.iconBg }}>
+                <kpi.icon size={16} weight="duotone" style={{ color: kpi.color }} />
               </div>
             </div>
-            <p className={`text-xl font-bold ${kpi.color}`}>{fmt(kpi.value)}</p>
-            <p className="text-[10px] text-gray-400">{kpi.sub}</p>
+            <p className="text-xl font-bold" style={{ color: kpi.color }}>{fmt(kpi.value)}</p>
+            <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{kpi.sub}</p>
           </div>
         ))}
       </div>
 
-      {/* ── Layout 2 colunas ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
+      {/* ── Layout 2 colunas: gráficos à esq, painel operacional à dir ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-        {/* Coluna principal — 2/3 */}
+        {/* ── Coluna principal — 2/3 ── */}
         <div className="lg:col-span-2 space-y-5">
 
-          {/* Gráfico de evolução do saldo */}
-          <div className="bg-white border border-gray-100 rounded-xl p-5"
-            style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          {/* Gráfico evolução do saldo */}
+          <div className="rounded-xl p-5 border"
+            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-sm font-medium text-gray-700">Evolução do saldo</p>
-                <p className="text-xs text-gray-400 mt-0.5">Resultado mensal dos últimos 6 meses</p>
+                <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                  Evolução do saldo
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                  Resultado mensal dos últimos 6 meses
+                </p>
               </div>
-              <span className="text-[10px] font-medium px-2 py-1 rounded-full bg-indigo-50 text-indigo-500">
+              <span className="text-[10px] font-medium px-2.5 py-1 rounded-full"
+                style={{ background: 'rgba(124,58,237,0.12)', color: 'var(--color-brand,#7C3AED)' }}>
                 Últimos 6 meses
               </span>
             </div>
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={monthLine}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={fmtK} axisLine={false} tickLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border,#1E293B)" />
+                <XAxis
+                  dataKey="mes"
+                  tick={{ fontSize: 11, fill: 'var(--color-text-muted,#94A3B8)' }}
+                  axisLine={false} tickLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: 'var(--color-text-muted,#94A3B8)' }}
+                  tickFormatter={fmtK}
+                  axisLine={false} tickLine={false}
+                />
                 <Tooltip
                   formatter={(v: number | string) => [fmt(Number(v)), 'Saldo']}
-                  contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12 }}
+                  contentStyle={{
+                    background:   'var(--color-surface)',
+                    border:       '1px solid var(--color-border)',
+                    borderRadius: 8,
+                    fontSize:     12,
+                    color:        'var(--color-text-primary)',
+                  }}
                 />
                 <Line
-                  type="monotone" dataKey="saldo" stroke="#7C3AED" strokeWidth={2.5}
-                  dot={{ fill: '#7C3AED', strokeWidth: 0, r: 4 }}
-                  activeDot={{ r: 6, fill: '#7C3AED' }}
+                  type="monotone" dataKey="saldo"
+                  stroke="var(--color-brand,#7C3AED)" strokeWidth={2.5}
+                  dot={{ fill: 'var(--color-brand,#7C3AED)', strokeWidth: 0, r: 4 }}
+                  activeDot={{ r: 6, fill: 'var(--color-brand,#7C3AED)' }}
                 />
               </LineChart>
             </ResponsiveContainer>
           </div>
 
           {/* Despesas por categoria */}
-          <div className="bg-white border border-gray-100 rounded-xl p-5"
-            style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-            <p className="text-sm font-medium text-gray-700 mb-4">Despesas por categoria</p>
+          <div className="rounded-xl p-5 border"
+            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+            <p className="text-sm font-semibold mb-4" style={{ color: 'var(--color-text-primary)' }}>
+              Despesas por categoria
+            </p>
             {catSlices.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-36 gap-2">
-                <Receipt weight="duotone" size={32} className="text-gray-200" />
-                <p className="text-xs text-gray-400">Sem despesas este mês</p>
+                <Receipt weight="duotone" size={32} style={{ color: 'var(--color-border)' }} />
+                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Sem despesas este mês</p>
               </div>
             ) : (
-              <div className="flex items-center gap-4">
-                <ResponsiveContainer width="50%" height={160}>
+              <div className="flex items-center gap-6">
+                <ResponsiveContainer width="45%" height={160}>
                   <PieChart>
                     <Pie data={catSlices} cx="50%" cy="50%" innerRadius={44} outerRadius={68} dataKey="value">
                       {catSlices.map((_, i) => <Cell key={i} fill={SLICE_COLORS[i % SLICE_COLORS.length]} />)}
                     </Pie>
                     <Tooltip
                       formatter={(v: number | string) => fmt(Number(v))}
-                      contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12 }}
+                      contentStyle={{
+                        background:   'var(--color-surface)',
+                        border:       '1px solid var(--color-border)',
+                        borderRadius: 8,
+                        fontSize:     12,
+                        color:        'var(--color-text-primary)',
+                      }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="flex-1 space-y-2">
+                <div className="flex-1 space-y-2.5">
                   {catSlices.map((slice, i) => {
                     const total = catSlices.reduce((s, c) => s + c.value, 0)
                     const pct   = total > 0 ? Math.round((slice.value / total) * 100) : 0
                     return (
                       <div key={slice.name} className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: SLICE_COLORS[i % SLICE_COLORS.length] }} />
-                        <p className="text-xs text-gray-500 truncate flex-1">{slice.name}</p>
-                        <p className="text-xs font-medium text-gray-600">{pct}%</p>
+                        <div className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: SLICE_COLORS[i % SLICE_COLORS.length] }} />
+                        <p className="text-xs truncate flex-1" style={{ color: 'var(--color-text-muted)' }}>
+                          {slice.name}
+                        </p>
+                        <p className="text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                          {pct}%
+                        </p>
                       </div>
                     )
                   })}
@@ -519,51 +559,133 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+        </div>
 
-          {/* Últimas transações */}
-          <div className="bg-white border border-gray-100 rounded-xl p-5"
-            style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+        {/* ── Coluna lateral — 1/3 ── */}
+        {/*
+         * Hierarquia da lateral (por peso visual):
+         * 1. Saldo Previsto — dominante, número grande, breakdown completo
+         * 2. Últimas transações — contexto rápido, lista compacta
+         * 3. Faturas próximas — alerta contextual (condicional)
+         * 4. Investimentos — widget opcional se houver patrimônio
+         *
+         * Removidos da lateral:
+         * - "Patrimônio líquido estimado" (redundante com Saldo Total + Faturas)
+         * - "Acesso rápido" (links duplicam a sidebar)
+         */}
+        <div className="space-y-5">
+
+          {/* 1. Saldo Previsto — bloco dominante */}
+          <div className="rounded-xl p-5 border"
+            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                Saldo previsto
+              </p>
+              <span className="text-[10px] font-medium px-2.5 py-1 rounded-full"
+                style={{ background: 'rgba(124,58,237,0.12)', color: 'var(--color-brand,#7C3AED)' }}>
+                30 dias
+              </span>
+            </div>
+            <p className="text-xs mb-4" style={{ color: 'var(--color-text-muted)' }}>
+              Projeção para os próximos 30 dias
+            </p>
+
+            {/* Número dominante */}
+            <p className={`text-3xl font-bold mb-5 ${saldoPrevisto >= 0 ? '' : ''}`}
+              style={{ color: saldoPrevisto >= 0 ? 'var(--color-success,#16A34A)' : 'var(--color-danger,#DC2626)' }}>
+              {fmt(saldoPrevisto)}
+            </p>
+
+            {/* Breakdown */}
+            <div className="space-y-2">
+              {projecaoItens.map(item => (
+                <div key={item.label}
+                  className="flex items-center justify-between py-1.5 border-b last:border-0"
+                  style={{ borderColor: 'var(--color-border)' }}>
+                  <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{item.label}</p>
+                  <p className="text-[11px] font-semibold" style={{ color: item.color }}>
+                    {item.sign && <span className="mr-0.5">{item.sign}</span>}
+                    {fmt(item.value)}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {/* Rodapé com contadores */}
+            {(recCount > 0 || instCount > 0) && (
+              <p className="text-[10px] mt-3" style={{ color: 'var(--color-text-muted)' }}>
+                {recCount > 0 && <>{recCount} recorrência{recCount !== 1 ? 's' : ''}</>}
+                {recCount > 0 && instCount > 0 && <span className="mx-1">·</span>}
+                {instCount > 0 && <>{instCount} parcela{instCount !== 1 ? 's' : ''}</>}
+              </p>
+            )}
+          </div>
+
+          {/* 2. Últimas transações — contexto operacional rápido */}
+          <div className="rounded-xl p-5 border"
+            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm font-medium text-gray-700">Últimas transações</p>
+              <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                Últimas transações
+              </p>
               <a href="/dashboard/transacoes"
-                className="text-xs text-indigo-500 hover:underline flex items-center gap-1">
+                className="text-xs flex items-center gap-1 transition-opacity hover:opacity-70"
+                style={{ color: 'var(--color-brand,#7C3AED)' }}>
                 Ver todas <ArrowUpRight size={11} weight="bold" />
               </a>
             </div>
             {recentTxs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-24 gap-2">
-                <ListBullets weight="duotone" size={28} className="text-gray-200" />
-                <p className="text-xs text-gray-400">Nenhuma transação confirmada</p>
+                <ListBullets weight="duotone" size={28} style={{ color: 'var(--color-border)' }} />
+                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                  Nenhuma transação confirmada
+                </p>
               </div>
             ) : (
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {recentTxs.map(tx => (
-                  <div key={tx.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                  <div key={tx.id}
+                    className="flex items-center gap-3 py-2.5 border-b last:border-0"
+                    style={{ borderColor: 'var(--color-border)' }}>
                     {/* Ícone */}
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs ${
-                      tx.type === 'income'   ? 'bg-green-50 text-green-600'
-                      : tx.type === 'expense' ? 'bg-red-50 text-red-500'
-                      : 'bg-indigo-50 text-indigo-500'
-                    }`}>
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs"
+                      style={{
+                        background: tx.type === 'income'
+                          ? 'rgba(22,163,74,0.12)'
+                          : tx.type === 'expense'
+                          ? 'rgba(220,38,38,0.12)'
+                          : 'rgba(124,58,237,0.12)',
+                      }}>
                       {/* category_icon: emoji do banco — exceção permitida pelo Master */}
                       {tx.category_icon
-                        ? <span>{tx.category_icon}</span>
+                        ? <span className="text-[13px]">{tx.category_icon}</span>
                         : tx.type === 'income'
-                        ? <ArrowUp size={14} weight="duotone" />
-                        : <ArrowDown size={14} weight="duotone" />
+                        ? <ArrowUp size={13} weight="duotone" style={{ color: 'var(--color-success,#16A34A)' }} />
+                        : <ArrowDown size={13} weight="duotone" style={{ color: 'var(--color-danger,#DC2626)' }} />
                       }
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-gray-800 truncate">{tx.description}</p>
-                      <p className="text-[10px] text-gray-400">{tx.category_name ?? 'Sem categoria'}</p>
+                      <p className="text-xs font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
+                        {tx.description}
+                      </p>
+                      <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                        {tx.category_name ?? 'Sem categoria'}
+                      </p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className={`text-xs font-semibold ${
-                        tx.type === 'income' ? 'text-green-600' : tx.type === 'expense' ? 'text-red-500' : 'text-indigo-500'
-                      }`}>
-                        {tx.type === 'income' ? '+' : tx.type === 'expense' ? '−' : ''} {fmt(tx.amount)}
+                      <p className="text-xs font-semibold"
+                        style={{
+                          color: tx.type === 'income'
+                            ? 'var(--color-success,#16A34A)'
+                            : tx.type === 'expense'
+                            ? 'var(--color-danger,#DC2626)'
+                            : 'var(--color-brand,#7C3AED)',
+                        }}>
+                        {tx.type === 'income' ? '+' : tx.type === 'expense' ? '−' : ''}
+                        {fmt(tx.amount)}
                       </p>
-                      <p className="text-[10px] text-gray-400">
+                      <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
                         {new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
                       </p>
                     </div>
@@ -572,115 +694,48 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
-        </div>
 
-        {/* Coluna lateral — 1/3 */}
-        <div className="space-y-5">
-
-          {/* Patrimônio líquido */}
-          <div className={`rounded-xl px-5 py-4 ${saldoLiquido >= 0 ? 'bg-green-50 border border-green-100' : 'bg-red-50 border border-red-100'}`}>
-            <div className="flex items-center gap-2 mb-2">
-              <Wallet weight="duotone" size={14} className={saldoLiquido >= 0 ? 'text-green-500' : 'text-red-500'} />
-              <p className="text-xs font-medium text-gray-600">Patrimônio líquido estimado</p>
-            </div>
-            <p className={`text-2xl font-bold mb-1 ${saldoLiquido >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-              {fmt(saldoLiquido)}
-            </p>
-            <p className="text-[10px] text-gray-400">Saldo em contas menos faturas em aberto</p>
-          </div>
-
-          {/* Investimentos (se houver) */}
-          {patrimonioInvestido > 0 && (
-            <div className="bg-white border border-gray-100 rounded-xl px-5 py-4"
-              style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          {/* 3. Faturas próximas — condicional, só aparece se houver */}
+          {invoicesDue.length > 0 && (
+            <div className="rounded-xl p-5 border"
+              style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <TrendUp weight="duotone" size={14} className="text-violet-500" />
-                  <p className="text-xs font-medium text-gray-600">Patrimônio investido</p>
-                </div>
-                <button onClick={() => setInvVisivel(v => !v)} className="text-gray-400 hover:text-gray-600">
-                  {invVisivel
-                    ? <Eye weight="duotone" size={14} />
-                    : <EyeSlash weight="duotone" size={14} />
-                  }
-                </button>
-              </div>
-              <p className="text-xl font-bold text-violet-600 mb-1">
-                {invVisivel ? fmt(patrimonioInvestido) : '••••••'}
-              </p>
-              <a href="/dashboard/investimentos" className="text-[11px] text-violet-500 hover:underline flex items-center gap-1">
-                Ver investimentos <ArrowUpRight size={10} weight="bold" />
-              </a>
-            </div>
-          )}
-
-          {/* Saldo previsto */}
-          <div className="bg-white border border-gray-100 rounded-xl p-5"
-            style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-sm font-medium text-gray-700">Saldo Previsto</p>
-                <p className="text-xs text-gray-400 mt-0.5">Projeção para os próximos 30 dias</p>
-              </div>
-              <span className="text-[10px] font-medium px-2 py-1 rounded-full bg-indigo-50 text-indigo-500">
-                30 dias
-              </span>
-            </div>
-            <div className="space-y-2 mb-4">
-              {projecaoItens.map(item => (
-                <div key={item.label} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
-                  <p className="text-[11px] text-gray-400">{item.label}</p>
-                  <p className="text-[11px] font-semibold" style={{ color: item.color }}>
-                    {item.sign && <span className="mr-0.5">{item.sign}</span>}
-                    {fmt(item.value)}
+                  <CalendarCheck weight="duotone" size={14} style={{ color: 'var(--color-text-muted)' }} />
+                  <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                    Faturas próximas
                   </p>
                 </div>
-              ))}
-            </div>
-            <div className={`rounded-lg px-4 py-3 flex items-center justify-between ${
-              saldoPrevisto >= 0 ? 'bg-green-50 border border-green-100' : 'bg-red-50 border border-red-100'
-            }`}>
-              <div>
-                <p className="text-xs font-semibold text-gray-700">Saldo projetado</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">
-                  {recCount} recorrência(s) · {instCount} parcela(s)
-                </p>
+                <a href="/dashboard/faturas"
+                  className="text-xs transition-opacity hover:opacity-70"
+                  style={{ color: 'var(--color-brand,#7C3AED)' }}>
+                  Ver todas
+                </a>
               </div>
-              <p className={`text-lg font-bold ${saldoPrevisto >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                {fmt(saldoPrevisto)}
-              </p>
-            </div>
-          </div>
-
-          {/* Faturas próximas */}
-          {invoicesDue.length > 0 && (
-            <div className="bg-white border border-gray-100 rounded-xl p-5"
-              style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <CalendarCheck weight="duotone" size={14} className="text-gray-400" />
-                  <p className="text-sm font-medium text-gray-700">Faturas próximas</p>
-                </div>
-                <a href="/dashboard/faturas" className="text-xs text-indigo-500 hover:underline">Ver todas</a>
-              </div>
-              <div className="space-y-2">
+              <div className="space-y-0.5">
                 {invoicesDue.slice(0, 4).map(inv => (
-                  <div key={inv.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                  <div key={inv.id}
+                    className="flex items-center justify-between py-2.5 border-b last:border-0"
+                    style={{ borderColor: 'var(--color-border)' }}>
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
                         style={{ backgroundColor: inv.card_color }}>
                         <CreditCard weight="duotone" size={12} style={{ color: '#fff' }} />
                       </div>
                       <div>
-                        <p className="text-xs font-medium text-gray-700">{inv.card_name}</p>
-                        <p className="text-[10px] text-gray-400">
+                        <p className="text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                          {inv.card_name}
+                        </p>
+                        <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
                           {new Date(inv.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}
                         </p>
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <InvoiceBadge days={inv.days_until_due} />
-                      <p className="text-xs font-semibold text-indigo-600">{fmt(inv.total_amount)}</p>
+                      <p className="text-xs font-semibold" style={{ color: 'var(--color-brand,#7C3AED)' }}>
+                        {fmt(inv.total_amount)}
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -688,27 +743,37 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Links rápidos */}
-          <div className="bg-white border border-gray-100 rounded-xl p-4"
-            style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-            <p className="text-xs font-medium text-gray-400 mb-3">Acesso rápido</p>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { label: 'Transações',    href: '/dashboard/transacoes',    icon: ListBullets },
-                { label: 'Contas',        href: '/dashboard/contas',        icon: Bank        },
-                { label: 'Cartões',       href: '/dashboard/cartoes',       icon: CreditCard  },
-                { label: 'Faturas',       href: '/dashboard/faturas',       icon: Receipt     },
-                { label: 'Investimentos', href: '/dashboard/investimentos', icon: TrendUp     },
-                { label: 'Categorias',    href: '/dashboard/categorias',    icon: Tag         },
-              ].map(link => (
-                <a key={link.href} href={link.href}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-gray-500 bg-gray-50 hover:bg-indigo-50 hover:text-indigo-600 transition-colors">
-                  <link.icon weight="duotone" size={14} />
-                  {link.label}
-                </a>
-              ))}
+          {/* 4. Investimentos — widget opcional */}
+          {patrimonioInvestido > 0 && (
+            <div className="rounded-xl px-5 py-4 border"
+              style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <TrendUp weight="duotone" size={14} style={{ color: '#a78bfa' }} />
+                  <p className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                    Patrimônio investido
+                  </p>
+                </div>
+                <button onClick={() => setInvVisivel(v => !v)}
+                  className="transition-opacity hover:opacity-70"
+                  style={{ color: 'var(--color-text-muted)' }}>
+                  {invVisivel
+                    ? <Eye weight="duotone" size={14} />
+                    : <EyeSlash weight="duotone" size={14} />
+                  }
+                </button>
+              </div>
+              <p className="text-xl font-bold mb-2" style={{ color: '#a78bfa' }}>
+                {invVisivel ? fmt(patrimonioInvestido) : '••••••'}
+              </p>
+              <a href="/dashboard/investimentos"
+                className="text-[11px] flex items-center gap-1 transition-opacity hover:opacity-70"
+                style={{ color: '#a78bfa' }}>
+                Ver investimentos <ArrowUpRight size={10} weight="bold" />
+              </a>
             </div>
-          </div>
+          )}
+
         </div>
       </div>
     </PageContainer>
