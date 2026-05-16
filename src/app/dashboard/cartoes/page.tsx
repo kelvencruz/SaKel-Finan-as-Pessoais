@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { PageContainer } from '@/components/layout/PageContainer'
+import { PageHeader } from '@/components/layout/PageHeader'
+import { CreditCard, Plus } from '@phosphor-icons/react'
 
 interface CreditCard {
   id: string
@@ -34,16 +37,18 @@ const emptyForm = {
   color: '#6366f1',
 }
 
+const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
 export default function CartoesPage() {
   const supabase = createClient()
-  const [cards, setCards] = useState<CreditCard[]>([])
-  const [accounts, setAccounts] = useState<Account[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showModal, setShowModal] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState(emptyForm)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [cards,      setCards]      = useState<CreditCard[]>([])
+  const [accounts,   setAccounts]   = useState<Account[]>([])
+  const [loading,    setLoading]    = useState(true)
+  const [showModal,  setShowModal]  = useState(false)
+  const [editingId,  setEditingId]  = useState<string | null>(null)
+  const [form,       setForm]       = useState(emptyForm)
+  const [saving,     setSaving]     = useState(false)
+  const [error,      setError]      = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   async function loadAll() {
@@ -59,48 +64,41 @@ export default function CartoesPage() {
   useEffect(() => { loadAll() }, [])
 
   function openCreate() {
-    setForm(emptyForm)
-    setEditingId(null)
-    setError(null)
-    setShowModal(true)
+    setForm(emptyForm); setEditingId(null); setError(null); setShowModal(true)
   }
 
   function openEdit(card: CreditCard) {
     setForm({
-      name: card.name,
-      limit_amount: String(card.limit_amount),
-      closing_day: String(card.closing_day),
-      due_day: String(card.due_day),
-      account_id: card.account_id ?? '',
-      color: card.color,
+      name:          card.name,
+      limit_amount:  String(card.limit_amount),
+      closing_day:   String(card.closing_day),
+      due_day:       String(card.due_day),
+      account_id:    card.account_id ?? '',
+      color:         card.color,
     })
-    setEditingId(card.id)
-    setError(null)
-    setShowModal(true)
+    setEditingId(card.id); setError(null); setShowModal(true)
   }
 
   async function handleSave() {
-    if (!form.name.trim()) { setError('Nome é obrigatório.'); return }
+    if (!form.name.trim())                          { setError('Nome é obrigatório.'); return }
     if (!form.limit_amount || parseFloat(form.limit_amount) < 0) { setError('Limite inválido.'); return }
     const closing = parseInt(form.closing_day)
-    const due = parseInt(form.due_day)
+    const due     = parseInt(form.due_day)
     if (closing < 1 || closing > 31) { setError('Dia de fechamento inválido (1-31).'); return }
-    if (due < 1 || due > 31) { setError('Dia de vencimento inválido (1-31).'); return }
+    if (due     < 1 || due     > 31) { setError('Dia de vencimento inválido (1-31).'); return }
 
-    setSaving(true)
-    setError(null)
-
+    setSaving(true); setError(null)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setError('Não autenticado.'); setSaving(false); return }
 
     const payload = {
-      user_id: user.id,
-      name: form.name.trim(),
+      user_id:      user.id,
+      name:         form.name.trim(),
       limit_amount: parseFloat(form.limit_amount),
-      closing_day: closing,
-      due_day: due,
-      account_id: form.account_id || null,
-      color: form.color,
+      closing_day:  closing,
+      due_day:      due,
+      account_id:   form.account_id || null,
+      color:        form.color,
     }
 
     if (editingId) {
@@ -111,9 +109,7 @@ export default function CartoesPage() {
       if (error) { setError(error.message); setSaving(false); return }
     }
 
-    await loadAll()
-    setShowModal(false)
-    setSaving(false)
+    await loadAll(); setShowModal(false); setSaving(false)
   }
 
   async function handleToggleActive(card: CreditCard) {
@@ -128,50 +124,48 @@ export default function CartoesPage() {
     setDeletingId(null)
   }
 
-  const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-  const activeCards = cards.filter(c => c.is_active)
+  const activeCards   = cards.filter(c => c.is_active)
   const inactiveCards = cards.filter(c => !c.is_active)
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <a href="/dashboard" className="text-sm text-gray-400 hover:text-gray-600">← Dashboard</a>
-          <h1 className="text-xl font-semibold mt-1">Cartões de Crédito</h1>
-        </div>
-        <button onClick={openCreate}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
-          + Novo Cartão
-        </button>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="Cartões de Crédito"
+        description="Gerencie seus cartões e limites"
+        action={
+          <button onClick={openCreate} className="btn-primary flex items-center gap-2 text-sm px-4 py-2 rounded-lg">
+            <Plus weight="bold" size={16} />
+            Novo Cartão
+          </button>
+        }
+      />
 
-      {/* Resumo */}
+      {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white border border-gray-100 rounded-xl p-4">
-          <p className="text-xs text-gray-400 mb-1">Total de cartões</p>
-          <p className="text-2xl font-bold text-gray-800">{activeCards.length}</p>
+        <div className="bg-[var(--bg-surface)] border border-white/5 rounded-xl p-4">
+          <p className="text-xs text-[var(--text-secondary)] mb-1">Total de cartões</p>
+          <p className="text-2xl font-bold text-[var(--text-primary)]">{activeCards.length}</p>
         </div>
-        <div className="bg-white border border-gray-100 rounded-xl p-4">
-          <p className="text-xs text-gray-400 mb-1">Limite total</p>
-          <p className="text-2xl font-bold text-indigo-600">
+        <div className="bg-[var(--bg-surface)] border border-white/5 rounded-xl p-4">
+          <p className="text-xs text-[var(--text-secondary)] mb-1">Limite total</p>
+          <p className="text-2xl font-bold text-[var(--accent-primary)]">
             {fmt(activeCards.reduce((s, c) => s + Number(c.limit_amount), 0))}
           </p>
         </div>
-        <div className="bg-white border border-gray-100 rounded-xl p-4 sm:block hidden">
-          <p className="text-xs text-gray-400 mb-1">Inativos</p>
-          <p className="text-2xl font-bold text-gray-400">{inactiveCards.length}</p>
+        <div className="bg-[var(--bg-surface)] border border-white/5 rounded-xl p-4 sm:block hidden">
+          <p className="text-xs text-[var(--text-secondary)] mb-1">Inativos</p>
+          <p className="text-2xl font-bold text-[var(--text-secondary)]">{inactiveCards.length}</p>
         </div>
       </div>
 
       {/* Lista */}
       {loading ? (
-        <p className="text-gray-400 text-sm">Carregando...</p>
+        <p className="text-[var(--text-secondary)] text-sm">Carregando...</p>
       ) : cards.length === 0 ? (
-        <div className="bg-white border border-dashed border-gray-200 rounded-xl p-10 text-center">
-          <p className="text-4xl mb-3">💳</p>
-          <p className="text-gray-400 text-sm">Nenhum cartão cadastrado ainda.</p>
-          <button onClick={openCreate} className="mt-3 text-indigo-600 text-sm hover:underline">
+        <div className="bg-[var(--bg-surface)] border border-dashed border-white/10 rounded-xl p-10 text-center">
+          <CreditCard weight="duotone" size={40} className="mx-auto mb-3 text-[var(--text-secondary)]" />
+          <p className="text-[var(--text-secondary)] text-sm">Nenhum cartão cadastrado ainda.</p>
+          <button onClick={openCreate} className="mt-3 text-[var(--accent-primary)] text-sm hover:underline">
             Adicionar primeiro cartão
           </button>
         </div>
@@ -179,51 +173,53 @@ export default function CartoesPage() {
         <div className="space-y-3">
           {cards.map(card => (
             <div key={card.id}
-              className={`bg-white border rounded-xl p-5 flex items-center gap-4 transition-opacity ${!card.is_active ? 'opacity-50' : 'border-gray-100'}`}>
-              {/* Cartão visual */}
-              <div className="w-14 h-10 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-sm"
+              className={`bg-[var(--bg-surface)] border rounded-xl p-5 flex items-center gap-4 transition-opacity ${
+                !card.is_active ? 'opacity-50 border-white/5' : 'border-white/5'
+              }`}>
+              {/* Visual do cartão */}
+              <div className="w-14 h-10 rounded-lg flex items-center justify-center text-white flex-shrink-0 shadow-sm"
                 style={{ backgroundColor: card.color }}>
-                💳
+                <CreditCard weight="duotone" size={22} />
               </div>
-
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="font-semibold text-gray-800">{card.name}</p>
+                  <p className="font-semibold text-[var(--text-primary)]">{card.name}</p>
                   {!card.is_active && (
-                    <span className="text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">Inativo</span>
+                    <span className="text-xs bg-white/10 text-[var(--text-secondary)] px-2 py-0.5 rounded-full">
+                      Inativo
+                    </span>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-3 mt-1">
-                  <span className="text-xs text-gray-400">
-                    Limite: <span className="text-gray-600 font-medium">{fmt(Number(card.limit_amount))}</span>
+                  <span className="text-xs text-[var(--text-secondary)]">
+                    Limite: <span className="text-[var(--text-primary)] font-medium">{fmt(Number(card.limit_amount))}</span>
                   </span>
-                  <span className="text-xs text-gray-400">
-                    Fecha dia <span className="text-gray-600 font-medium">{card.closing_day}</span>
+                  <span className="text-xs text-[var(--text-secondary)]">
+                    Fecha dia <span className="text-[var(--text-primary)] font-medium">{card.closing_day}</span>
                   </span>
-                  <span className="text-xs text-gray-400">
-                    Vence dia <span className="text-gray-600 font-medium">{card.due_day}</span>
+                  <span className="text-xs text-[var(--text-secondary)]">
+                    Vence dia <span className="text-[var(--text-primary)] font-medium">{card.due_day}</span>
                   </span>
                   {card.account && (
-                    <span className="text-xs text-gray-400">
-                      Conta: <span className="text-gray-600 font-medium">{card.account.name}</span>
+                    <span className="text-xs text-[var(--text-secondary)]">
+                      Conta: <span className="text-[var(--text-primary)] font-medium">{card.account.name}</span>
                     </span>
                   )}
                 </div>
               </div>
-
               {/* Ações */}
               <div className="flex gap-1 flex-shrink-0">
                 <button onClick={() => openEdit(card)}
-                  className="text-xs text-gray-400 hover:text-indigo-600 px-2 py-1 rounded hover:bg-indigo-50 transition-colors">
+                  className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent-primary)] px-2 py-1 rounded hover:bg-white/5 transition-colors">
                   Editar
                 </button>
                 <button onClick={() => handleToggleActive(card)}
-                  className="text-xs text-gray-400 hover:text-yellow-600 px-2 py-1 rounded hover:bg-yellow-50 transition-colors">
+                  className="text-xs text-[var(--text-secondary)] hover:text-[var(--warning)] px-2 py-1 rounded hover:bg-white/5 transition-colors">
                   {card.is_active ? 'Desativar' : 'Ativar'}
                 </button>
                 <button onClick={() => handleDelete(card.id)} disabled={deletingId === card.id}
-                  className="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded hover:bg-red-50 transition-colors disabled:opacity-50">
+                  className="text-xs text-[var(--text-secondary)] hover:text-[var(--danger)] px-2 py-1 rounded hover:bg-white/5 transition-colors disabled:opacity-50">
                   {deletingId === card.id ? '...' : 'Excluir'}
                 </button>
               </div>
@@ -234,60 +230,50 @@ export default function CartoesPage() {
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl">
-            <h2 className="text-lg font-semibold mb-5">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-[var(--bg-surface)] rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-5">
               {editingId ? 'Editar Cartão' : 'Novo Cartão'}
             </h2>
-
             <div className="space-y-4">
-              {/* Nome */}
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Nome do cartão</label>
+                <label className="block text-sm text-[var(--text-secondary)] mb-1">Nome do cartão</label>
                 <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
                   placeholder="Ex: Nubank, Itaú Platinum..."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
               </div>
-
-              {/* Limite */}
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Limite (R$)</label>
+                <label className="block text-sm text-[var(--text-secondary)] mb-1">Limite (R$)</label>
                 <input type="number" value={form.limit_amount} onChange={e => setForm({ ...form, limit_amount: e.target.value })}
                   placeholder="0,00" step="0.01" min="0"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
               </div>
-
-              {/* Dias */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Dia de fechamento</label>
+                  <label className="block text-sm text-[var(--text-secondary)] mb-1">Dia de fechamento</label>
                   <input type="number" value={form.closing_day} onChange={e => setForm({ ...form, closing_day: e.target.value })}
                     min="1" max="31"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Dia de vencimento</label>
+                  <label className="block text-sm text-[var(--text-secondary)] mb-1">Dia de vencimento</label>
                   <input type="number" value={form.due_day} onChange={e => setForm({ ...form, due_day: e.target.value })}
                     min="1" max="31"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
                 </div>
               </div>
-
-              {/* Conta vinculada */}
               <div>
-                <label className="block text-sm text-gray-600 mb-1">
-                  Conta para pagamento <span className="text-gray-400">(opcional)</span>
+                <label className="block text-sm text-[var(--text-secondary)] mb-1">
+                  Conta para pagamento <span className="opacity-60">(opcional)</span>
                 </label>
                 <select value={form.account_id} onChange={e => setForm({ ...form, account_id: e.target.value })}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]">
                   <option value="">Nenhuma conta vinculada</option>
                   {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </div>
-
-              {/* Cor */}
               <div>
-                <label className="block text-sm text-gray-600 mb-2">Cor do cartão</label>
+                <label className="block text-sm text-[var(--text-secondary)] mb-2">Cor do cartão</label>
                 <div className="flex gap-2 flex-wrap">
                   {COLORS.map(color => (
                     <button key={color} onClick={() => setForm({ ...form, color })}
@@ -296,30 +282,30 @@ export default function CartoesPage() {
                   ))}
                 </div>
               </div>
-
               {/* Preview */}
               <div className="rounded-xl p-4 text-white text-sm font-medium flex items-center justify-between"
                 style={{ backgroundColor: form.color }}>
-                <span>💳 {form.name || 'Nome do cartão'}</span>
+                <span className="flex items-center gap-2">
+                  <CreditCard weight="duotone" size={18} />
+                  {form.name || 'Nome do cartão'}
+                </span>
                 <span>{form.limit_amount ? fmt(parseFloat(form.limit_amount)) : 'R$ 0,00'}</span>
               </div>
-
-              {error && <p className="text-sm text-red-500">{error}</p>}
+              {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
             </div>
-
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowModal(false)}
-                className="flex-1 border border-gray-200 text-gray-600 rounded-lg py-2 text-sm hover:bg-gray-50 transition-colors">
+                className="flex-1 border border-white/10 text-[var(--text-secondary)] rounded-lg py-2 text-sm hover:bg-white/5 transition-colors">
                 Cancelar
               </button>
               <button onClick={handleSave} disabled={saving}
-                className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+                className="flex-1 btn-primary rounded-lg py-2 text-sm font-medium disabled:opacity-50 transition-colors">
                 {saving ? 'Salvando...' : editingId ? 'Salvar' : 'Adicionar'}
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }
