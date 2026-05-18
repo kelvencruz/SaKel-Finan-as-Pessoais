@@ -21,7 +21,7 @@ export function LevelUpModal({ level, levelName, onDone }: LevelUpModalProps) {
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center px-4"
-      style={{ background: 'rgba(0,0,0,0.6)' }}>
+      style={{ background: 'rgba(15, 23, 42, 0.85)' }}>
       <div
         className="rounded-2xl p-8 text-center max-w-xs w-full animate-bounce-in"
         style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
