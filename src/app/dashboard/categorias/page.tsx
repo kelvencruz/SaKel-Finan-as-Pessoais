@@ -346,7 +346,7 @@ export default function CategoriasPage() {
       {/* ── Modal Categoria ─────────────────────────────────────────────── */}
       {showModal && (
         <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)' }} onClick={() => setShowModal(false)}>
-          <div className="bg-bg-surface rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: '#1E293B' }} onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold text-text-primary mb-5">
               {editingId ? 'Editar Categoria' : 'Nova Categoria'}
             </h2>
@@ -436,7 +436,7 @@ export default function CategoriasPage() {
       {/* ── Modal Objetivo ───────────────────────────────────────────────── */}
       {showGoalModal && (
         <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)' }} onClick={() => setShowGoalModal(false)}>
-          <div className="bg-bg-surface rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: '#1E293B' }} onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold text-text-primary mb-5">
               {editingGoalId ? 'Editar Objetivo' : 'Novo Objetivo'}
             </h2>
