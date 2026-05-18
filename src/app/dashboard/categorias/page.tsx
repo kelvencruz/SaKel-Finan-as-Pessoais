@@ -346,8 +346,7 @@ export default function CategoriasPage() {
       {/* ── Modal Categoria ─────────────────────────────────────────────── */}
       {showModal && (
         <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)' }} onClick={() => setShowModal(false)}>
-          <div className="bg-bg-surface rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto">
-          <div className="bg-bg-surface rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}></div>
+          <div className="bg-bg-surface rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold text-text-primary mb-5">
               {editingId ? 'Editar Categoria' : 'Nova Categoria'}
             </h2>
@@ -358,7 +357,6 @@ export default function CategoriasPage() {
                   placeholder="Ex: Aporte, Reserva, Ações..."
                   className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
               </div>
-
               <div>
                 <label className="block text-sm text-text-secondary mb-1">Tipo</label>
                 <div className="flex gap-2">
@@ -379,8 +377,6 @@ export default function CategoriasPage() {
                   ))}
                 </div>
               </div>
-
-              {/* Ícone — category_icon, exceção permitida */}
               <div>
                 <label className="block text-sm text-text-secondary mb-2">Ícone</label>
                 <div className="flex gap-2 flex-wrap">
@@ -399,7 +395,6 @@ export default function CategoriasPage() {
                   placeholder="Ou digite um emoji personalizado…" maxLength={4}
                   className="mt-2 w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
               </div>
-
               <div>
                 <label className="block text-sm text-text-secondary mb-2">Cor</label>
                 <div className="flex gap-2 flex-wrap">
@@ -410,8 +405,6 @@ export default function CategoriasPage() {
                   ))}
                 </div>
               </div>
-
-              {/* Preview */}
               <div className="bg-bg rounded-lg p-3 flex items-center gap-3 border border-white/5">
                 <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
                   style={{ backgroundColor: form.color + '22', border: `2px solid ${form.color}55` }}>
@@ -424,7 +417,6 @@ export default function CategoriasPage() {
                   </p>
                 </div>
               </div>
-
               {error && <p className="text-sm text-danger">{error}</p>}
             </div>
             <div className="flex gap-3 mt-6">
@@ -443,9 +435,8 @@ export default function CategoriasPage() {
 
       {/* ── Modal Objetivo ───────────────────────────────────────────────── */}
       {showGoalModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)' }} onClick={() => setShowModal(false)}>
-          <div className="bg-bg-surface rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto">
-          <div className="bg-bg-surface rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}></div>
+        <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)' }} onClick={() => setShowGoalModal(false)}>
+          <div className="bg-bg-surface rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold text-text-primary mb-5">
               {editingGoalId ? 'Editar Objetivo' : 'Novo Objetivo'}
             </h2>
@@ -456,8 +447,6 @@ export default function CategoriasPage() {
                   placeholder="Ex: Reserva de emergência, Carro, Viagem..."
                   className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
               </div>
-
-              {/* Ícone do objetivo — category_icon, exceção permitida */}
               <div>
                 <label className="block text-sm text-text-secondary mb-2">Ícone</label>
                 <div className="flex gap-2 flex-wrap">
@@ -473,7 +462,6 @@ export default function CategoriasPage() {
                   ))}
                 </div>
               </div>
-
               <div>
                 <label className="block text-sm text-text-secondary mb-2">Cor</label>
                 <div className="flex gap-2 flex-wrap">
@@ -484,7 +472,6 @@ export default function CategoriasPage() {
                   ))}
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-text-secondary mb-1">
@@ -502,8 +489,6 @@ export default function CategoriasPage() {
                     className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary" />
                 </div>
               </div>
-
-              {/* Preview */}
               <div className="bg-bg rounded-lg p-3 flex items-center gap-3 border border-white/5">
                 <div className="w-11 h-11 rounded-full flex items-center justify-center text-xl shrink-0"
                   style={{ backgroundColor: goalForm.color + '22', border: `2px solid ${goalForm.color}55` }}>
@@ -519,7 +504,6 @@ export default function CategoriasPage() {
                   )}
                 </div>
               </div>
-
               {goalError && <p className="text-sm text-danger">{goalError}</p>}
             </div>
             <div className="flex gap-3 mt-6">
