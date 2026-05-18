@@ -264,8 +264,7 @@ export default function ContasPage() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)' }} onClick={() => setShowModal(false)}>
-          <div className="bg-[var(--bg-surface)] rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5" onClick={(e) => e.stopPropagation()}></div>
-          <div className="bg-[var(--bg-surface)] rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5">
+          <div className="bg-[var(--bg-surface)] rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-5">
               {editingId ? 'Editar Conta' : 'Nova Conta'}
             </h2>
@@ -325,7 +324,7 @@ export default function ContasPage() {
               {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
             </div>
             <div className="flex gap-3 mt-6">
-              <button onClick={(e) => e.stopPropagation()}
+              <button onClick={() => setShowModal(false)}
                 className="flex-1 border border-white/10 text-[var(--text-secondary)] rounded-lg py-2 text-sm hover:bg-white/5 transition-colors">
                 Cancelar
               </button>

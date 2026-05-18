@@ -489,69 +489,66 @@ export default function InvestimentosPage() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)' }} onClick={() => setShowModal(false)}>
-          <div className="rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/10 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: '#1E293B' }} onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[var(--bg-surface)] rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/10 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold text-text-primary">
+              <h2 className="text-lg font-semibold text-[var(--text-primary)]">
                 {editingId ? 'Editar Investimento' : 'Novo Investimento'}
               </h2>
               <button onClick={() => setShowModal(false)}
-                className="text-text-secondary hover:text-text-primary transition-colors">
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
                 <X size={20} weight="bold" />
               </button>
             </div>
 
             <div className="space-y-4">
-              {/* Nome */}
               <div>
-                <label className="block text-sm text-text-secondary mb-1">Nome</label>
+                <label className="block text-sm text-[var(--text-secondary)] mb-1">Nome</label>
                 <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
                   placeholder="Ex: Tesouro Selic 2029, PETR4..."
-                  className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
               </div>
 
-              {/* Tipo + Instituição */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">Tipo</label>
+                  <label className="block text-sm text-[var(--text-secondary)] mb-1">Tipo</label>
                   <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}
-                    className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary">
+                    className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]">
                     {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">Instituição</label>
+                  <label className="block text-sm text-[var(--text-secondary)] mb-1">Instituição</label>
                   <input type="text" value={form.institution} onChange={e => setForm({ ...form, institution: e.target.value })}
                     placeholder="Ex: XP, Nubank..."
-                    className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+                    className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
                 </div>
               </div>
 
-              {/* Objetivo */}
               <div>
-                <label className="block text-sm text-text-secondary mb-1">Objetivo</label>
+                <label className="block text-sm text-[var(--text-secondary)] mb-1">Objetivo</label>
                 {!showNewGoal ? (
                   <div className="flex gap-2">
                     <select value={form.goal_id} onChange={e => setForm({ ...form, goal_id: e.target.value })}
-                      className="flex-1 bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary">
+                      className="flex-1 bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]">
                       <option value="">Sem objetivo</option>
                       {goals.map(g => (
                         <option key={g.id} value={g.id}>{g.icon} {g.name}</option>
                       ))}
                     </select>
                     <button onClick={() => setShowNewGoal(true)}
-                      className="px-3 py-2 rounded-lg border border-dashed border-accent-primary/40 text-accent-primary text-xs hover:bg-accent-primary/10 transition-colors whitespace-nowrap">
+                      className="px-3 py-2 rounded-lg border border-dashed border-[var(--accent-primary)] text-[var(--accent-primary)] text-xs hover:bg-[var(--accent-primary)]/10 transition-colors whitespace-nowrap">
                       + Novo
                     </button>
                   </div>
                 ) : (
-                  <div className="border border-accent-primary/20 rounded-xl p-3 space-y-2 bg-accent-primary/5">
-                    <p className="text-xs font-medium text-accent-primary">Novo objetivo</p>
+                  <div className="border border-[var(--accent-primary)]/20 rounded-xl p-3 space-y-2 bg-[var(--accent-primary)]/5">
+                    <p className="text-xs font-medium text-[var(--accent-primary)]">Novo objetivo</p>
                     <input type="text" value={goalForm.name} onChange={e => setGoalForm({ ...goalForm, name: e.target.value })}
                       placeholder="Nome do objetivo"
-                      className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+                      className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
                     <div className="flex gap-2">
                       <div className="flex-1">
-                        <p className="text-xs text-text-secondary mb-1 flex items-center gap-1">
+                        <p className="text-xs text-[var(--text-secondary)] mb-1 flex items-center gap-1">
                           <Target size={10} weight="duotone" /> Ícone
                         </p>
                         <div className="flex flex-wrap gap-1">
@@ -559,7 +556,7 @@ export default function InvestimentosPage() {
                             <button key={icon} onClick={() => setGoalForm({ ...goalForm, icon })}
                               className={`w-7 h-7 rounded-lg text-sm flex items-center justify-center transition-colors ${
                                 goalForm.icon === icon
-                                  ? 'bg-accent-primary/20 ring-2 ring-accent-primary'
+                                  ? 'bg-[var(--accent-primary)]/20 ring-2 ring-[var(--accent-primary)]'
                                   : 'hover:bg-white/10'
                               }`}>
                               {icon}
@@ -568,7 +565,7 @@ export default function InvestimentosPage() {
                         </div>
                       </div>
                       <div>
-                        <p className="text-xs text-text-secondary mb-1 flex items-center gap-1">
+                        <p className="text-xs text-[var(--text-secondary)] mb-1 flex items-center gap-1">
                           <Palette size={10} weight="duotone" /> Cor
                         </p>
                         <input type="color" value={goalForm.color} onChange={e => setGoalForm({ ...goalForm, color: e.target.value })}
@@ -577,11 +574,11 @@ export default function InvestimentosPage() {
                     </div>
                     <div className="flex gap-2">
                       <button onClick={() => setShowNewGoal(false)}
-                        className="flex-1 border border-white/10 text-text-secondary rounded-lg py-1.5 text-xs hover:bg-white/5">
+                        className="flex-1 border border-white/10 text-[var(--text-secondary)] rounded-lg py-1.5 text-xs hover:bg-white/5">
                         Cancelar
                       </button>
                       <button onClick={handleSaveGoal} disabled={savingGoal || !goalForm.name.trim()}
-                        className="flex-1 bg-accent-primary text-white rounded-lg py-1.5 text-xs font-medium hover:opacity-90 disabled:opacity-50">
+                        className="flex-1 bg-[var(--accent-primary)] text-white rounded-lg py-1.5 text-xs font-medium hover:opacity-90 disabled:opacity-50">
                         {savingGoal ? 'Salvando...' : 'Criar objetivo'}
                       </button>
                     </div>
@@ -589,74 +586,69 @@ export default function InvestimentosPage() {
                 )}
               </div>
 
-              {/* Valores */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">Valor inicial (R$)</label>
+                  <label className="block text-sm text-[var(--text-secondary)] mb-1">Valor inicial (R$)</label>
                   <input type="number" value={form.initial_amount} onChange={e => setForm({ ...form, initial_amount: e.target.value })}
                     placeholder="0,00" step="0.01" min="0"
-                    className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+                    className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
                 </div>
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">Valor atual (R$)</label>
+                  <label className="block text-sm text-[var(--text-secondary)] mb-1">Valor atual (R$)</label>
                   <input type="number" value={form.current_amount} onChange={e => setForm({ ...form, current_amount: e.target.value })}
                     placeholder="0,00" step="0.01" min="0"
-                    className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+                    className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
                 </div>
               </div>
 
-              {/* Rentabilidade */}
               <div>
-                <label className="block text-sm text-text-secondary mb-1">
-                  Rentabilidade <span className="text-text-secondary/50">(opcional)</span>
+                <label className="block text-sm text-[var(--text-secondary)] mb-1">
+                  Rentabilidade <span className="opacity-50">(opcional)</span>
                 </label>
                 <input type="text" value={form.profitability} onChange={e => setForm({ ...form, profitability: e.target.value })}
                   placeholder="Ex: 110% CDI, IPCA + 6%, 12% a.a., Variável"
-                  className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
               </div>
 
-              {/* Liquidez */}
               <div>
-                <label className="block text-sm text-text-secondary mb-1">Liquidez</label>
+                <label className="block text-sm text-[var(--text-secondary)] mb-1">Liquidez</label>
                 <select value={form.liquidity_type} onChange={e => setForm({ ...form, liquidity_type: e.target.value, liquidity_date: '' })}
-                  className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary">
+                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]">
                   <option value="daily">Liquidez diária</option>
                   <option value="fixed_date">Data de vencimento</option>
                   <option value="none">Sem liquidez</option>
                 </select>
                 {form.liquidity_type === 'fixed_date' && (
                   <input type="date" value={form.liquidity_date} onChange={e => setForm({ ...form, liquidity_date: e.target.value })}
-                    className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary mt-2" />
+                    className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] mt-2" />
                 )}
               </div>
 
-              {/* Data início */}
               <div>
-                <label className="block text-sm text-text-secondary mb-1">Data de início</label>
+                <label className="block text-sm text-[var(--text-secondary)] mb-1">Data de início</label>
                 <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })}
-                  className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
               </div>
 
-              {/* Observações */}
               <div>
-                <label className="block text-sm text-text-secondary mb-1">
-                  Observações <span className="text-text-secondary/50">(opcional)</span>
+                <label className="block text-sm text-[var(--text-secondary)] mb-1">
+                  Observações <span className="opacity-50">(opcional)</span>
                 </label>
                 <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
                   rows={2} placeholder="Notas adicionais..."
-                  className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary resize-none" />
+                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] resize-none" />
               </div>
 
-              {error && <p className="text-sm text-danger">{error}</p>}
+              {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
             </div>
 
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowModal(false)}
-                className="flex-1 border border-white/10 text-text-secondary rounded-lg py-2 text-sm hover:bg-white/5 transition-colors">
+                className="flex-1 border border-white/10 text-[var(--text-secondary)] rounded-lg py-2 text-sm hover:bg-white/5 transition-colors">
                 Cancelar
               </button>
               <button onClick={handleSave} disabled={saving}
-                className="flex-1 bg-accent-primary text-white rounded-lg py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity">
+                className="flex-1 bg-[var(--accent-primary)] text-white rounded-lg py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity">
                 {saving ? 'Salvando...' : editingId ? 'Salvar' : 'Cadastrar'}
               </button>
             </div>

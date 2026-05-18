@@ -346,19 +346,19 @@ export default function CategoriasPage() {
       {/* ── Modal Categoria ─────────────────────────────────────────────── */}
       {showModal && (
         <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)' }} onClick={() => setShowModal(false)}>
-          <div className="rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: '#1E293B' }} onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold text-text-primary mb-5">
+          <div className="bg-[var(--bg-surface)] rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-5">
               {editingId ? 'Editar Categoria' : 'Nova Categoria'}
             </h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-text-secondary mb-1">Nome</label>
+                <label className="block text-sm text-[var(--text-secondary)] mb-1">Nome</label>
                 <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
                   placeholder="Ex: Aporte, Reserva, Ações..."
-                  className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
               </div>
               <div>
-                <label className="block text-sm text-text-secondary mb-1">Tipo</label>
+                <label className="block text-sm text-[var(--text-secondary)] mb-1">Tipo</label>
                 <div className="flex gap-2">
                   {([
                     { v: 'expense'    as const, label: 'Despesa',      Icon: ArrowDown },
@@ -369,7 +369,7 @@ export default function CategoriasPage() {
                       className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
                         form.type === t.v
                           ? typeActiveClass(t.v)
-                          : 'border border-white/10 text-text-secondary hover:bg-white/5'
+                          : 'border border-white/10 text-[var(--text-secondary)] hover:bg-white/5'
                       }`}>
                       <t.Icon weight="duotone" size={13} />
                       {t.label}
@@ -378,13 +378,13 @@ export default function CategoriasPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm text-text-secondary mb-2">Ícone</label>
+                <label className="block text-sm text-[var(--text-secondary)] mb-2">Ícone</label>
                 <div className="flex gap-2 flex-wrap">
                   {ICONS.map(icon => (
                     <button key={icon} onClick={() => setForm({ ...form, icon, customIcon: '' })}
                       className={`w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all ${
                         form.icon === icon && !form.customIcon
-                          ? 'bg-accent-primary/20 ring-2 ring-accent-primary scale-110'
+                          ? 'bg-[var(--accent-primary)]/20 ring-2 ring-[var(--accent-primary)] scale-110'
                           : 'bg-white/5 hover:bg-white/10'
                       }`}>
                       {icon}
@@ -393,10 +393,10 @@ export default function CategoriasPage() {
                 </div>
                 <input type="text" value={form.customIcon} onChange={e => setForm({ ...form, customIcon: e.target.value })}
                   placeholder="Ou digite um emoji personalizado…" maxLength={4}
-                  className="mt-2 w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+                  className="mt-2 w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
               </div>
               <div>
-                <label className="block text-sm text-text-secondary mb-2">Cor</label>
+                <label className="block text-sm text-[var(--text-secondary)] mb-2">Cor</label>
                 <div className="flex gap-2 flex-wrap">
                   {COLORS.map(color => (
                     <button key={color} onClick={() => setForm({ ...form, color })}
@@ -405,23 +405,23 @@ export default function CategoriasPage() {
                   ))}
                 </div>
               </div>
-              <div className="bg-bg rounded-lg p-3 flex items-center gap-3 border border-white/5">
+              <div className="bg-[var(--bg)] rounded-lg p-3 flex items-center gap-3 border border-white/5">
                 <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
                   style={{ backgroundColor: form.color + '22', border: `2px solid ${form.color}55` }}>
                   {activeIcon}
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-text-primary">{form.name || 'Prévia da categoria'}</p>
-                  <p className="text-xs text-text-secondary">
+                  <p className="text-sm font-medium text-[var(--text-primary)]">{form.name || 'Prévia da categoria'}</p>
+                  <p className="text-xs text-[var(--text-secondary)]">
                     {form.type === 'expense' ? 'Despesa' : form.type === 'income' ? 'Receita' : 'Investimento'}
                   </p>
                 </div>
               </div>
-              {error && <p className="text-sm text-danger">{error}</p>}
+              {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowModal(false)}
-                className="flex-1 border border-white/10 text-text-secondary rounded-lg py-2 text-sm hover:bg-white/5 transition-colors">
+                className="flex-1 border border-white/10 text-[var(--text-secondary)] rounded-lg py-2 text-sm hover:bg-white/5 transition-colors">
                 Cancelar
               </button>
               <button onClick={handleSave} disabled={saving}
@@ -436,25 +436,25 @@ export default function CategoriasPage() {
       {/* ── Modal Objetivo ───────────────────────────────────────────────── */}
       {showGoalModal && (
         <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)' }} onClick={() => setShowGoalModal(false)}>
-          <div className="rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: '#1E293B' }} onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold text-text-primary mb-5">
+          <div className="bg-[var(--bg-surface)] rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-5">
               {editingGoalId ? 'Editar Objetivo' : 'Novo Objetivo'}
             </h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-text-secondary mb-1">Nome do objetivo</label>
+                <label className="block text-sm text-[var(--text-secondary)] mb-1">Nome do objetivo</label>
                 <input type="text" value={goalForm.name} onChange={e => setGoalForm({ ...goalForm, name: e.target.value })}
                   placeholder="Ex: Reserva de emergência, Carro, Viagem..."
-                  className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
               </div>
               <div>
-                <label className="block text-sm text-text-secondary mb-2">Ícone</label>
+                <label className="block text-sm text-[var(--text-secondary)] mb-2">Ícone</label>
                 <div className="flex gap-2 flex-wrap">
                   {GOAL_ICONS.map(icon => (
                     <button key={icon} onClick={() => setGoalForm({ ...goalForm, icon })}
                       className={`w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all ${
                         goalForm.icon === icon
-                          ? 'bg-accent-primary/20 ring-2 ring-accent-primary scale-110'
+                          ? 'bg-[var(--accent-primary)]/20 ring-2 ring-[var(--accent-primary)] scale-110'
                           : 'bg-white/5 hover:bg-white/10'
                       }`}>
                       {icon}
@@ -463,7 +463,7 @@ export default function CategoriasPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm text-text-secondary mb-2">Cor</label>
+                <label className="block text-sm text-[var(--text-secondary)] mb-2">Cor</label>
                 <div className="flex gap-2 flex-wrap">
                   {COLORS.map(color => (
                     <button key={color} onClick={() => setGoalForm({ ...goalForm, color })}
@@ -474,41 +474,41 @@ export default function CategoriasPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">
+                  <label className="block text-sm text-[var(--text-secondary)] mb-1">
                     Valor meta (R$) <span className="opacity-60">opcional</span>
                   </label>
                   <input type="number" value={goalForm.target_amount} onChange={e => setGoalForm({ ...goalForm, target_amount: e.target.value })}
                     placeholder="0,00" min="0" step="0.01"
-                    className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+                    className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
                 </div>
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">
+                  <label className="block text-sm text-[var(--text-secondary)] mb-1">
                     Data alvo <span className="opacity-60">opcional</span>
                   </label>
                   <input type="date" value={goalForm.target_date} onChange={e => setGoalForm({ ...goalForm, target_date: e.target.value })}
-                    className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+                    className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
                 </div>
               </div>
-              <div className="bg-bg rounded-lg p-3 flex items-center gap-3 border border-white/5">
+              <div className="bg-[var(--bg)] rounded-lg p-3 flex items-center gap-3 border border-white/5">
                 <div className="w-11 h-11 rounded-full flex items-center justify-center text-xl shrink-0"
                   style={{ backgroundColor: goalForm.color + '22', border: `2px solid ${goalForm.color}55` }}>
                   {goalForm.icon}
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-text-primary">{goalForm.name || 'Prévia do objetivo'}</p>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">{goalForm.name || 'Prévia do objetivo'}</p>
                   {goalForm.target_amount && (
-                    <p className="text-xs text-text-secondary">
+                    <p className="text-xs text-[var(--text-secondary)]">
                       Meta: {parseFloat(goalForm.target_amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                       {goalForm.target_date ? ` · ${new Date(goalForm.target_date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
                     </p>
                   )}
                 </div>
               </div>
-              {goalError && <p className="text-sm text-danger">{goalError}</p>}
+              {goalError && <p className="text-sm text-[var(--danger)]">{goalError}</p>}
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowGoalModal(false)}
-                className="flex-1 border border-white/10 text-text-secondary rounded-lg py-2 text-sm hover:bg-white/5 transition-colors">
+                className="flex-1 border border-white/10 text-[var(--text-secondary)] rounded-lg py-2 text-sm hover:bg-white/5 transition-colors">
                 Cancelar
               </button>
               <button onClick={handleSaveGoal} disabled={savingGoal}
