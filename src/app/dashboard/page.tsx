@@ -71,6 +71,35 @@ function occurrencesInWindow(nextDueDate: string, frequency: string, horizonDate
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Tooltip customizado — fix dark mode (BUG-DARK-MODE-TEXT)
+// O Recharts ignora `color` do contentStyle para texto interno;
+// usar `content` prop com componente próprio é a única solução confiável.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ChartTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null
+  return (
+    <div style={{
+      background:   'var(--color-surface)',
+      border:       '1px solid var(--color-border)',
+      borderRadius: 8,
+      padding:      '6px 10px',
+      fontSize:     12,
+      color:        'var(--color-text-primary)',
+    }}>
+      {label && (
+        <p style={{ color: 'var(--color-text-muted)', marginBottom: 2 }}>{label}</p>
+      )}
+      {payload.map((entry: any, i: number) => (
+        <p key={i} style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>
+          {entry.name ? `${entry.name}: ` : ''}{fmt(Number(entry.value))}
+        </p>
+      ))}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Sub-componentes utilitários
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -268,7 +297,6 @@ export default function DashboardPage() {
       )
 
       // ── Transações do mês (KPIs receita/despesa) ─────────────
-      // Ledger apenas: CONFIRMED + OVERDUE
       const { data: txMes, error: txErr } = await supabase
         .from('transactions')
         .select('type, amount')
@@ -306,7 +334,6 @@ export default function DashboardPage() {
       }))
 
       // ── Categorias base (para últimas transações e catIcons) ──
-      // Mantido para o bloco de últimas transações — catNameMap e catIconMap
       const { data: cats } = await supabase
         .from('categories')
         .select('id, name, icon')
@@ -560,18 +587,7 @@ export default function DashboardPage() {
                   tickFormatter={fmtK}
                   axisLine={false} tickLine={false}
                 />
-                <Tooltip
-                    formatter={(v: number | string) => fmt(Number(v))}
-                    contentStyle={{
-                      background:   'var(--color-surface)',
-                      border:       '1px solid var(--color-border)',
-                      borderRadius: 8,
-                      fontSize:     12,
-                      color:        'var(--color-text-primary)',
-                    }}
-                    labelStyle={{ color: 'var(--color-text-primary)' }}
-                    itemStyle={{  color: 'var(--color-text-primary)' }}
-                  />
+                <Tooltip content={<ChartTooltip />} />
                 <Line
                   type="monotone" dataKey="saldo"
                   stroke="var(--color-brand,#7C3AED)" strokeWidth={2.5}
@@ -600,16 +616,7 @@ export default function DashboardPage() {
                     <Pie data={catSlices} cx="50%" cy="50%" innerRadius={44} outerRadius={68} dataKey="value">
                       {catSlices.map((_, i) => <Cell key={i} fill={SLICE_COLORS[i % SLICE_COLORS.length]} />)}
                     </Pie>
-                    <Tooltip
-                      formatter={(v: number | string) => fmt(Number(v))}
-                      contentStyle={{
-                        background:   'var(--color-surface)',
-                        border:       '1px solid var(--color-border)',
-                        borderRadius: 8,
-                        fontSize:     12,
-                        color:        'var(--color-text-primary)',
-                      }}
-                    />
+                    <Tooltip content={<ChartTooltip />} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="flex-1 space-y-2.5">
