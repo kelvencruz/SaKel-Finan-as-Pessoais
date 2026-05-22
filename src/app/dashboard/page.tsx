@@ -561,15 +561,17 @@ export default function DashboardPage() {
                   axisLine={false} tickLine={false}
                 />
                 <Tooltip
-                  formatter={(v: number | string) => [fmt(Number(v)), 'Saldo']}
-                  contentStyle={{
-                    background:   'var(--color-surface)',
-                    border:       '1px solid var(--color-border)',
-                    borderRadius: 8,
-                    fontSize:     12,
-                    color:        'var(--color-text-primary)',
-                  }}
-                />
+                    formatter={(v: number | string) => fmt(Number(v))}
+                    contentStyle={{
+                      background:   'var(--color-surface)',
+                      border:       '1px solid var(--color-border)',
+                      borderRadius: 8,
+                      fontSize:     12,
+                      color:        'var(--color-text-primary)',
+                    }}
+                    labelStyle={{ color: 'var(--color-text-primary)' }}
+                    itemStyle={{  color: 'var(--color-text-primary)' }}
+                  />
                 <Line
                   type="monotone" dataKey="saldo"
                   stroke="var(--color-brand,#7C3AED)" strokeWidth={2.5}
