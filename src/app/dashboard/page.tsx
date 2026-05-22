@@ -15,15 +15,19 @@ import {
 import { PageContainer }   from '@/components/layout/PageContainer'
 import { usePrivacyStore } from '@/stores/usePrivacyStore'
 import { PrivateValue }    from '@/components/ui/PrivateValue'
+import {
+  getMonthRange,
+  getCurrentMonthKey,
+  getLedgerStatuses,
+  UNCATEGORIZED_LABEL,
+  type CatSlice,
+} from '@/lib/financialEngine'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-type LifecycleStatus = 'CONFIRMED' | 'PENDING_EXPECTED' | 'PENDING_REVIEW' | 'OVERDUE' | 'CANCELLED'
-
 interface MonthLine    { mes: string; saldo: number }
-interface CatSlice     { name: string; value: number }
 interface InvoiceDue   { id: string; card_name: string; card_color: string; due_date: string; total_amount: number; days_until_due: number }
 interface ProjecaoItem { label: string; value: number; color: string; sign: string }
 interface RecentTx     { id: string; description: string; amount: number; type: 'income' | 'expense' | 'transfer'; category_name?: string; category_icon?: string; date: string }
@@ -32,9 +36,8 @@ interface RecentTx     { id: string; description: string; amount: number; type: 
 // Constantes
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SLICE_COLORS        = ['#7C3AED', '#f97316', '#22c55e', '#f59e0b', '#3b82f6', '#ec4899']
-const MONTH_NAMES         = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-const CONFIRMED_STATUSES: LifecycleStatus[] = ['CONFIRMED']
+const SLICE_COLORS = ['#7C3AED', '#f97316', '#22c55e', '#f59e0b', '#3b82f6', '#ec4899']
+const MONTH_NAMES  = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -206,11 +209,14 @@ export default function DashboardPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/auth/login'; return }
 
-      const now       = new Date()
-      const year      = now.getFullYear()
-      const month     = now.getMonth()
-      const inicioMes = `${year}-${String(month + 1).padStart(2, '0')}-01`
-      const fimMes    = new Date(year, month + 1, 0).toISOString().split('T')[0]
+      const now    = new Date()
+      const year   = now.getFullYear()
+      const month  = now.getMonth()
+
+      // ── Datas do mês — UTC-safe via financialEngine ──────────
+      const { inicioMes, fimMes } = getMonthRange(year, month)
+      const monthKey = getCurrentMonthKey()
+
       const hoje      = now.toISOString().split('T')[0]
       const limit30   = new Date(now); limit30.setDate(limit30.getDate() + 30)
       const horizon30 = limit30.toISOString().split('T')[0]
@@ -261,17 +267,18 @@ export default function DashboardPage() {
           }))
       )
 
-      // ── Transações do mês ────────────────────────────────────
+      // ── Transações do mês (KPIs receita/despesa) ─────────────
+      // Ledger apenas: CONFIRMED + OVERDUE
       const { data: txMes, error: txErr } = await supabase
         .from('transactions')
-        .select('type, amount, category_id')
+        .select('type, amount')
         .eq('user_id', user.id)
         .gte('date', inicioMes).lte('date', fimMes)
-        .in('lifecycle_status', CONFIRMED_STATUSES)
+        .in('lifecycle_status', getLedgerStatuses())
         .in('type', ['income', 'expense'])
       if (txErr) throw txErr
 
-      const txArr      = (txMes ?? []) as { type: string; amount: number; category_id: string | null }[]
+      const txArr      = (txMes ?? []) as { type: string; amount: number }[]
       const recMesVal  = txArr.filter(t => t.type === 'income').reduce((s, t)  => s + Number(t.amount), 0)
       const despMesVal = txArr.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
       setRecMes(recMesVal)
@@ -287,7 +294,7 @@ export default function DashboardPage() {
         .select('type, amount, date')
         .eq('user_id', user.id)
         .gte('date', meses[0].key + '-01')
-        .in('lifecycle_status', CONFIRMED_STATUSES)
+        .in('lifecycle_status', getLedgerStatuses())
         .in('type', ['income', 'expense'])
       const histArr = (txHist ?? []) as { type: string; amount: number; date: string }[]
 
@@ -298,17 +305,39 @@ export default function DashboardPage() {
         return { mes: label, saldo: rec - desp }
       }))
 
-      // ── Categorias ───────────────────────────────────────────
-      const { data: cats } = await supabase.from('categories').select('id, name').eq('user_id', user.id)
-      const catNameMap = Object.fromEntries(((cats ?? []) as { id: string; name: string }[]).map(c => [c.id, c.name]))
-      const catMap2: Record<string, number> = {}
-      txArr.filter(t => t.type === 'expense').forEach(t => {
-        const k = t.category_id ? (catNameMap[t.category_id] ?? 'Outros') : 'Outros'
-        catMap2[k] = (catMap2[k] ?? 0) + Number(t.amount)
-      })
+      // ── Categorias base (para últimas transações e catIcons) ──
+      // Mantido para o bloco de últimas transações — catNameMap e catIconMap
+      const { data: cats } = await supabase
+        .from('categories')
+        .select('id, name, icon')
+        .eq('user_id', user.id)
+
+      const catNameMap = Object.fromEntries(
+        ((cats ?? []) as { id: string; name: string }[]).map(c => [c.id, c.name])
+      )
+      const catIconMap = Object.fromEntries(
+        ((cats ?? []) as { id: string; icon?: string }[]).map(c => [c.id, c])
+      )
+
+      // ── Categorias — view SQL (source of truth, BUG-CHART-FILTER) ──
+      const { data: catData } = await supabase
+        .from('expenses_by_category')
+        .select('category_id, category_name, total_amount')
+        .eq('user_id', user.id)
+        .eq('month_key', monthKey)
+        .order('total_amount', { ascending: false })
+        .limit(6)
+
       setCatSlices(
-        Object.entries(catMap2).map(([name, value]) => ({ name, value }))
-          .sort((a, b) => b.value - a.value).slice(0, 6)
+        ((catData ?? []) as {
+          category_id:   string | null
+          category_name: string | null
+          total_amount:  number
+        }[]).map((row): CatSlice => ({
+          categoryId: row.category_id,
+          name:       row.category_name ?? UNCATEGORIZED_LABEL,
+          value:      Number(row.total_amount),
+        }))
       )
 
       // ── Últimas transações ───────────────────────────────────
@@ -316,13 +345,10 @@ export default function DashboardPage() {
         .from('transactions')
         .select('id, type, description, amount, date, category_id')
         .eq('user_id', user.id)
-        .in('lifecycle_status', CONFIRMED_STATUSES)
+        .in('lifecycle_status', getLedgerStatuses())
         .order('date', { ascending: false })
         .limit(5)
 
-      const catIconMap = Object.fromEntries(
-        ((cats ?? []) as { id: string; name: string; icon?: string }[]).map(c => [c.id, c])
-      )
       setRecentTxs(
         ((recentData ?? []) as { id: string; type: string; description: string; amount: number; date: string; category_id: string | null }[])
           .map(t => ({
@@ -365,7 +391,7 @@ export default function DashboardPage() {
         .from('transactions').select('type, amount')
         .eq('user_id', user.id)
         .not('installment_total', 'is', null)
-        .in('lifecycle_status', CONFIRMED_STATUSES)
+        .in('lifecycle_status', getLedgerStatuses())
         .gte('date', hoje).lte('date', horizon30)
         .in('type', ['income', 'expense'])
       const instArr       = (instData ?? []) as { type: string; amount: number }[]
@@ -400,7 +426,7 @@ export default function DashboardPage() {
   if (!hasAccounts) return <EmptyDashboard />
 
   // ─────────────────────────────────────────────────────────────────────────
-  // KPIs — definição do array com group para PrivateValue
+  // KPIs
   // ─────────────────────────────────────────────────────────────────────────
 
   const kpis = [
@@ -449,7 +475,7 @@ export default function DashboardPage() {
   return (
     <PageContainer>
 
-      {/* ── Toggles de privacidade — acesso rápido ── */}
+      {/* ── Toggles de privacidade ── */}
       <div className="flex items-center justify-end gap-4 mb-3">
         <button
           onClick={toggleFinancial}
@@ -477,15 +503,12 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      {/* ── KPIs — 4 cards de igual peso ── */}
+      {/* ── KPIs ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {kpis.map(kpi => (
           <div key={kpi.label}
             className="rounded-xl p-4 flex flex-col gap-3 border"
-            style={{
-              background:  'var(--color-surface)',
-              borderColor: 'var(--color-border)',
-            }}>
+            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
             <div className="flex items-center justify-between">
               <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{kpi.label}</p>
               <div className="w-8 h-8 rounded-lg flex items-center justify-center"
@@ -501,7 +524,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* ── Layout 2 colunas: gráficos à esq, painel operacional à dir ── */}
+      {/* ── Layout 2 colunas ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         {/* ── Coluna principal — 2/3 ── */}
@@ -613,7 +636,7 @@ export default function DashboardPage() {
         {/* ── Coluna lateral — 1/3 ── */}
         <div className="space-y-5">
 
-          {/* 1. Saldo Previsto — bloco dominante */}
+          {/* 1. Saldo Previsto */}
           <div className="rounded-xl p-5 border"
             style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
             <div className="flex items-center justify-between mb-1">
@@ -628,14 +651,10 @@ export default function DashboardPage() {
             <p className="text-xs mb-4" style={{ color: 'var(--color-text-muted)' }}>
               Projeção para os próximos 30 dias
             </p>
-
-            {/* Número dominante */}
             <p className="text-3xl font-bold mb-5"
               style={{ color: saldoPrevisto >= 0 ? 'var(--color-success,#16A34A)' : 'var(--color-danger,#DC2626)' }}>
               <PrivateValue value={fmt(saldoPrevisto)} group="financial" />
             </p>
-
-            {/* Breakdown */}
             <div className="space-y-2">
               {projecaoItens.map(item => (
                 <div key={item.label}
@@ -649,8 +668,6 @@ export default function DashboardPage() {
                 </div>
               ))}
             </div>
-
-            {/* Rodapé com contadores */}
             {(recCount > 0 || instCount > 0) && (
               <p className="text-[10px] mt-3" style={{ color: 'var(--color-text-muted)' }}>
                 {recCount > 0 && <>{recCount} recorrência{recCount !== 1 ? 's' : ''}</>}
@@ -731,7 +748,7 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* 3. Faturas próximas — condicional */}
+          {/* 3. Faturas próximas */}
           {invoicesDue.length > 0 && (
             <div className="rounded-xl p-5 border"
               style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
@@ -779,7 +796,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* 4. Investimentos — widget opcional */}
+          {/* 4. Investimentos */}
           {patrimonioInvestido > 0 && (
             <div className="rounded-xl px-5 py-4 border"
               style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>

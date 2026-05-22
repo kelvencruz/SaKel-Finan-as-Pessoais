@@ -34,6 +34,10 @@ import {
 
 import { PageContainer } from '@/components/layout/PageContainer'
 import { PageHeader }    from '@/components/layout/PageHeader'
+import {
+  calcDualSummary,
+  getCurrentMonthKey,
+} from '@/lib/financialEngine'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -237,9 +241,8 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
   )
 }
 
-// ─── Gamificação (Etapa 2 irá remover isso) ───────────────────────────────────
+// ─── Gamificação ──────────────────────────────────────────────────────────────
 // TODO S1-005 (Etapa 2): mover para gamificacaoListener via EventBus.
-// A página não deve conhecer gamificação diretamente.
 
 async function handleTransactionGamification(
   userId: string,
@@ -346,10 +349,7 @@ export default function TransacoesPage() {
   const [filterAccount,   setFilterAccount]   = useState('')
   const [filterCategory,  setFilterCategory]  = useState('')
   const [filterLifecycle, setFilterLifecycle] = useState<LifecycleStatus | ''>('')
-  const [filterMonth,     setFilterMonth]     = useState(() => {
-    const now = new Date()
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  })
+  const [filterMonth,     setFilterMonth]     = useState(getCurrentMonthKey)
 
   const [showModal,          setShowModal]          = useState(false)
   const [editingId,          setEditingId]          = useState<string | null>(null)
@@ -785,12 +785,19 @@ export default function TransacoesPage() {
     })
   }, [transactions, filterType, filterAccount, filterCategory, filterLifecycle, filterMonth, search])
 
-  const summary = useMemo(() => {
-    const confirmed = filtered.filter(t => t.lifecycle_status === 'CONFIRMED')
-    const income  = confirmed.filter(t => t.type === 'income').reduce((s, t)  => s + t.amount, 0)
-    const expense = confirmed.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-    return { income, expense, balance: income - expense }
-  }, [filtered])
+  // ─── Summary dual — ledger + operacional ─────────────────────────────────
+  // calcDualSummary respeita o contrato semântico do financialEngine:
+  // ledger = CONFIRMED + OVERDUE | operational = PENDING_EXPECTED + PENDING_REVIEW
+  const dualSummary = useMemo(
+    () => calcDualSummary(
+      filtered.map(t => ({
+        type:             t.type,
+        amount:           t.amount,
+        lifecycle_status: t.lifecycle_status ?? 'CONFIRMED',
+      }))
+    ),
+    [filtered]
+  )
 
   const hasActiveFilters = filterType || filterAccount || filterCategory || filterLifecycle || search
   function clearFilters() {
@@ -854,12 +861,10 @@ export default function TransacoesPage() {
               key={tx.id}
               className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex gap-4 group hover:border-gray-200 transition-colors"
             >
-              {/* Indicador lateral lifecycle */}
               {isNonDefault && (
                 <div className={`w-1 rounded-full shrink-0 self-stretch ${lcCfg.dotColor}`} />
               )}
 
-              {/* Ícone de tipo / categoria */}
               <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 self-start mt-0.5 ${
                 tx.type === 'income'
                   ? 'bg-green-50 text-green-600'
@@ -867,16 +872,13 @@ export default function TransacoesPage() {
                   ? 'bg-red-50 text-red-500'
                   : 'bg-indigo-50 text-indigo-600'
               }`}>
-                {/* category_icon é emoji vindo do banco — exceção permitida pelo Master */}
                 {tx.category_icon
                   ? <span className="text-sm">{tx.category_icon}</span>
                   : <TxTypeIcon type={tx.type} />
                 }
               </div>
 
-              {/* Corpo */}
               <div className="flex-1 min-w-0">
-                {/* Linha 1: descrição + badges */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-medium text-gray-800 truncate">{tx.description}</p>
 
@@ -902,7 +904,6 @@ export default function TransacoesPage() {
                   )}
                 </div>
 
-                {/* Linha 2: conta / cartão / categoria */}
                 <p className="text-xs text-gray-400 mt-0.5 truncate flex items-center gap-1">
                   {tx.credit_card_name
                     ? <><CreditCard size={11} weight="duotone" /> {tx.credit_card_name}</>
@@ -912,7 +913,6 @@ export default function TransacoesPage() {
                   {tx.category_name ? ` · ${tx.category_name}` : ''}
                 </p>
 
-                {/* Botões lifecycle */}
                 {!isTerminal(lcStatus) && (
                   <div className="mt-2">
                     <LifecycleActions
@@ -924,7 +924,6 @@ export default function TransacoesPage() {
                 )}
               </div>
 
-              {/* Valor + data + ações CRUD */}
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <p className={`text-sm font-semibold ${amountColor(tx.type)}`}>
                   {amountPrefix(tx.type)} {fmt(tx.amount)}
@@ -1007,7 +1006,6 @@ export default function TransacoesPage() {
         </div>
 
         <div className="flex gap-2 flex-wrap">
-          {/* Filtro tipo */}
           <div className="flex gap-1.5">
             {([['', 'Todas'], ['income', 'Receitas'], ['expense', 'Despesas'], ['transfer', 'Transf.']] as [TxType | '', string][]).map(([val, label]) => (
               <button key={val} onClick={() => setFilterType(val)}
@@ -1021,13 +1019,11 @@ export default function TransacoesPage() {
             ))}
           </div>
 
-          {/* Filtro mês */}
           <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
             {monthOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
 
-          {/* Filtro lifecycle */}
           <select
             value={filterLifecycle}
             onChange={e => setFilterLifecycle(e.target.value as LifecycleStatus | '')}
@@ -1039,7 +1035,6 @@ export default function TransacoesPage() {
             ))}
           </select>
 
-          {/* Filtro conta */}
           {accounts.length > 0 && (
             <select value={filterAccount} onChange={e => setFilterAccount(e.target.value)}
               className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
@@ -1048,7 +1043,6 @@ export default function TransacoesPage() {
             </select>
           )}
 
-          {/* Filtro categoria */}
           {categories.length > 0 && (
             <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
               className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
@@ -1066,23 +1060,78 @@ export default function TransacoesPage() {
         </div>
       </div>
 
-      {/* ── Summary ── */}
+      {/* ── Summary dual — ledger + operacional ── */}
       {!loading && !loadError && filtered.length > 0 && (
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="bg-white border border-gray-100 rounded-xl px-4 py-3">
-            <p className="text-xs text-gray-400">Receitas</p>
-            <p className="text-sm font-semibold text-green-600 mt-0.5">{fmt(summary.income)}</p>
-          </div>
-          <div className="bg-white border border-gray-100 rounded-xl px-4 py-3">
-            <p className="text-xs text-gray-400">Despesas</p>
-            <p className="text-sm font-semibold text-red-500 mt-0.5">{fmt(summary.expense)}</p>
-          </div>
-          <div className="bg-white border border-gray-100 rounded-xl px-4 py-3">
-            <p className="text-xs text-gray-400">Saldo</p>
-            <p className={`text-sm font-semibold mt-0.5 ${summary.balance >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>
-              {fmt(summary.balance)}
+        <div className="space-y-3 mb-4">
+
+          {/* Bloco ledger — CONFIRMED + OVERDUE (sempre visível) */}
+          <div>
+            <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted,#94A3B8)' }}>
+              Confirmado + Vencido
             </p>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-xl px-4 py-3 border"
+                style={{ background: 'var(--color-surface,#1E293B)', borderColor: 'var(--color-border,#1E293B)' }}>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted,#94A3B8)' }}>Receitas</p>
+                <p className="text-sm font-semibold mt-0.5" style={{ color: 'var(--color-success,#16A34A)' }}>
+                  {fmt(dualSummary.ledger.income)}
+                </p>
+              </div>
+              <div className="rounded-xl px-4 py-3 border"
+                style={{ background: 'var(--color-surface,#1E293B)', borderColor: 'var(--color-border,#1E293B)' }}>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted,#94A3B8)' }}>Despesas</p>
+                <p className="text-sm font-semibold mt-0.5" style={{ color: 'var(--color-danger,#DC2626)' }}>
+                  {fmt(dualSummary.ledger.expense)}
+                </p>
+              </div>
+              <div className="rounded-xl px-4 py-3 border"
+                style={{ background: 'var(--color-surface,#1E293B)', borderColor: 'var(--color-border,#1E293B)' }}>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted,#94A3B8)' }}>Saldo real</p>
+                <p className="text-sm font-semibold mt-0.5"
+                  style={{ color: dualSummary.ledger.balance >= 0
+                    ? 'var(--color-brand,#7C3AED)'
+                    : 'var(--color-danger,#DC2626)' }}>
+                  {fmt(dualSummary.ledger.balance)}
+                </p>
+              </div>
+            </div>
           </div>
+
+          {/* Bloco operacional — só exibe se houver pendentes no filtro atual */}
+          {(dualSummary.operational.income > 0 || dualSummary.operational.expense > 0) && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted,#94A3B8)' }}>
+                Previsto / Em revisão
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl px-4 py-3 border border-dashed"
+                  style={{ background: 'var(--color-surface,#1E293B)', borderColor: 'var(--color-border,#1E293B)' }}>
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted,#94A3B8)' }}>Receitas</p>
+                  <p className="text-sm font-semibold mt-0.5 opacity-60" style={{ color: 'var(--color-success,#16A34A)' }}>
+                    {fmt(dualSummary.operational.income)}
+                  </p>
+                </div>
+                <div className="rounded-xl px-4 py-3 border border-dashed"
+                  style={{ background: 'var(--color-surface,#1E293B)', borderColor: 'var(--color-border,#1E293B)' }}>
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted,#94A3B8)' }}>Despesas</p>
+                  <p className="text-sm font-semibold mt-0.5 opacity-60" style={{ color: 'var(--color-danger,#DC2626)' }}>
+                    {fmt(dualSummary.operational.expense)}
+                  </p>
+                </div>
+                <div className="rounded-xl px-4 py-3 border border-dashed"
+                  style={{ background: 'var(--color-surface,#1E293B)', borderColor: 'var(--color-border,#1E293B)' }}>
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted,#94A3B8)' }}>Impacto prev.</p>
+                  <p className="text-sm font-semibold mt-0.5 opacity-60"
+                    style={{ color: dualSummary.operational.balance >= 0
+                      ? 'var(--color-brand,#7C3AED)'
+                      : 'var(--color-danger,#DC2626)' }}>
+                    {fmt(dualSummary.operational.balance)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
 
@@ -1246,9 +1295,7 @@ export default function TransacoesPage() {
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
                     <option value="">Selecione o cartao...</option>
                     {creditCards.map(c => (
-                      <option key={c.id} value={c.id}>
-                        <CreditCard weight="duotone" /> {c.name}
-                      </option>
+                      <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
                   <p className="text-xs text-purple-500 mt-1">A despesa sera lancada na fatura do cartao.</p>
