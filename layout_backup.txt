@@ -5,31 +5,31 @@ import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useThemeStore } from '@/stores/useThemeStore'
-import { usePrivacyStore } from '@/stores/usePrivacyStore'
 import Sidebar from '@/components/Sidebar'
 import UserMenu from '@/components/UserMenu'
 import FloatingActionButton from '@/components/FloatingActionButton'
-import ActionHub from '@/components/ActionHub'
-import ActionHubController from '@/components/ActionHubController'
 import { ToastManagerProvider } from '@/components/core/ToastManager'
 import { initGamificacaoListener } from '@/features/gamificacao/listeners/gamificacaoListener'
 
+// Registrado no escopo do módulo — roda uma vez só, sobrevive a re-renders e HMR
 initGamificacaoListener()
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard':               'Dashboard',
-  '/dashboard/transacoes':    'Transações',
-  '/dashboard/recorrencias':  'Recorrências',
-  '/dashboard/contas':        'Contas',
-  '/dashboard/cartoes':       'Cartões',
-  '/dashboard/faturas':       'Faturas',
-  '/dashboard/investimentos': 'Investimentos',
-  '/dashboard/categorias':    'Categorias',
-  '/dashboard/conquistas':    'Conquistas',
-  '/dashboard/importar':      'Importar CSV',
-  '/dashboard/settings':      'Configurações',
-  '/dashboard/perfil':        'Meu Perfil',
+  '/dashboard':                'Dashboard',
+  '/dashboard/transacoes':     'Transações',
+  '/dashboard/recorrencias':   'Recorrências',
+  '/dashboard/contas':         'Contas',
+  '/dashboard/cartoes':        'Cartões',
+  '/dashboard/faturas':        'Faturas',
+  '/dashboard/investimentos':  'Investimentos',
+  '/dashboard/categorias':     'Categorias',
+  '/dashboard/conquistas':     'Conquistas',
+  '/dashboard/importar':       'Importar CSV',
+  '/dashboard/settings':       'Configurações',
+  '/dashboard/perfil':         'Meu Perfil',
 }
+
+// ... resto do arquivo sem nenhuma alteração
 
 function getGreeting(): string {
   const h = new Date().getHours()
@@ -50,18 +50,16 @@ function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1)
 }
 
-function AppBootstrap() {
-  const loadTheme   = useThemeStore(s => s.load)
-  const syncPrivacy = usePrivacyStore(s => s.syncFromDB)
+// Inicializa o tema assim que o usuário é identificado
+function ThemeBootstrap() {
+  const load = useThemeStore(s => s.load)
 
   useEffect(() => {
     const supabase = createClient()
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return
-      loadTheme(user.id)
-      syncPrivacy()
+      if (user) load(user.id)
     })
-  }, [loadTheme, syncPrivacy])
+  }, [load])
 
   return null
 }
@@ -87,18 +85,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [])
 
   const isDashboardHome = pathname === '/dashboard'
-  const pageTitle       = PAGE_TITLES[pathname] ?? ''
+  const pageTitle = PAGE_TITLES[pathname] ?? ''
 
   return (
     <div
       className="flex min-h-screen"
       style={{ background: 'var(--color-bg)' }}
     >
-      <AppBootstrap />
+      {/* Inicializa tema do Supabase — sem renderizar nada */}
+      <ThemeBootstrap />
+
       <Sidebar />
 
       <div className="flex flex-col flex-1 min-w-0">
 
+        {/* ── HEADER GLOBAL ────────────────────────────────────────────── */}
         <header
           className="sticky top-0 z-30 flex items-center justify-between shrink-0"
           style={{
@@ -138,8 +139,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="flex items-center gap-3">
-            {/* ActionHub — visível só no desktop, substitui FAB */}
-            <ActionHub />
             <UserMenu />
           </div>
         </header>
@@ -150,12 +149,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       </div>
 
-      {/* FAB — visível só no mobile (md:hidden dentro do componente) */}
       <FloatingActionButton />
-
-      {/* Controlador global de modais — escuta useActionHubStore */}
-      <ActionHubController />
-
       <ToastManagerProvider />
     </div>
   )
