@@ -12,7 +12,9 @@ import {
   ArrowUp, ArrowDown, ArrowUpRight, CalendarCheck, Eye, EyeSlash,
 } from '@phosphor-icons/react'
 
-import { PageContainer } from '@/components/layout/PageContainer'
+import { PageContainer }   from '@/components/layout/PageContainer'
+import { usePrivacyStore } from '@/stores/usePrivacyStore'
+import { PrivateValue }    from '@/components/ui/PrivateValue'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -169,6 +171,16 @@ function InvoiceBadge({ days }: { days: number }) {
 export default function DashboardPage() {
   const supabase = createClient()
 
+  // ── Privacy store (DT-002) ──────────────────────────────────────────────
+  const {
+    syncFromDB,
+    financialVisible,
+    toggleFinancial,
+    investmentsVisible,
+    toggleInvestments,
+  } = usePrivacyStore()
+
+  // ── Estado local de dados ───────────────────────────────────────────────
   const [saldoContas,         setSaldoContas]         = useState(0)
   const [totalFaturas,        setTotalFaturas]        = useState(0)
   const [patrimonioInvestido, setPatrimonioInvestido] = useState(0)
@@ -185,7 +197,6 @@ export default function DashboardPage() {
   const [saldoPrevisto,       setSaldoPrevisto]       = useState(0)
   const [recCount,            setRecCount]            = useState(0)
   const [instCount,           setInstCount]           = useState(0)
-  const [invVisivel,          setInvVisivel]          = useState(true)
 
   const load = useCallback(async () => {
     setLoadError(null)
@@ -266,7 +277,7 @@ export default function DashboardPage() {
       setRecMes(recMesVal)
       setDespMes(despMesVal)
 
-      // ── Histórico 6 meses → gráfico de linha ──────────────────
+      // ── Histórico 6 meses → gráfico de linha ─────────────────
       const meses = Array.from({ length: 6 }, (_, i) => {
         const d = new Date(year, month - (5 - i), 1)
         return { key: d.toISOString().slice(0, 7), label: MONTH_NAMES[d.getMonth()] }
@@ -380,64 +391,100 @@ export default function DashboardPage() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { load() }, [load])
+  // ── Efeitos ─────────────────────────────────────────────────────────────
+  useEffect(() => { load() },        [load])
+  useEffect(() => { syncFromDB() },  [syncFromDB])
 
   if (loading)      return <DashboardSkeleton />
   if (loadError)    return <DashboardError message={loadError} onRetry={load} />
   if (!hasAccounts) return <EmptyDashboard />
 
   // ─────────────────────────────────────────────────────────────────────────
+  // KPIs — definição do array com group para PrivateValue
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const kpis = [
+    {
+      label:  'Saldo Total',
+      value:  saldoContas,
+      sub:    'Excluindo cartões',
+      icon:   Wallet,
+      color:  saldoContas >= 0 ? 'var(--color-brand,#7C3AED)' : 'var(--color-danger,#DC2626)',
+      iconBg: 'rgba(124,58,237,0.12)',
+      group:  'financial' as const,
+    },
+    {
+      label:  'Receitas',
+      value:  recMes,
+      sub:    'Este mês',
+      icon:   ArrowUp,
+      color:  'var(--color-success,#16A34A)',
+      iconBg: 'rgba(22,163,74,0.12)',
+      group:  'financial' as const,
+    },
+    {
+      label:  'Despesas',
+      value:  despMes,
+      sub:    'Este mês',
+      icon:   ArrowDown,
+      color:  'var(--color-danger,#DC2626)',
+      iconBg: 'rgba(220,38,38,0.12)',
+      group:  'financial' as const,
+    },
+    {
+      label:  'Investimentos',
+      value:  patrimonioInvestido,
+      sub:    'Total investido',
+      icon:   TrendUp,
+      color:  '#a78bfa',
+      iconBg: 'rgba(167,139,250,0.12)',
+      group:  'investments' as const,
+    },
+  ]
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Render
-  // Sem PageHeader — o layout.tsx já entrega saudação + contexto temporal.
-  // O dashboard começa direto nos KPIs.
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
     <PageContainer>
 
+      {/* ── Toggles de privacidade — acesso rápido ── */}
+      <div className="flex items-center justify-end gap-4 mb-3">
+        <button
+          onClick={toggleFinancial}
+          className="flex items-center gap-1.5 text-xs transition-opacity hover:opacity-70"
+          style={{ color: 'var(--color-text-muted)' }}
+          aria-label={financialVisible ? 'Ocultar valores financeiros' : 'Mostrar valores financeiros'}
+        >
+          {financialVisible
+            ? <Eye weight="duotone" size={14} />
+            : <EyeSlash weight="duotone" size={14} />
+          }
+          Financeiro
+        </button>
+        <button
+          onClick={toggleInvestments}
+          className="flex items-center gap-1.5 text-xs transition-opacity hover:opacity-70"
+          style={{ color: 'var(--color-text-muted)' }}
+          aria-label={investmentsVisible ? 'Ocultar investimentos' : 'Mostrar investimentos'}
+        >
+          {investmentsVisible
+            ? <Eye weight="duotone" size={14} />
+            : <EyeSlash weight="duotone" size={14} />
+          }
+          Investimentos
+        </button>
+      </div>
+
       {/* ── KPIs — 4 cards de igual peso ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {[
-          {
-            label:   'Saldo Total',
-            value:   saldoContas,
-            sub:     'Excluindo cartões',
-            icon:    Wallet,
-            color:   saldoContas >= 0
-                       ? 'var(--color-brand,#7C3AED)'
-                       : 'var(--color-danger,#DC2626)',
-            iconBg:  'rgba(124,58,237,0.12)',
-          },
-          {
-            label:   'Receitas',
-            value:   recMes,
-            sub:     'Este mês',
-            icon:    ArrowUp,
-            color:   'var(--color-success,#16A34A)',
-            iconBg:  'rgba(22,163,74,0.12)',
-          },
-          {
-            label:   'Despesas',
-            value:   despMes,
-            sub:     'Este mês',
-            icon:    ArrowDown,
-            color:   'var(--color-danger,#DC2626)',
-            iconBg:  'rgba(220,38,38,0.12)',
-          },
-          {
-            label:   'Investimentos',
-            value:   patrimonioInvestido,
-            sub:     'Total investido',
-            icon:    TrendUp,
-            color:   '#a78bfa',
-            iconBg:  'rgba(167,139,250,0.12)',
-          },
-        ].map(kpi => (
+        {kpis.map(kpi => (
           <div key={kpi.label}
             className="rounded-xl p-4 flex flex-col gap-3 border"
             style={{
-              background:   'var(--color-surface)',
-              borderColor:  'var(--color-border)',
+              background:  'var(--color-surface)',
+              borderColor: 'var(--color-border)',
             }}>
             <div className="flex items-center justify-between">
               <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{kpi.label}</p>
@@ -446,7 +493,9 @@ export default function DashboardPage() {
                 <kpi.icon size={16} weight="duotone" style={{ color: kpi.color }} />
               </div>
             </div>
-            <p className="text-xl font-bold" style={{ color: kpi.color }}>{fmt(kpi.value)}</p>
+            <p className="text-xl font-bold" style={{ color: kpi.color }}>
+              <PrivateValue value={fmt(kpi.value)} group={kpi.group} />
+            </p>
             <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{kpi.sub}</p>
           </div>
         ))}
@@ -562,17 +611,6 @@ export default function DashboardPage() {
         </div>
 
         {/* ── Coluna lateral — 1/3 ── */}
-        {/*
-         * Hierarquia da lateral (por peso visual):
-         * 1. Saldo Previsto — dominante, número grande, breakdown completo
-         * 2. Últimas transações — contexto rápido, lista compacta
-         * 3. Faturas próximas — alerta contextual (condicional)
-         * 4. Investimentos — widget opcional se houver patrimônio
-         *
-         * Removidos da lateral:
-         * - "Patrimônio líquido estimado" (redundante com Saldo Total + Faturas)
-         * - "Acesso rápido" (links duplicam a sidebar)
-         */}
         <div className="space-y-5">
 
           {/* 1. Saldo Previsto — bloco dominante */}
@@ -592,9 +630,9 @@ export default function DashboardPage() {
             </p>
 
             {/* Número dominante */}
-            <p className={`text-3xl font-bold mb-5 ${saldoPrevisto >= 0 ? '' : ''}`}
+            <p className="text-3xl font-bold mb-5"
               style={{ color: saldoPrevisto >= 0 ? 'var(--color-success,#16A34A)' : 'var(--color-danger,#DC2626)' }}>
-              {fmt(saldoPrevisto)}
+              <PrivateValue value={fmt(saldoPrevisto)} group="financial" />
             </p>
 
             {/* Breakdown */}
@@ -606,7 +644,7 @@ export default function DashboardPage() {
                   <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{item.label}</p>
                   <p className="text-[11px] font-semibold" style={{ color: item.color }}>
                     {item.sign && <span className="mr-0.5">{item.sign}</span>}
-                    {fmt(item.value)}
+                    <PrivateValue value={fmt(item.value)} group="financial" />
                   </p>
                 </div>
               ))}
@@ -622,7 +660,7 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* 2. Últimas transações — contexto operacional rápido */}
+          {/* 2. Últimas transações */}
           <div className="rounded-xl p-5 border"
             style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
             <div className="flex items-center justify-between mb-4">
@@ -648,7 +686,6 @@ export default function DashboardPage() {
                   <div key={tx.id}
                     className="flex items-center gap-3 py-2.5 border-b last:border-0"
                     style={{ borderColor: 'var(--color-border)' }}>
-                    {/* Ícone */}
                     <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs"
                       style={{
                         background: tx.type === 'income'
@@ -657,7 +694,6 @@ export default function DashboardPage() {
                           ? 'rgba(220,38,38,0.12)'
                           : 'rgba(124,58,237,0.12)',
                       }}>
-                      {/* category_icon: emoji do banco — exceção permitida pelo Master */}
                       {tx.category_icon
                         ? <span className="text-[13px]">{tx.category_icon}</span>
                         : tx.type === 'income'
@@ -683,7 +719,7 @@ export default function DashboardPage() {
                             : 'var(--color-brand,#7C3AED)',
                         }}>
                         {tx.type === 'income' ? '+' : tx.type === 'expense' ? '−' : ''}
-                        {fmt(tx.amount)}
+                        <PrivateValue value={fmt(tx.amount)} group="financial" />
                       </p>
                       <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
                         {new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
@@ -695,7 +731,7 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* 3. Faturas próximas — condicional, só aparece se houver */}
+          {/* 3. Faturas próximas — condicional */}
           {invoicesDue.length > 0 && (
             <div className="rounded-xl p-5 border"
               style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
@@ -734,7 +770,7 @@ export default function DashboardPage() {
                     <div className="flex flex-col items-end gap-1">
                       <InvoiceBadge days={inv.days_until_due} />
                       <p className="text-xs font-semibold" style={{ color: 'var(--color-brand,#7C3AED)' }}>
-                        {fmt(inv.total_amount)}
+                        <PrivateValue value={fmt(inv.total_amount)} group="financial" />
                       </p>
                     </div>
                   </div>
@@ -754,17 +790,20 @@ export default function DashboardPage() {
                     Patrimônio investido
                   </p>
                 </div>
-                <button onClick={() => setInvVisivel(v => !v)}
+                <button
+                  onClick={toggleInvestments}
                   className="transition-opacity hover:opacity-70"
-                  style={{ color: 'var(--color-text-muted)' }}>
-                  {invVisivel
+                  style={{ color: 'var(--color-text-muted)' }}
+                  aria-label={investmentsVisible ? 'Ocultar investimentos' : 'Mostrar investimentos'}
+                >
+                  {investmentsVisible
                     ? <Eye weight="duotone" size={14} />
                     : <EyeSlash weight="duotone" size={14} />
                   }
                 </button>
               </div>
               <p className="text-xl font-bold mb-2" style={{ color: '#a78bfa' }}>
-                {invVisivel ? fmt(patrimonioInvestido) : '••••••'}
+                <PrivateValue value={fmt(patrimonioInvestido)} group="investments" />
               </p>
               <a href="/dashboard/investimentos"
                 className="text-[11px] flex items-center gap-1 transition-opacity hover:opacity-70"
