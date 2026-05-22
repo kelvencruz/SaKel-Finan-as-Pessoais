@@ -344,181 +344,273 @@ export default function CategoriasPage() {
       )}
 
       {/* ── Modal Categoria ─────────────────────────────────────────────── */}
-      {showModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)' }} onClick={() => setShowModal(false)}>
-          <div className="bg-[var(--bg-surface)] rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-5">
-              {editingId ? 'Editar Categoria' : 'Nova Categoria'}
-            </h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-1">Nome</label>
-                <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
-                  placeholder="Ex: Aporte, Reserva, Ações..."
-                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
-              </div>
-              <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-1">Tipo</label>
-                <div className="flex gap-2">
-                  {([
-                    { v: 'expense'    as const, label: 'Despesa',      Icon: ArrowDown },
-                    { v: 'income'     as const, label: 'Receita',      Icon: ArrowUp   },
-                    { v: 'investment' as const, label: 'Investimento', Icon: TrendUp   },
-                  ]).map(t => (
-                    <button key={t.v} onClick={() => setForm({ ...form, type: t.v })}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
-                        form.type === t.v
-                          ? typeActiveClass(t.v)
-                          : 'border border-white/10 text-[var(--text-secondary)] hover:bg-white/5'
-                      }`}>
-                      <t.Icon weight="duotone" size={13} />
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-2">Ícone</label>
-                <div className="flex gap-2 flex-wrap">
-                  {ICONS.map(icon => (
-                    <button key={icon} onClick={() => setForm({ ...form, icon, customIcon: '' })}
-                      className={`w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all ${
-                        form.icon === icon && !form.customIcon
-                          ? 'bg-[var(--accent-primary)]/20 ring-2 ring-[var(--accent-primary)] scale-110'
-                          : 'bg-white/5 hover:bg-white/10'
-                      }`}>
-                      {icon}
-                    </button>
-                  ))}
-                </div>
-                <input type="text" value={form.customIcon} onChange={e => setForm({ ...form, customIcon: e.target.value })}
-                  placeholder="Ou digite um emoji personalizado…" maxLength={4}
-                  className="mt-2 w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
-              </div>
-              <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-2">Cor</label>
-                <div className="flex gap-2 flex-wrap">
-                  {COLORS.map(color => (
-                    <button key={color} onClick={() => setForm({ ...form, color })}
-                      className="w-7 h-7 rounded-full transition-transform hover:scale-110"
-                      style={{ backgroundColor: color, outline: form.color === color ? `3px solid ${color}` : 'none', outlineOffset: '2px' }} />
-                  ))}
-                </div>
-              </div>
-              <div className="bg-[var(--bg)] rounded-lg p-3 flex items-center gap-3 border border-white/5">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
-                  style={{ backgroundColor: form.color + '22', border: `2px solid ${form.color}55` }}>
-                  {activeIcon}
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-[var(--text-primary)]">{form.name || 'Prévia da categoria'}</p>
-                  <p className="text-xs text-[var(--text-secondary)]">
-                    {form.type === 'expense' ? 'Despesa' : form.type === 'income' ? 'Receita' : 'Investimento'}
-                  </p>
-                </div>
-              </div>
-              {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={() => setShowModal(false)}
-                className="flex-1 border border-white/10 text-[var(--text-secondary)] rounded-lg py-2 text-sm hover:bg-white/5 transition-colors">
-                Cancelar
+{showModal && (
+  <div
+    className="fixed inset-0 flex items-center justify-center z-50 p-4"
+    style={{ backgroundColor: 'var(--overlay)' }}
+    onClick={() => setShowModal(false)}
+  >
+    <div
+      className="bg-surface rounded-2xl w-full max-w-md p-6 shadow-lg border border-border max-h-[90vh] overflow-y-auto"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-lg font-semibold text-text">
+          {editingId ? 'Editar Categoria' : 'Nova Categoria'}
+        </h2>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm text-text-secondary mb-1">Nome</label>
+          <input
+            type="text"
+            value={form.name}
+            onChange={e => setForm({ ...form, name: e.target.value })}
+            placeholder="Ex: Aporte, Reserva, Ações..."
+            className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm text-text-secondary mb-1">Tipo</label>
+          <div className="flex gap-2">
+            {([
+              { v: 'expense'    as const, label: 'Despesa',      Icon: ArrowDown },
+              { v: 'income'     as const, label: 'Receita',      Icon: ArrowUp   },
+              { v: 'investment' as const, label: 'Investimento', Icon: TrendUp   },
+            ]).map(t => (
+              <button
+                key={t.v}
+                onClick={() => setForm({ ...form, type: t.v })}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  form.type === t.v
+                    ? typeActiveClass(t.v)
+                    : 'border border-border text-text-secondary hover:bg-surface-hover'
+                }`}
+              >
+                <t.Icon weight="duotone" size={13} />
+                {t.label}
               </button>
-              <button onClick={handleSave} disabled={saving}
-                className="flex-1 btn-primary rounded-lg py-2 text-sm font-medium disabled:opacity-50 transition-colors">
-                {saving ? 'Salvando...' : editingId ? 'Salvar alterações' : 'Criar categoria'}
-              </button>
-            </div>
+            ))}
           </div>
         </div>
-      )}
+
+        <div>
+          <label className="block text-sm text-text-secondary mb-2">Ícone</label>
+          <div className="flex gap-2 flex-wrap">
+            {ICONS.map(icon => (
+              <button
+                key={icon}
+                onClick={() => setForm({ ...form, icon, customIcon: '' })}
+                className={`w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all ${
+                  form.icon === icon && !form.customIcon
+                    ? 'bg-primary/20 ring-2 ring-primary scale-110'
+                    : 'bg-surface-hover hover:bg-border'
+                }`}
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
+          <input
+            type="text"
+            value={form.customIcon}
+            onChange={e => setForm({ ...form, customIcon: e.target.value })}
+            placeholder="Ou digite um emoji personalizado…"
+            maxLength={4}
+            className="mt-2 w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm text-text-secondary mb-2">Cor</label>
+          <div className="flex gap-2 flex-wrap">
+            {COLORS.map(color => (
+              <button
+                key={color}
+                onClick={() => setForm({ ...form, color })}
+                className="w-7 h-7 rounded-full transition-transform hover:scale-110"
+                style={{
+                  backgroundColor: color,
+                  outline: form.color === color ? `3px solid ${color}` : 'none',
+                  outlineOffset: '2px',
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-bg rounded-lg p-3 flex items-center gap-3 border border-border">
+          <div
+            className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
+            style={{ backgroundColor: form.color + '22', border: `2px solid ${form.color}55` }}
+          >
+            {activeIcon}
+          </div>
+          <div>
+            <p className="text-sm font-medium text-text">{form.name || 'Prévia da categoria'}</p>
+            <p className="text-xs text-text-secondary">
+              {form.type === 'expense' ? 'Despesa' : form.type === 'income' ? 'Receita' : 'Investimento'}
+            </p>
+          </div>
+        </div>
+
+        {error && <p className="text-sm text-danger">{error}</p>}
+      </div>
+
+      <div className="flex gap-3 mt-6">
+        <button
+          onClick={() => setShowModal(false)}
+          className="flex-1 border border-border text-text-secondary rounded-lg py-2 text-sm hover:bg-surface-hover transition-colors"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex-1 btn-primary rounded-lg py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {saving ? 'Salvando...' : editingId ? 'Salvar alterações' : 'Criar categoria'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* ── Modal Objetivo ───────────────────────────────────────────────── */}
-      {showGoalModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)' }} onClick={() => setShowGoalModal(false)}>
-          <div className="bg-[var(--bg-surface)] rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-5">
-              {editingGoalId ? 'Editar Objetivo' : 'Novo Objetivo'}
-            </h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-1">Nome do objetivo</label>
-                <input type="text" value={goalForm.name} onChange={e => setGoalForm({ ...goalForm, name: e.target.value })}
-                  placeholder="Ex: Reserva de emergência, Carro, Viagem..."
-                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
-              </div>
-              <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-2">Ícone</label>
-                <div className="flex gap-2 flex-wrap">
-                  {GOAL_ICONS.map(icon => (
-                    <button key={icon} onClick={() => setGoalForm({ ...goalForm, icon })}
-                      className={`w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all ${
-                        goalForm.icon === icon
-                          ? 'bg-[var(--accent-primary)]/20 ring-2 ring-[var(--accent-primary)] scale-110'
-                          : 'bg-white/5 hover:bg-white/10'
-                      }`}>
-                      {icon}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-2">Cor</label>
-                <div className="flex gap-2 flex-wrap">
-                  {COLORS.map(color => (
-                    <button key={color} onClick={() => setGoalForm({ ...goalForm, color })}
-                      className="w-7 h-7 rounded-full transition-transform hover:scale-110"
-                      style={{ backgroundColor: color, outline: goalForm.color === color ? `3px solid ${color}` : 'none', outlineOffset: '2px' }} />
-                  ))}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm text-[var(--text-secondary)] mb-1">
-                    Valor meta (R$) <span className="opacity-60">opcional</span>
-                  </label>
-                  <input type="number" value={goalForm.target_amount} onChange={e => setGoalForm({ ...goalForm, target_amount: e.target.value })}
-                    placeholder="0,00" min="0" step="0.01"
-                    className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
-                </div>
-                <div>
-                  <label className="block text-sm text-[var(--text-secondary)] mb-1">
-                    Data alvo <span className="opacity-60">opcional</span>
-                  </label>
-                  <input type="date" value={goalForm.target_date} onChange={e => setGoalForm({ ...goalForm, target_date: e.target.value })}
-                    className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
-                </div>
-              </div>
-              <div className="bg-[var(--bg)] rounded-lg p-3 flex items-center gap-3 border border-white/5">
-                <div className="w-11 h-11 rounded-full flex items-center justify-center text-xl shrink-0"
-                  style={{ backgroundColor: goalForm.color + '22', border: `2px solid ${goalForm.color}55` }}>
-                  {goalForm.icon}
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-[var(--text-primary)]">{goalForm.name || 'Prévia do objetivo'}</p>
-                  {goalForm.target_amount && (
-                    <p className="text-xs text-[var(--text-secondary)]">
-                      Meta: {parseFloat(goalForm.target_amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      {goalForm.target_date ? ` · ${new Date(goalForm.target_date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
-                    </p>
-                  )}
-                </div>
-              </div>
-              {goalError && <p className="text-sm text-[var(--danger)]">{goalError}</p>}
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={() => setShowGoalModal(false)}
-                className="flex-1 border border-white/10 text-[var(--text-secondary)] rounded-lg py-2 text-sm hover:bg-white/5 transition-colors">
-                Cancelar
+{showGoalModal && (
+  <div
+    className="fixed inset-0 flex items-center justify-center z-50 p-4"
+    style={{ backgroundColor: 'var(--overlay)' }}
+    onClick={() => setShowGoalModal(false)}
+  >
+    <div
+      className="bg-surface rounded-2xl w-full max-w-md p-6 shadow-lg border border-border max-h-[90vh] overflow-y-auto"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-lg font-semibold text-text">
+          {editingGoalId ? 'Editar Objetivo' : 'Novo Objetivo'}
+        </h2>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm text-text-secondary mb-1">Nome do objetivo</label>
+          <input
+            type="text"
+            value={goalForm.name}
+            onChange={e => setGoalForm({ ...goalForm, name: e.target.value })}
+            placeholder="Ex: Reserva de emergência, Carro, Viagem..."
+            className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm text-text-secondary mb-2">Ícone</label>
+          <div className="flex gap-2 flex-wrap">
+            {GOAL_ICONS.map(icon => (
+              <button
+                key={icon}
+                onClick={() => setGoalForm({ ...goalForm, icon })}
+                className={`w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all ${
+                  goalForm.icon === icon
+                    ? 'bg-primary/20 ring-2 ring-primary scale-110'
+                    : 'bg-surface-hover hover:bg-border'
+                }`}
+              >
+                {icon}
               </button>
-              <button onClick={handleSaveGoal} disabled={savingGoal}
-                className="flex-1 btn-primary rounded-lg py-2 text-sm font-medium disabled:opacity-50 transition-colors">
-                {savingGoal ? 'Salvando...' : editingGoalId ? 'Salvar alterações' : 'Criar objetivo'}
-              </button>
-            </div>
+            ))}
           </div>
         </div>
-      )}
+
+        <div>
+          <label className="block text-sm text-text-secondary mb-2">Cor</label>
+          <div className="flex gap-2 flex-wrap">
+            {COLORS.map(color => (
+              <button
+                key={color}
+                onClick={() => setGoalForm({ ...goalForm, color })}
+                className="w-7 h-7 rounded-full transition-transform hover:scale-110"
+                style={{
+                  backgroundColor: color,
+                  outline: goalForm.color === color ? `3px solid ${color}` : 'none',
+                  outlineOffset: '2px',
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">
+              Valor meta (R$) <span className="opacity-60">opcional</span>
+            </label>
+            <input
+              type="number"
+              value={goalForm.target_amount}
+              onChange={e => setGoalForm({ ...goalForm, target_amount: e.target.value })}
+              placeholder="0,00"
+              min="0"
+              step="0.01"
+              className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">
+              Data alvo <span className="opacity-60">opcional</span>
+            </label>
+            <input
+              type="date"
+              value={goalForm.target_date}
+              onChange={e => setGoalForm({ ...goalForm, target_date: e.target.value })}
+              className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+        </div>
+
+        <div className="bg-bg rounded-lg p-3 flex items-center gap-3 border border-border">
+          <div
+            className="w-11 h-11 rounded-full flex items-center justify-center text-xl shrink-0"
+            style={{ backgroundColor: goalForm.color + '22', border: `2px solid ${goalForm.color}55` }}
+          >
+            {goalForm.icon}
+          </div>
+          <div>
+            <p className="text-sm font-medium text-text">{goalForm.name || 'Prévia do objetivo'}</p>
+            {goalForm.target_amount && (
+              <p className="text-xs text-text-secondary">
+                Meta: {parseFloat(goalForm.target_amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                {goalForm.target_date ? ` · ${new Date(goalForm.target_date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {goalError && <p className="text-sm text-danger">{goalError}</p>}
+      </div>
+
+      <div className="flex gap-3 mt-6">
+        <button
+          onClick={() => setShowGoalModal(false)}
+          className="flex-1 border border-border text-text-secondary rounded-lg py-2 text-sm hover:bg-surface-hover transition-colors"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={handleSaveGoal}
+          disabled={savingGoal}
+          className="flex-1 btn-primary rounded-lg py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {savingGoal ? 'Salvando...' : editingGoalId ? 'Salvar alterações' : 'Criar objetivo'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </PageContainer>
   )
 }
@@ -534,21 +626,28 @@ function CategoryCard({
   onDelete: (cat: Category) => void
 }) {
   return (
-    <div className="bg-bg-surface border border-white/5 rounded-xl p-4 flex items-center justify-between group hover:border-white/10 transition-colors">
+    <div className="bg-surface border border-border rounded-xl p-4 flex items-center justify-between group hover:border-border-md transition-colors">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
-          style={{ backgroundColor: cat.color + '22', border: `2px solid ${cat.color}44` }}>
+        <div
+          className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
+          style={{ backgroundColor: cat.color + '22', border: `2px solid ${cat.color}44` }}
+        >
           {cat.icon}
         </div>
-        <span className="font-medium text-text-primary text-sm">{cat.name}</span>
+        <span className="font-medium text-text text-sm">{cat.name}</span>
       </div>
       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button onClick={() => onEdit(cat)}
-          className="text-xs text-text-secondary hover:text-accent-primary px-2 py-1 rounded hover:bg-white/5 transition-colors">
+        <button
+          onClick={() => onEdit(cat)}
+          className="text-xs text-text-secondary hover:text-primary px-2 py-1 rounded hover:bg-surface-hover transition-colors"
+        >
           Editar
         </button>
-        <button onClick={() => onDelete(cat)} disabled={deletingId === cat.id}
-          className="text-xs text-text-secondary hover:text-danger px-2 py-1 rounded hover:bg-white/5 transition-colors disabled:opacity-50">
+        <button
+          onClick={() => onDelete(cat)}
+          disabled={deletingId === cat.id}
+          className="text-xs text-text-secondary hover:text-danger px-2 py-1 rounded hover:bg-surface-hover transition-colors disabled:opacity-50"
+        >
           {deletingId === cat.id ? '...' : 'Excluir'}
         </button>
       </div>
@@ -566,14 +665,16 @@ function GoalCard({
 }) {
   const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   return (
-    <div className="bg-bg-surface border border-white/5 rounded-xl p-4 flex items-center justify-between group hover:border-white/10 transition-colors">
+    <div className="bg-surface border border-border rounded-xl p-4 flex items-center justify-between group hover:border-border-md transition-colors">
       <div className="flex items-center gap-3">
-        <div className="w-11 h-11 rounded-full flex items-center justify-center text-xl shrink-0"
-          style={{ backgroundColor: g.color + '22', border: `2px solid ${g.color}55` }}>
+        <div
+          className="w-11 h-11 rounded-full flex items-center justify-center text-xl shrink-0"
+          style={{ backgroundColor: g.color + '22', border: `2px solid ${g.color}55` }}
+        >
           {g.icon}
         </div>
         <div>
-          <p className="font-medium text-text-primary text-sm">{g.name}</p>
+          <p className="font-medium text-text text-sm">{g.name}</p>
           {g.target_amount && (
             <p className="text-xs text-text-secondary mt-0.5">
               Meta: {fmt(g.target_amount)}
@@ -583,12 +684,17 @@ function GoalCard({
         </div>
       </div>
       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button onClick={() => onEdit(g)}
-          className="text-xs text-text-secondary hover:text-accent-primary px-2 py-1 rounded hover:bg-white/5 transition-colors">
+        <button
+          onClick={() => onEdit(g)}
+          className="text-xs text-text-secondary hover:text-primary px-2 py-1 rounded hover:bg-surface-hover transition-colors"
+        >
           Editar
         </button>
-        <button onClick={() => onDelete(g)} disabled={deletingGoalId === g.id}
-          className="text-xs text-text-secondary hover:text-danger px-2 py-1 rounded hover:bg-white/5 transition-colors disabled:opacity-50">
+        <button
+          onClick={() => onDelete(g)}
+          disabled={deletingGoalId === g.id}
+          className="text-xs text-text-secondary hover:text-danger px-2 py-1 rounded hover:bg-surface-hover transition-colors disabled:opacity-50"
+        >
           {deletingGoalId === g.id ? '...' : 'Excluir'}
         </button>
       </div>

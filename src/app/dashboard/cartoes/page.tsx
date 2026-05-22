@@ -69,18 +69,18 @@ export default function CartoesPage() {
 
   function openEdit(card: CreditCard) {
     setForm({
-      name:          card.name,
-      limit_amount:  String(card.limit_amount),
-      closing_day:   String(card.closing_day),
-      due_day:       String(card.due_day),
-      account_id:    card.account_id ?? '',
-      color:         card.color,
+      name:         card.name,
+      limit_amount: String(card.limit_amount),
+      closing_day:  String(card.closing_day),
+      due_day:      String(card.due_day),
+      account_id:   card.account_id ?? '',
+      color:        card.color,
     })
     setEditingId(card.id); setError(null); setShowModal(true)
   }
 
   async function handleSave() {
-    if (!form.name.trim())                          { setError('Nome é obrigatório.'); return }
+    if (!form.name.trim())                                        { setError('Nome é obrigatório.'); return }
     if (!form.limit_amount || parseFloat(form.limit_amount) < 0) { setError('Limite inválido.'); return }
     const closing = parseInt(form.closing_day)
     const due     = parseInt(form.due_day)
@@ -142,84 +142,97 @@ export default function CartoesPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
-        <div className="bg-[var(--bg-surface)] border border-white/5 rounded-xl p-4">
-          <p className="text-xs text-[var(--text-secondary)] mb-1">Total de cartões</p>
-          <p className="text-2xl font-bold text-[var(--text-primary)]">{activeCards.length}</p>
+        <div className="bg-surface border border-border rounded-xl p-4">
+          <p className="text-xs text-text-secondary mb-1">Total de cartões</p>
+          <p className="text-2xl font-bold text-text">{activeCards.length}</p>
         </div>
-        <div className="bg-[var(--bg-surface)] border border-white/5 rounded-xl p-4">
-          <p className="text-xs text-[var(--text-secondary)] mb-1">Limite total</p>
-          <p className="text-2xl font-bold text-[var(--accent-primary)]">
+        <div className="bg-surface border border-border rounded-xl p-4">
+          <p className="text-xs text-text-secondary mb-1">Limite total</p>
+          <p className="text-2xl font-bold text-primary">
             {fmt(activeCards.reduce((s, c) => s + Number(c.limit_amount), 0))}
           </p>
         </div>
-        <div className="bg-[var(--bg-surface)] border border-white/5 rounded-xl p-4 sm:block hidden">
-          <p className="text-xs text-[var(--text-secondary)] mb-1">Inativos</p>
-          <p className="text-2xl font-bold text-[var(--text-secondary)]">{inactiveCards.length}</p>
+        <div className="bg-surface border border-border rounded-xl p-4 sm:block hidden">
+          <p className="text-xs text-text-secondary mb-1">Inativos</p>
+          <p className="text-2xl font-bold text-text-secondary">{inactiveCards.length}</p>
         </div>
       </div>
 
       {/* Lista */}
       {loading ? (
-        <p className="text-[var(--text-secondary)] text-sm">Carregando...</p>
+        <p className="text-text-secondary text-sm">Carregando...</p>
       ) : cards.length === 0 ? (
-        <div className="bg-[var(--bg-surface)] border border-dashed border-white/10 rounded-xl p-10 text-center">
-          <CreditCard weight="duotone" size={40} className="mx-auto mb-3 text-[var(--text-secondary)]" />
-          <p className="text-[var(--text-secondary)] text-sm">Nenhum cartão cadastrado ainda.</p>
-          <button onClick={openCreate} className="mt-3 text-[var(--accent-primary)] text-sm hover:underline">
+        <div className="bg-surface border border-dashed border-border-md rounded-xl p-10 text-center">
+          <CreditCard weight="duotone" size={40} className="mx-auto mb-3 text-text-secondary" />
+          <p className="text-text-secondary text-sm">Nenhum cartão cadastrado ainda.</p>
+          <button onClick={openCreate} className="mt-3 text-primary text-sm hover:underline">
             Adicionar primeiro cartão
           </button>
         </div>
       ) : (
         <div className="space-y-3">
           {cards.map(card => (
-            <div key={card.id}
-              className={`bg-[var(--bg-surface)] border rounded-xl p-5 flex items-center gap-4 transition-opacity ${
-                !card.is_active ? 'opacity-50 border-white/5' : 'border-white/5'
-              }`}>
+            <div
+              key={card.id}
+              className={`bg-surface border border-border rounded-xl p-5 flex items-center gap-4 transition-opacity ${
+                !card.is_active ? 'opacity-50' : ''
+              }`}
+            >
               {/* Visual do cartão */}
-              <div className="w-14 h-10 rounded-lg flex items-center justify-center text-white flex-shrink-0 shadow-sm"
-                style={{ backgroundColor: card.color }}>
+              <div
+                className="w-14 h-10 rounded-lg flex items-center justify-center text-white flex-shrink-0 shadow-sm"
+                style={{ backgroundColor: card.color }}
+              >
                 <CreditCard weight="duotone" size={22} />
               </div>
+
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="font-semibold text-[var(--text-primary)]">{card.name}</p>
+                  <p className="font-semibold text-text">{card.name}</p>
                   {!card.is_active && (
-                    <span className="text-xs bg-white/10 text-[var(--text-secondary)] px-2 py-0.5 rounded-full">
+                    <span className="text-xs bg-surface-hover text-text-secondary px-2 py-0.5 rounded-full">
                       Inativo
                     </span>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-3 mt-1">
-                  <span className="text-xs text-[var(--text-secondary)]">
-                    Limite: <span className="text-[var(--text-primary)] font-medium">{fmt(Number(card.limit_amount))}</span>
+                  <span className="text-xs text-text-secondary">
+                    Limite: <span className="text-text font-medium">{fmt(Number(card.limit_amount))}</span>
                   </span>
-                  <span className="text-xs text-[var(--text-secondary)]">
-                    Fecha dia <span className="text-[var(--text-primary)] font-medium">{card.closing_day}</span>
+                  <span className="text-xs text-text-secondary">
+                    Fecha dia <span className="text-text font-medium">{card.closing_day}</span>
                   </span>
-                  <span className="text-xs text-[var(--text-secondary)]">
-                    Vence dia <span className="text-[var(--text-primary)] font-medium">{card.due_day}</span>
+                  <span className="text-xs text-text-secondary">
+                    Vence dia <span className="text-text font-medium">{card.due_day}</span>
                   </span>
                   {card.account && (
-                    <span className="text-xs text-[var(--text-secondary)]">
-                      Conta: <span className="text-[var(--text-primary)] font-medium">{card.account.name}</span>
+                    <span className="text-xs text-text-secondary">
+                      Conta: <span className="text-text font-medium">{card.account.name}</span>
                     </span>
                   )}
                 </div>
               </div>
+
               {/* Ações */}
               <div className="flex gap-1 flex-shrink-0">
-                <button onClick={() => openEdit(card)}
-                  className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent-primary)] px-2 py-1 rounded hover:bg-white/5 transition-colors">
+                <button
+                  onClick={() => openEdit(card)}
+                  className="text-xs text-text-secondary hover:text-primary px-2 py-1 rounded hover:bg-surface-hover transition-colors"
+                >
                   Editar
                 </button>
-                <button onClick={() => handleToggleActive(card)}
-                  className="text-xs text-[var(--text-secondary)] hover:text-[var(--warning)] px-2 py-1 rounded hover:bg-white/5 transition-colors">
+                <button
+                  onClick={() => handleToggleActive(card)}
+                  className="text-xs text-text-secondary hover:text-warning px-2 py-1 rounded hover:bg-surface-hover transition-colors"
+                >
                   {card.is_active ? 'Desativar' : 'Ativar'}
                 </button>
-                <button onClick={() => handleDelete(card.id)} disabled={deletingId === card.id}
-                  className="text-xs text-[var(--text-secondary)] hover:text-[var(--danger)] px-2 py-1 rounded hover:bg-white/5 transition-colors disabled:opacity-50">
+                <button
+                  onClick={() => handleDelete(card.id)}
+                  disabled={deletingId === card.id}
+                  className="text-xs text-text-secondary hover:text-danger px-2 py-1 rounded hover:bg-surface-hover transition-colors disabled:opacity-50"
+                >
                   {deletingId === card.id ? '...' : 'Excluir'}
                 </button>
               </div>
@@ -230,76 +243,130 @@ export default function CartoesPage() {
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)' }} onClick={() => setShowModal(false)}>
-          <div className="bg-[var(--bg-surface)] rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-5">
-              {editingId ? 'Editar Cartão' : 'Novo Cartão'}
-            </h2>
+        <div
+          className="fixed inset-0 flex items-center justify-center z-50 p-4"
+          style={{ backgroundColor: 'var(--overlay)' }}
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            className="bg-surface rounded-2xl w-full max-w-md p-6 shadow-lg border border-border max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-semibold text-text">
+                {editingId ? 'Editar Cartão' : 'Novo Cartão'}
+              </h2>
+            </div>
+
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-1">Nome do cartão</label>
-                <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                <label className="block text-sm text-text-secondary mb-1">Nome do cartão</label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={e => setForm({ ...form, name: e.target.value })}
                   placeholder="Ex: Nubank, Itaú Platinum..."
-                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
+                  className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+                />
               </div>
+
               <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-1">Limite (R$)</label>
-                <input type="number" value={form.limit_amount} onChange={e => setForm({ ...form, limit_amount: e.target.value })}
-                  placeholder="0,00" step="0.01" min="0"
-                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
+                <label className="block text-sm text-text-secondary mb-1">Limite (R$)</label>
+                <input
+                  type="number"
+                  value={form.limit_amount}
+                  onChange={e => setForm({ ...form, limit_amount: e.target.value })}
+                  placeholder="0,00"
+                  step="0.01"
+                  min="0"
+                  className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+                />
               </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm text-[var(--text-secondary)] mb-1">Dia de fechamento</label>
-                  <input type="number" value={form.closing_day} onChange={e => setForm({ ...form, closing_day: e.target.value })}
-                    min="1" max="31"
-                    className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
+                  <label className="block text-sm text-text-secondary mb-1">Dia de fechamento</label>
+                  <input
+                    type="number"
+                    value={form.closing_day}
+                    onChange={e => setForm({ ...form, closing_day: e.target.value })}
+                    min="1"
+                    max="31"
+                    className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm text-[var(--text-secondary)] mb-1">Dia de vencimento</label>
-                  <input type="number" value={form.due_day} onChange={e => setForm({ ...form, due_day: e.target.value })}
-                    min="1" max="31"
-                    className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
+                  <label className="block text-sm text-text-secondary mb-1">Dia de vencimento</label>
+                  <input
+                    type="number"
+                    value={form.due_day}
+                    onChange={e => setForm({ ...form, due_day: e.target.value })}
+                    min="1"
+                    max="31"
+                    className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
                 </div>
               </div>
+
               <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-1">
+                <label className="block text-sm text-text-secondary mb-1">
                   Conta para pagamento <span className="opacity-60">(opcional)</span>
                 </label>
-                <select value={form.account_id} onChange={e => setForm({ ...form, account_id: e.target.value })}
-                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]">
+                <select
+                  value={form.account_id}
+                  onChange={e => setForm({ ...form, account_id: e.target.value })}
+                  className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary"
+                >
                   <option value="">Nenhuma conta vinculada</option>
                   {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </div>
+
               <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-2">Cor do cartão</label>
+                <label className="block text-sm text-text-secondary mb-2">Cor do cartão</label>
                 <div className="flex gap-2 flex-wrap">
                   {COLORS.map(color => (
-                    <button key={color} onClick={() => setForm({ ...form, color })}
+                    <button
+                      key={color}
+                      onClick={() => setForm({ ...form, color })}
                       className="w-7 h-7 rounded-full transition-transform hover:scale-110"
-                      style={{ backgroundColor: color, outline: form.color === color ? `3px solid ${color}` : 'none', outlineOffset: '2px' }} />
+                      style={{
+                        backgroundColor: color,
+                        outline: form.color === color ? `3px solid ${color}` : 'none',
+                        outlineOffset: '2px',
+                      }}
+                    />
                   ))}
                 </div>
               </div>
+
               {/* Preview */}
-              <div className="rounded-xl p-4 text-white text-sm font-medium flex items-center justify-between"
-                style={{ backgroundColor: form.color }}>
+              <div
+                className="rounded-xl p-4 text-white text-sm font-medium flex items-center justify-between"
+                style={{ backgroundColor: form.color }}
+              >
                 <span className="flex items-center gap-2">
                   <CreditCard weight="duotone" size={18} />
                   {form.name || 'Nome do cartão'}
                 </span>
                 <span>{form.limit_amount ? fmt(parseFloat(form.limit_amount)) : 'R$ 0,00'}</span>
               </div>
-              {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+
+              {error && <p className="text-sm text-danger">{error}</p>}
             </div>
+
             <div className="flex gap-3 mt-6">
-              <button onClick={() => setShowModal(false)}
-                className="flex-1 border border-white/10 text-[var(--text-secondary)] rounded-lg py-2 text-sm hover:bg-white/5 transition-colors">
+              <button
+                onClick={() => setShowModal(false)}
+                className="flex-1 border border-border text-text-secondary rounded-lg py-2 text-sm hover:bg-surface-hover transition-colors"
+              >
                 Cancelar
               </button>
-              <button onClick={handleSave} disabled={saving}
-                className="flex-1 btn-primary rounded-lg py-2 text-sm font-medium disabled:opacity-50 transition-colors">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1 btn-primary rounded-lg py-2 text-sm font-medium disabled:opacity-50"
+              >
                 {saving ? 'Salvando...' : editingId ? 'Salvar' : 'Adicionar'}
               </button>
             </div>

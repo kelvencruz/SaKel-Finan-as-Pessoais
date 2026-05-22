@@ -262,80 +262,131 @@ export default function ContasPage() {
       )}
 
       {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)' }} onClick={() => setShowModal(false)}>
-          <div className="bg-[var(--bg-surface)] rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-5">
-              {editingId ? 'Editar Conta' : 'Nova Conta'}
-            </h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-1">Nome da conta</label>
-                <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
-                  placeholder="Ex: Nubank, Bradesco..."
-                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
-              </div>
-              <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-1">Tipo</label>
-                <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value as AccountType })}
-                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]">
-                  {ACCOUNT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-                <p className="text-xs text-[var(--text-secondary)] mt-1">
-                  Para cartões de crédito, use{' '}
-                  <a href="/dashboard/cartoes" className="text-[var(--accent-primary)] hover:underline">Cartões</a>.
-                </p>
-              </div>
-              <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-1">
-                  Ícone <span className="text-[var(--text-secondary)] opacity-60">(emoji opcional — category_icon)</span>
-                </label>
-                <input type="text" value={form.icon} onChange={e => setForm({ ...form, icon: e.target.value })}
-                  placeholder="Ex: 💜 🏦 💰" maxLength={4}
-                  className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
-              </div>
-              {!editingId && (
-                <div>
-                  <label className="block text-sm text-[var(--text-secondary)] mb-1">Saldo inicial (R$)</label>
-                  <input type="number" value={form.initial_balance} onChange={e => setForm({ ...form, initial_balance: e.target.value })}
-                    placeholder="0,00" min="0" step="0.01"
-                    className="w-full bg-[var(--bg)] border border-white/10 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]" />
-                  <p className="text-xs text-[var(--text-secondary)] mt-1">Saldo atual da conta no momento do cadastro.</p>
-                </div>
-              )}
-              <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-2">Cor</label>
-                <div className="flex gap-2 flex-wrap">
-                  {COLORS.map(color => (
-                    <button key={color} onClick={() => setForm({ ...form, color })}
-                      className="w-7 h-7 rounded-full transition-transform hover:scale-110"
-                      style={{ backgroundColor: color, outline: form.color === color ? `3px solid ${color}` : 'none', outlineOffset: '2px' }} />
-                  ))}
-                </div>
-              </div>
-              {editingId && (
-                <div className="flex items-center gap-3">
-                  <input type="checkbox" id="is_active" checked={form.is_active}
-                    onChange={e => setForm({ ...form, is_active: e.target.checked })}
-                    className="w-4 h-4 accent-[var(--accent-primary)]" />
-                  <label htmlFor="is_active" className="text-sm text-[var(--text-secondary)]">Conta ativa</label>
-                </div>
-              )}
-              {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={() => setShowModal(false)}
-                className="flex-1 border border-white/10 text-[var(--text-secondary)] rounded-lg py-2 text-sm hover:bg-white/5 transition-colors">
-                Cancelar
-              </button>
-              <button onClick={handleSave} disabled={saving}
-                className="flex-1 btn-primary rounded-lg py-2 text-sm font-medium disabled:opacity-50 transition-colors">
-                {saving ? 'Salvando...' : editingId ? 'Salvar alterações' : 'Criar conta'}
-              </button>
-            </div>
+{showModal && (
+  <div
+    className="fixed inset-0 flex items-center justify-center z-50 p-4"
+    style={{ backgroundColor: 'var(--overlay)' }}
+    onClick={() => setShowModal(false)}
+  >
+    <div
+      className="bg-surface rounded-2xl w-full max-w-md p-6 shadow-lg border border-border max-h-[90vh] overflow-y-auto"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-lg font-semibold text-text">
+          {editingId ? 'Editar Conta' : 'Nova Conta'}
+        </h2>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm text-text-secondary mb-1">Nome da conta</label>
+          <input
+            type="text"
+            value={form.name}
+            onChange={e => setForm({ ...form, name: e.target.value })}
+            placeholder="Ex: Nubank, Bradesco..."
+            className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm text-text-secondary mb-1">Tipo</label>
+          <select
+            value={form.type}
+            onChange={e => setForm({ ...form, type: e.target.value as AccountType })}
+            className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            {ACCOUNT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+          <p className="text-xs text-text-secondary mt-1">
+            Para cartões de crédito, use{' '}
+            <a href="/dashboard/cartoes" className="text-primary hover:underline">Cartões</a>.
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-sm text-text-secondary mb-1">
+            Ícone <span className="opacity-60">(emoji opcional — category_icon)</span>
+          </label>
+          <input
+            type="text"
+            value={form.icon}
+            onChange={e => setForm({ ...form, icon: e.target.value })}
+            placeholder="Ex: 💜 🏦 💰"
+            maxLength={4}
+            className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
+
+        {!editingId && (
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">Saldo inicial (R$)</label>
+            <input
+              type="number"
+              value={form.initial_balance}
+              onChange={e => setForm({ ...form, initial_balance: e.target.value })}
+              placeholder="0,00"
+              min="0"
+              step="0.01"
+              className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <p className="text-xs text-text-secondary mt-1">Saldo atual da conta no momento do cadastro.</p>
+          </div>
+        )}
+
+        <div>
+          <label className="block text-sm text-text-secondary mb-2">Cor</label>
+          <div className="flex gap-2 flex-wrap">
+            {COLORS.map(color => (
+              <button
+                key={color}
+                onClick={() => setForm({ ...form, color })}
+                className="w-7 h-7 rounded-full transition-transform hover:scale-110"
+                style={{
+                  backgroundColor: color,
+                  outline: form.color === color ? `3px solid ${color}` : 'none',
+                  outlineOffset: '2px',
+                }}
+              />
+            ))}
           </div>
         </div>
-      )}
+
+        {editingId && (
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="is_active"
+              checked={form.is_active}
+              onChange={e => setForm({ ...form, is_active: e.target.checked })}
+              className="w-4 h-4 accent-primary"
+            />
+            <label htmlFor="is_active" className="text-sm text-text-secondary">Conta ativa</label>
+          </div>
+        )}
+
+        {error && <p className="text-sm text-danger">{error}</p>}
+      </div>
+
+      <div className="flex gap-3 mt-6">
+        <button
+          onClick={() => setShowModal(false)}
+          className="flex-1 border border-border text-text-secondary rounded-lg py-2 text-sm hover:bg-surface-hover transition-colors"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex-1 btn-primary rounded-lg py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {saving ? 'Salvando...' : editingId ? 'Salvar alterações' : 'Criar conta'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </PageContainer>
   )
 }
