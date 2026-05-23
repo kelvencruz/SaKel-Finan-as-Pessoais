@@ -2,739 +2,1635 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { awardXP } from '@/lib/gamification'
-import { PageContainer } from '@/components/layout/PageContainer'
-import { PageHeader } from '@/components/layout/PageHeader'
 import {
-  TrendUp,
-  Plus,
-  Drop,
-  ChartBar,
+  transitionStatus,
+  availableTransitions,
+  isTerminal,
+  type LifecycleStatus,
+} from '@/features/financas/services/lifecycleEngine'
+
+// TODO S1-005 (Etapa 2): remover handleTransactionGamification daqui e garantir
+// que o EventBus cobre o fluxo via gamificacaoListener.
+import { awardXP, getGamification } from '@/lib/gamification'
+
+import {
+  MagnifyingGlass,
+  ArrowUp,
+  ArrowDown,
+  ArrowsLeftRight,
+  ArrowCounterClockwise,
+  CreditCard,
+  Repeat,
   CalendarBlank,
   PencilSimple,
-  Pause,
-  Play,
   Trash,
-  Target,
-  Palette,
-  X,
+  Warning,
+  CheckCircle,
+  Clock,
+  XCircle,
+  Receipt,
+  Spinner,
 } from '@phosphor-icons/react'
 
-interface Investment {
+import { PageContainer } from '@/components/layout/PageContainer'
+import { PageHeader }    from '@/components/layout/PageHeader'
+import { AppModal }      from '@/components/AppModal'
+import {
+  calcDualSummary,
+  getCurrentMonthKey,
+} from '@/lib/financialEngine'
+
+// ─── Tipos ────────────────────────────────────────────────────────────────────
+
+type TxType = 'income' | 'expense' | 'transfer'
+
+interface Transaction {
   id: string
-  user_id: string
-  name: string
-  type: string
-  goal_id: string | null
-  institution: string | null
-  initial_amount: number
-  current_amount: number
-  profitability: string | null
-  liquidity_type: string | null
-  liquidity_date: string | null
-  start_date: string | null
-  is_active: boolean
-  notes: string | null
-  created_at: string
+  type: TxType
+  description: string
+  amount: number
+  date: string
+  account_id: string
+  destination_account_id?: string | null
+  category_id?: string | null
+  notes?: string | null
+  status?: string | null
+  lifecycle_status?: LifecycleStatus | null
+  credit_card_id?: string | null
+  invoice_id?: string | null
+  is_recurring?: boolean
+  recurrence_id?: string | null
+  recurrence?: string | null
+  recurrence_start?: string | null
+  recurrence_end?: string | null
+  installment_total?: number | null
+  installment_current?: number | null
+  installment_group?: string | null
+  account_name?: string
+  destination_account_name?: string
+  category_name?: string
+  category_icon?: string
+  credit_card_name?: string
 }
 
-interface Goal {
-  id: string
-  name: string
-  icon: string
-  color: string
-}
-
-const TYPES = ['Renda Fixa','Renda Variável','Tesouro','CDB','LCI/LCA','ETF','Ações','FII','Cripto','Outro']
-
-const TYPE_COLORS: Record<string, string> = {
-  'Renda Fixa':    '#22c55e',
-  'Renda Variável':'#6366f1',
-  'Tesouro':       '#f59e0b',
-  'CDB':           '#3b82f6',
-  'LCI/LCA':       '#14b8a6',
-  'ETF':           '#8b5cf6',
-  'Ações':         '#ef4444',
-  'FII':           '#f97316',
-  'Cripto':        '#ec4899',
-  'Outro':         '#6b7280',
-}
-
-const LIQUIDITY_LABELS: Record<string, string> = {
-  daily:      'Liquidez diária',
-  fixed_date: 'Data de vencimento',
-  none:       'Sem liquidez',
-}
-
-const GOAL_ICONS = ['🎯','🛡️','🏖️','✈️','🏠','🚗','📚','💍','👶','🏥','💼','🌍']
-
-const emptyForm = {
-  name: '',
-  type: 'Renda Fixa',
-  goal_id: '',
-  institution: '',
-  initial_amount: '',
-  current_amount: '',
-  profitability: '',
-  liquidity_type: 'daily',
-  liquidity_date: '',
-  start_date: new Date().toISOString().split('T')[0],
-  notes: '',
-}
-
-const emptyGoalForm = { name: '', icon: '🎯', color: '#6366f1' }
+interface Account    { id: string; name: string; color: string; current_balance: number }
+interface Category   { id: string; name: string; type: string; icon: string }
+interface CreditCard { id: string; name: string; color: string; closing_day: number; due_day: number }
 
 type Toast = { message: string; type: 'success' | 'error' }
 
-export default function InvestimentosPage() {
-  const supabase = createClient()
-  const [investments, setInvestments] = useState<Investment[]>([])
-  const [goals,       setGoals]       = useState<Goal[]>([])
-  const [loading,     setLoading]     = useState(true)
-  const [showModal,   setShowModal]   = useState(false)
-  const [editingId,   setEditingId]   = useState<string | null>(null)
-  const [form,        setForm]        = useState(emptyForm)
-  const [saving,      setSaving]      = useState(false)
-  const [error,       setError]       = useState<string | null>(null)
-  const [deletingId,  setDeletingId]  = useState<string | null>(null)
-  const [toast,       setToast]       = useState<Toast | null>(null)
-  const [filterType,  setFilterType]  = useState('')
-  const [showInactive,setShowInactive]= useState(false)
+// ─── Helpers de formatação ────────────────────────────────────────────────────
 
-  const [showNewGoal,  setShowNewGoal]  = useState(false)
-  const [goalForm,     setGoalForm]     = useState(emptyGoalForm)
-  const [savingGoal,   setSavingGoal]   = useState(false)
+const fmt     = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const fmtDate = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString('pt-BR')
+
+const TYPE_LABELS: Record<TxType, string> = {
+  income:   'Receita',
+  expense:  'Despesa',
+  transfer: 'Transferencia',
+}
+
+// ─── Lifecycle config ─────────────────────────────────────────────────────────
+
+const LIFECYCLE_CONFIG: Record<LifecycleStatus, {
+  label: string
+  className: string
+  dotColor: string
+  Icon: React.ElementType
+}> = {
+  CONFIRMED:        { label: 'Confirmado',  className: 'bg-green-50 text-green-700 border-green-200',    dotColor: 'bg-green-400',  Icon: CheckCircle  },
+  PENDING_EXPECTED: { label: 'Esperado',    className: 'bg-blue-50 text-blue-600 border-blue-200',       dotColor: 'bg-blue-400',   Icon: Clock        },
+  PENDING_REVIEW:   { label: 'Em revisao',  className: 'bg-yellow-50 text-yellow-700 border-yellow-200', dotColor: 'bg-yellow-400', Icon: Warning      },
+  OVERDUE:          { label: 'Vencido',     className: 'bg-red-50 text-red-600 border-red-200',          dotColor: 'bg-red-400',    Icon: Warning      },
+  CANCELLED:        { label: 'Cancelado',   className: 'bg-gray-100 text-gray-500 border-gray-200',      dotColor: 'bg-gray-300',   Icon: XCircle      },
+}
+
+const TRANSITION_BUTTON_CONFIG: Record<LifecycleStatus, {
+  label: string
+  className: string
+}> = {
+  CONFIRMED:        { label: 'Confirmar pagamento',  className: 'text-green-700 bg-green-50 hover:bg-green-100 border-green-200'     },
+  CANCELLED:        { label: 'Cancelar',             className: 'text-gray-500 bg-gray-50 hover:bg-gray-100 border-gray-200'         },
+  OVERDUE:          { label: 'Marcar como vencido',  className: 'text-red-600 bg-red-50 hover:bg-red-100 border-red-200'             },
+  PENDING_EXPECTED: { label: 'Marcar como esperado', className: 'text-blue-600 bg-blue-50 hover:bg-blue-100 border-blue-200'         },
+  PENDING_REVIEW:   { label: 'Colocar em revisao',   className: 'text-yellow-700 bg-yellow-50 hover:bg-yellow-100 border-yellow-200' },
+}
+
+// ─── Form default ─────────────────────────────────────────────────────────────
+
+const emptyForm = {
+  type: 'expense' as TxType,
+  description: '',
+  amount: '',
+  date: new Date().toISOString().split('T')[0],
+  account_id: '',
+  destination_account_id: '',
+  category_id: '',
+  notes: '',
+  status: 'paid',
+  use_credit_card: false,
+  credit_card_id: '',
+  is_recurring: false,
+  recurrence: 'monthly',
+  recurrence_end: '',
+  is_installment: false,
+  installment_total: '2',
+}
+
+// ─── Utils de data ────────────────────────────────────────────────────────────
+
+function getMonthOptions() {
+  const opts: { value: string; label: string }[] = [{ value: '', label: 'Todos os meses' }]
+  const now = new Date()
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+    opts.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) })
+  }
+  return opts
+}
+
+function addMonths(dateStr: string, months: number): string {
+  const d = new Date(dateStr + 'T12:00:00')
+  d.setMonth(d.getMonth() + months)
+  return d.toISOString().split('T')[0]
+}
+
+// ─── Componentes auxiliares ───────────────────────────────────────────────────
+
+function SkeletonRow() {
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-4 animate-pulse">
+      <div className="w-9 h-9 rounded-full bg-gray-100 shrink-0" />
+      <div className="flex-1 space-y-2">
+        <div className="h-3 bg-gray-100 rounded w-2/5" />
+        <div className="h-2.5 bg-gray-100 rounded w-1/3" />
+      </div>
+      <div className="text-right space-y-2 shrink-0">
+        <div className="h-3 bg-gray-100 rounded w-20" />
+        <div className="h-2.5 bg-gray-100 rounded w-14 ml-auto" />
+      </div>
+    </div>
+  )
+}
+
+interface PageEmptyStateProps {
+  Icon: React.ElementType
+  title: string
+  description?: string
+  action?: { label: string; onClick: () => void }
+}
+
+function PageEmptyState({ Icon, title, description, action }: PageEmptyStateProps) {
+  return (
+    <div className="bg-white border border-dashed border-gray-200 rounded-xl p-10 text-center">
+      <div className="flex justify-center mb-3">
+        <Icon size={28} weight="duotone" className="text-gray-300" />
+      </div>
+      <p className="text-gray-600 text-sm font-medium">{title}</p>
+      {description && <p className="text-gray-400 text-xs mt-1 mb-4">{description}</p>}
+      {action && (
+        <button onClick={action.onClick} className="text-indigo-600 text-sm hover:underline mt-2">
+          {action.label}
+        </button>
+      )}
+    </div>
+  )
+}
+
+interface PageErrorStateProps {
+  message?: string
+  onRetry: () => void
+}
+
+function PageErrorState({ message, onRetry }: PageErrorStateProps) {
+  return (
+    <div className="bg-white border border-dashed border-red-100 rounded-xl p-10 text-center">
+      <div className="flex justify-center mb-3">
+        <Warning size={28} weight="duotone" className="text-red-300" />
+      </div>
+      <p className="text-gray-600 text-sm font-medium">Erro ao carregar</p>
+      <p className="text-gray-400 text-xs mt-1 mb-4">
+        {message ?? 'Nao foi possivel buscar os dados. Verifique sua conexao.'}
+      </p>
+      <button onClick={onRetry} className="text-sm font-medium text-indigo-600 hover:underline">
+        Tentar novamente
+      </button>
+    </div>
+  )
+}
+
+function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <button
+      onClick={onChange}
+      className={`relative w-10 h-5 rounded-full transition-colors ${checked ? 'bg-indigo-500' : 'bg-gray-200'}`}
+    >
+      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${checked ? 'translate-x-5' : 'translate-x-0.5'}`} />
+    </button>
+  )
+}
+
+// ─── Gamificação ──────────────────────────────────────────────────────────────
+// TODO S1-005 (Etapa 2): mover para gamificacaoListener via EventBus.
+
+async function handleTransactionGamification(
+  userId: string,
+  txCount: number,
+  hasCategoryId: boolean,
+) {
+  try {
+    const gam = await getGamification(userId)
+    const earned = gam?.badges ?? []
+
+    if (txCount === 1 && !earned.includes('first_transaction')) {
+      await awardXP(userId, 'transaction_created', 'first_transaction')
+    } else if (txCount === 10 && !earned.includes('ten_transactions')) {
+      await awardXP(userId, 'transaction_created', 'ten_transactions')
+    } else if (txCount === 50 && !earned.includes('fifty_transactions')) {
+      await awardXP(userId, 'transaction_created', 'fifty_transactions')
+    } else {
+      await awardXP(userId, 'transaction_created')
+    }
+
+    if (hasCategoryId) {
+      await awardXP(userId, 'transaction_categorized')
+    }
+
+    const gamAfter = await getGamification(userId)
+    const streakDays = gamAfter?.streakDays ?? 0
+    const earnedAfter = gamAfter?.badges ?? []
+
+    if (streakDays >= 30 && !earnedAfter.includes('streak_30')) {
+      await awardXP(userId, 'streak_30', 'streak_30')
+    } else if (streakDays >= 7 && !earnedAfter.includes('streak_7')) {
+      await awardXP(userId, 'streak_7', 'streak_7')
+    }
+  } catch {
+    // Gamificação nunca bloqueia o fluxo principal
+  }
+}
+
+// ─── Componente LifecycleActions ──────────────────────────────────────────────
+
+interface LifecycleActionsProps {
+  tx: Transaction
+  onTransition: (id: string, to: LifecycleStatus) => Promise<void>
+  transitioning: string | null
+}
+
+function LifecycleActions({ tx, onTransition, transitioning }: LifecycleActionsProps) {
+  const current = tx.lifecycle_status ?? 'CONFIRMED'
+  const actions = availableTransitions(current)
+
+  if (actions.length === 0) return null
+
+  return (
+    <div className="flex gap-1 flex-wrap">
+      {actions.map(to => {
+        const cfg = TRANSITION_BUTTON_CONFIG[to]
+        const isLoading = transitioning === tx.id
+        return (
+          <button
+            key={to}
+            onClick={() => onTransition(tx.id, to)}
+            disabled={isLoading}
+            title={cfg.label}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium border transition-colors disabled:opacity-40 ${cfg.className}`}
+          >
+            {isLoading && (
+              <Spinner size={12} weight="bold" className="animate-spin" />
+            )}
+            {cfg.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Ícone de tipo de transação ───────────────────────────────────────────────
+
+function TxTypeIcon({ type }: { type: TxType }) {
+  if (type === 'income')   return <ArrowUp   size={16} weight="duotone" />
+  if (type === 'expense')  return <ArrowDown size={16} weight="duotone" />
+  return <ArrowsLeftRight size={16} weight="duotone" />
+}
+
+// ─── Página principal ─────────────────────────────────────────────────────────
+
+export default function TransacoesPage() {
+  const supabase = createClient()
+
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [accounts,     setAccounts]     = useState<Account[]>([])
+  const [categories,   setCategories]   = useState<Category[]>([])
+  const [creditCards,  setCreditCards]  = useState<CreditCard[]>([])
+
+  const [loading,       setLoading]       = useState(true)
+  const [loadError,     setLoadError]     = useState<string | null>(null)
+  const [saving,        setSaving]        = useState(false)
+  const [deletingId,    setDeletingId]    = useState<string | null>(null)
+  const [transitioning, setTransitioning] = useState<string | null>(null)
+  const [toast,         setToast]         = useState<Toast | null>(null)
+
+  const [search,          setSearch]          = useState('')
+  const [filterType,      setFilterType]      = useState<TxType | ''>('')
+  const [filterAccount,   setFilterAccount]   = useState('')
+  const [filterCategory,  setFilterCategory]  = useState('')
+  const [filterLifecycle, setFilterLifecycle] = useState<LifecycleStatus | ''>('')
+  const [filterMonth,     setFilterMonth]     = useState(getCurrentMonthKey)
+
+  // ── Estado dos modais ────────────────────────────────────────────────────────
+  const [showEditModal,       setShowEditModal]       = useState(false)
+  const [editingId,           setEditingId]           = useState<string | null>(null)
+  const [form,                setForm]                = useState(emptyForm)
+  const [formError,           setFormError]           = useState<string | null>(null)
+
+  const [showDeleteModal,     setShowDeleteModal]     = useState(false)
+  const [deleteTargetId,      setDeleteTargetId]      = useState<string | null>(null)
+
+  const [showRecurrenceModal, setShowRecurrenceModal] = useState(false)
+  const [recurrenceTx,        setRecurrenceTx]        = useState<Transaction | null>(null)
+
+  const monthOptions = useMemo(() => getMonthOptions(), [])
 
   function showToast(message: string, type: Toast['type'] = 'success') {
     setToast({ message, type })
-    setTimeout(() => setToast(null), 3000)
+    setTimeout(() => setToast(null), 3500)
   }
+
+  // ─── Carregar dados ─────────────────────────────────────────────────────────
 
   async function loadAll() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { window.location.href = '/auth/login'; return }
-    const [{ data: inv }, { data: gls }] = await Promise.all([
-      supabase.from('investments').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-      supabase.from('investment_goals').select('*').eq('user_id', user.id).order('name'),
-    ])
-    setInvestments((inv ?? []) as Investment[])
-    setGoals((gls ?? []) as Goal[])
-    setLoading(false)
-  }
+    setLoading(true)
+    setLoadError(null)
 
-  useEffect(() => { loadAll() }, [])
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { window.location.href = '/auth/login'; return }
 
-  function openCreate() {
-    setForm(emptyForm)
-    setEditingId(null)
-    setError(null)
-    setShowNewGoal(false)
-    setShowModal(true)
-  }
+      const [
+        { data: tx, error: txErr },
+        { data: acc },
+        { data: cat },
+        { data: cards },
+      ] = await Promise.all([
+        supabase
+          .from('transactions')
+          .select('id, type, description, amount, date, account_id, destination_account_id, category_id, notes, status, lifecycle_status, credit_card_id, invoice_id, is_recurring, recurrence_id, recurrence, recurrence_start, recurrence_end, installment_total, installment_current, installment_group')
+          .eq('user_id', user.id)
+          .order('date', { ascending: false })
+          .limit(500),
+        supabase.from('accounts').select('id, name, color, current_balance').eq('user_id', user.id).order('name'),
+        supabase.from('categories').select('id, name, type, icon').eq('user_id', user.id).order('name'),
+        supabase.from('credit_cards').select('id, name, color, closing_day, due_day').eq('user_id', user.id).eq('is_active', true).order('name'),
+      ])
 
-  function openEdit(inv: Investment) {
-    setForm({
-      name:           inv.name,
-      type:           inv.type,
-      goal_id:        inv.goal_id ?? '',
-      institution:    inv.institution ?? '',
-      initial_amount: String(inv.initial_amount),
-      current_amount: String(inv.current_amount),
-      profitability:  inv.profitability ?? '',
-      liquidity_type: inv.liquidity_type ?? 'daily',
-      liquidity_date: inv.liquidity_date ?? '',
-      start_date:     inv.start_date ?? new Date().toISOString().split('T')[0],
-      notes:          inv.notes ?? '',
-    })
-    setEditingId(inv.id)
-    setError(null)
-    setShowNewGoal(false)
-    setShowModal(true)
-  }
+      if (txErr) { setLoadError(txErr.message); return }
 
-  async function handleSaveGoal() {
-    if (!goalForm.name.trim()) return
-    setSavingGoal(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setSavingGoal(false); return }
-    const { data, error: err } = await supabase
-      .from('investment_goals')
-      .insert({ user_id: user.id, name: goalForm.name.trim(), icon: goalForm.icon, color: goalForm.color })
-      .select('*').single()
-    if (!err && data) {
-      const newGoal = data as Goal
-      setGoals(prev => [...prev, newGoal].sort((a, b) => a.name.localeCompare(b.name)))
-      setForm(f => ({ ...f, goal_id: newGoal.id }))
-      setShowNewGoal(false)
-      setGoalForm(emptyGoalForm)
+      const accList  = (acc   ?? []) as Account[]
+      const catList  = (cat   ?? []) as Category[]
+      const cardList = (cards ?? []) as CreditCard[]
+      const txRaw    = (tx    ?? []) as any[]
+
+      const accMap  = Object.fromEntries(accList.map(a  => [a.id, a]))
+      const catMap  = Object.fromEntries(catList.map(c  => [c.id, c]))
+      const cardMap = Object.fromEntries(cardList.map(c => [c.id, c]))
+
+      setTransactions(txRaw.map(t => ({
+        ...t,
+        type:                     t.type as TxType,
+        lifecycle_status:         (t.lifecycle_status ?? 'CONFIRMED') as LifecycleStatus,
+        account_name:             accMap[t.account_id]?.name ?? '-',
+        destination_account_name: t.destination_account_id ? (accMap[t.destination_account_id]?.name ?? '-') : undefined,
+        category_name:            t.category_id    ? catMap[t.category_id]?.name     : undefined,
+        category_icon:            t.category_id    ? catMap[t.category_id]?.icon     : undefined,
+        credit_card_name:         t.credit_card_id ? cardMap[t.credit_card_id]?.name : undefined,
+      })))
+
+      setAccounts(accList)
+      setCategories(catList)
+      setCreditCards(cardList)
+    } catch (e: any) {
+      setLoadError(e?.message ?? 'Erro inesperado ao carregar dados.')
+    } finally {
+      setLoading(false)
     }
-    setSavingGoal(false)
   }
+
+  useEffect(() => {
+    loadAll()
+    const handler = () => loadAll()
+    window.addEventListener('transacao-criada', handler)
+    return () => window.removeEventListener('transacao-criada', handler)
+  }, [])
+
+  // ─── Transição lifecycle ────────────────────────────────────────────────────
+
+  async function handleTransition(id: string, to: LifecycleStatus) {
+    setTransitioning(id)
+    try {
+      const result = await transitionStatus(id, to)
+      if (result.success) {
+        setTransactions(prev =>
+          prev.map(tx => tx.id === id ? { ...tx, lifecycle_status: to } : tx)
+        )
+        showToast(`Status atualizado: ${LIFECYCLE_CONFIG[to].label}`)
+      } else {
+        showToast(result.error ?? 'Erro ao atualizar status.', 'error')
+      }
+    } catch {
+      showToast('Erro inesperado ao atualizar status.', 'error')
+    } finally {
+      setTransitioning(null)
+    }
+  }
+
+  // ─── Editar ─────────────────────────────────────────────────────────────────
+
+  function openEdit(tx: Transaction) {
+    setForm({
+      type:                   tx.type,
+      description:            tx.description,
+      amount:                 String(tx.amount),
+      date:                   tx.date,
+      account_id:             tx.account_id ?? '',
+      destination_account_id: tx.destination_account_id ?? '',
+      category_id:            tx.category_id ?? '',
+      notes:                  tx.notes ?? '',
+      status:                 tx.status ?? 'paid',
+      use_credit_card:        !!tx.credit_card_id,
+      credit_card_id:         tx.credit_card_id ?? '',
+      is_recurring:           tx.is_recurring ?? false,
+      recurrence:             tx.recurrence ?? 'monthly',
+      recurrence_end:         tx.recurrence_end ?? '',
+      is_installment:         !!tx.installment_total,
+      installment_total:      String(tx.installment_total ?? '2'),
+    })
+    setEditingId(tx.id)
+    setFormError(null)
+    setShowEditModal(true)
+  }
+
+  // ─── Invoice helpers ────────────────────────────────────────────────────────
+
+  async function getOrCreateInvoice(cardId: string, date: string, userId: string): Promise<string | null> {
+    const d    = new Date(date + 'T12:00:00')
+    const card = creditCards.find(c => c.id === cardId)
+    if (!card) return null
+
+    let month = d.getMonth() + 1
+    let year  = d.getFullYear()
+    if (d.getDate() > card.closing_day) {
+      month = month === 12 ? 1 : month + 1
+      year  = month === 1 ? year + 1 : year
+    }
+
+    const { data: existing } = await supabase
+      .from('credit_card_invoices').select('id')
+      .eq('credit_card_id', cardId).eq('month', month).eq('year', year).single()
+    if (existing) return existing.id
+
+    const dueMonth = month === 12 ? 1 : month + 1
+    const dueYear  = month === 12 ? year + 1 : year
+    const dueDate  = `${dueYear}-${String(dueMonth).padStart(2,'0')}-${String(card.due_day).padStart(2,'0')}`
+
+    const { data: created } = await supabase
+      .from('credit_card_invoices')
+      .insert({ credit_card_id: cardId, user_id: userId, month, year, total_amount: 0, status: 'open', due_date: dueDate })
+      .select('id').single()
+    return created?.id ?? null
+  }
+
+  async function updateInvoiceTotal(invoiceId: string) {
+    const { data } = await supabase.from('transactions').select('amount').eq('invoice_id', invoiceId)
+    const total = (data ?? []).reduce((s: number, t: any) => s + Number(t.amount), 0)
+    await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
+  }
+
+  // ─── Salvar transação ───────────────────────────────────────────────────────
 
   async function handleSave() {
-    if (!form.name.trim()) { setError('Nome é obrigatório.'); return }
-    const current = parseFloat(form.current_amount)
-    if (isNaN(current) || current < 0) { setError('Valor atual inválido.'); return }
-    if (form.liquidity_type === 'fixed_date' && !form.liquidity_date) {
-      setError('Informe a data de vencimento.'); return
+    setFormError(null)
+    const amount = parseFloat(String(form.amount).replace(',', '.'))
+    if (!form.description.trim())     { setFormError('Descricao e obrigatoria.'); return }
+    if (isNaN(amount) || amount <= 0) { setFormError('Valor deve ser maior que zero.'); return }
+
+    if (form.use_credit_card && form.type === 'expense') {
+      if (!form.credit_card_id) { setFormError('Selecione um cartao.'); return }
+    } else {
+      if (!form.account_id) { setFormError('Selecione uma conta.'); return }
+      if (form.type === 'transfer' && !form.destination_account_id) { setFormError('Selecione a conta de destino.'); return }
+      if (form.type === 'transfer' && form.account_id === form.destination_account_id) { setFormError('Contas devem ser diferentes.'); return }
+    }
+
+    if (form.is_installment && form.type !== 'transfer') {
+      const total = parseInt(form.installment_total)
+      if (isNaN(total) || total < 2 || total > 48) { setFormError('Parcelas: entre 2 e 48.'); return }
     }
 
     setSaving(true)
-    setError(null)
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setError('Não autenticado.'); setSaving(false); return }
+    if (!user) { setFormError('Nao autenticado.'); setSaving(false); return }
 
-    const payload = {
-      user_id:        user.id,
-      name:           form.name.trim(),
-      type:           form.type,
-      goal_id:        form.goal_id || null,
-      institution:    form.institution.trim() || null,
-      initial_amount: parseFloat(form.initial_amount || '0'),
-      current_amount: current,
-      profitability:  form.profitability.trim() || null,
-      liquidity_type: form.liquidity_type || null,
-      liquidity_date: form.liquidity_type === 'fixed_date' ? form.liquidity_date : null,
-      start_date:     form.start_date || null,
-      notes:          form.notes.trim() || null,
+    // ── PARCELAMENTO ───────────────────────────────────────────
+    if (form.is_installment && !editingId && form.type !== 'transfer') {
+      const total   = parseInt(form.installment_total)
+      const groupId = crypto.randomUUID()
+      const rows    = []
+
+      for (let i = 0; i < total; i++) {
+        const installDate = addMonths(form.date, i)
+        let invoiceId: string | null = null
+        let accountId = form.account_id || null
+
+        if (form.use_credit_card && form.type === 'expense') {
+          invoiceId = await getOrCreateInvoice(form.credit_card_id, installDate, user.id)
+          accountId = null
+        }
+
+        rows.push({
+          user_id:                user.id,
+          type:                   form.type,
+          description:            `${form.description.trim()} (${i + 1}/${total})`,
+          amount,
+          date:                   installDate,
+          account_id:             accountId,
+          destination_account_id: null,
+          category_id:            form.category_id || null,
+          notes:                  form.notes?.trim() || null,
+          status:                 form.use_credit_card ? 'posted' : form.status,
+          credit_card_id:         form.use_credit_card ? form.credit_card_id : null,
+          invoice_id:             invoiceId,
+          installment_total:      total,
+          installment_current:    i + 1,
+          installment_group:      groupId,
+          is_recurring:           false,
+          lifecycle_status:       form.status === 'pending' || form.status === 'overdue' ? 'PENDING_EXPECTED' : 'CONFIRMED',
+        })
+      }
+
+      const { error: err } = await supabase.from('transactions').insert(rows)
+      if (err) { setFormError(err.message); setSaving(false); return }
+
+      const invoiceIds = [...new Set(rows.map(r => r.invoice_id).filter(Boolean))]
+      for (const iid of invoiceIds) { if (iid) await updateInvoiceTotal(iid) }
+
+      const { count: txCount } = await supabase
+        .from('transactions').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
+      await handleTransactionGamification(user.id, txCount ?? 0, !!form.category_id)
+
+      showToast(`${total} parcelas criadas!`)
+      await loadAll()
+      setShowEditModal(false)
+      setSaving(false)
+      return
+    }
+
+    // ── RECORRENTE ─────────────────────────────────────────────
+    if (form.is_recurring && !editingId) {
+      function calcNextDue(startDate: string, frequency: string): string {
+        const today = new Date(); today.setHours(0, 0, 0, 0)
+        const d = new Date(startDate + 'T12:00:00')
+        while (d < today) {
+          if (frequency === 'daily')        d.setDate(d.getDate() + 1)
+          else if (frequency === 'weekly')  d.setDate(d.getDate() + 7)
+          else if (frequency === 'monthly') d.setMonth(d.getMonth() + 1)
+          else if (frequency === 'yearly')  d.setFullYear(d.getFullYear() + 1)
+        }
+        return d.toISOString().split('T')[0]
+      }
+
+      const recPayload = {
+        user_id:        user.id,
+        type:           form.type,
+        description:    form.description.trim(),
+        amount,
+        frequency:      form.recurrence,
+        next_due_date:  calcNextDue(form.date, form.recurrence),
+        start_date:     form.date,
+        end_date:       form.recurrence_end || null,
+        account_id:     form.use_credit_card ? null : (form.account_id || null),
+        credit_card_id: form.use_credit_card ? form.credit_card_id : null,
+        category_id:    form.category_id || null,
+        is_active:      true,
+      }
+
+      const { data: recData, error: recErr } = await supabase
+        .from('recurrences').insert(recPayload).select('id').single()
+
+      if (recErr || !recData) {
+        setFormError(recErr?.message ?? 'Erro ao criar recorrencia.')
+        setSaving(false)
+        return
+      }
+
+      let invoiceId: string | null = null
+      const accountId = form.use_credit_card ? null : (form.account_id || null)
+      if (form.use_credit_card && form.type === 'expense') {
+        invoiceId = await getOrCreateInvoice(form.credit_card_id, form.date, user.id)
+      }
+
+      const { error: txErr } = await supabase.from('transactions').insert({
+        user_id:                user.id,
+        type:                   form.type,
+        description:            form.description.trim(),
+        amount,
+        date:                   form.date,
+        account_id:             accountId,
+        destination_account_id: null,
+        category_id:            form.category_id || null,
+        notes:                  form.notes?.trim() || null,
+        status:                 form.use_credit_card ? 'posted' : form.status,
+        credit_card_id:         form.use_credit_card ? form.credit_card_id : null,
+        invoice_id:             invoiceId,
+        is_recurring:           true,
+        recurrence_id:          recData.id,
+        lifecycle_status:       form.status === 'pending' || form.status === 'overdue' ? 'PENDING_EXPECTED' : 'CONFIRMED',
+      })
+
+      if (txErr) { setFormError(txErr.message); setSaving(false); return }
+      if (invoiceId) await updateInvoiceTotal(invoiceId)
+
+      const { count: txCount } = await supabase
+        .from('transactions').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
+      await handleTransactionGamification(user.id, txCount ?? 0, !!form.category_id)
+
+      showToast('Recorrencia criada!')
+      await loadAll()
+      setShowEditModal(false)
+      setSaving(false)
+      return
+    }
+
+    // ── TRANSACAO NORMAL ───────────────────────────────────────
+    let invoiceId: string | null = null
+    let accountId = form.account_id || null
+
+    if (form.use_credit_card && form.type === 'expense') {
+      invoiceId = await getOrCreateInvoice(form.credit_card_id, form.date, user.id)
+      accountId = null
+    }
+
+    const payload: any = {
+      type:                   form.type,
+      description:            form.description.trim(),
+      amount,
+      date:                   form.date,
+      account_id:             accountId,
+      destination_account_id: form.type === 'transfer' ? form.destination_account_id : null,
+      category_id:            form.category_id || null,
+      notes:                  form.notes?.trim() || null,
+      status:                 form.use_credit_card ? 'posted' : form.status,
+      credit_card_id:         form.use_credit_card ? form.credit_card_id : null,
+      invoice_id:             invoiceId,
+      is_recurring:           false,
     }
 
     if (editingId) {
-      const { error: err } = await supabase.from('investments').update(payload).eq('id', editingId)
-      if (err) { setError(err.message); setSaving(false); return }
-      showToast('Investimento atualizado!')
+      const { error: err } = await supabase.from('transactions').update(payload).eq('id', editingId)
+      if (err) { setFormError(err.message); setSaving(false); return }
+      if (invoiceId) await updateInvoiceTotal(invoiceId)
+      showToast('Transacao atualizada!')
     } else {
-      const { error: err } = await supabase.from('investments').insert(payload)
-      if (err) { setError(err.message); setSaving(false); return }
+      const { error: err } = await supabase.from('transactions').insert({
+        ...payload,
+        user_id:          user.id,
+        lifecycle_status: form.status === 'pending' || form.status === 'overdue' ? 'PENDING_EXPECTED' : 'CONFIRMED',
+      })
+      if (err) { setFormError(err.message); setSaving(false); return }
+      if (invoiceId) await updateInvoiceTotal(invoiceId)
 
-      const isFirstInvestment = investments.filter(i => i.is_active).length === 0
-      if (isFirstInvestment) {
-        await awardXP(user.id, 'first_investment', 'first_investment').catch(() => {})
-      }
-      showToast('Investimento cadastrado!')
+      const { count: txCount } = await supabase
+        .from('transactions').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
+      await handleTransactionGamification(user.id, txCount ?? 0, !!form.category_id)
+
+      showToast('Transacao criada!')
     }
 
     await loadAll()
-    setShowModal(false)
+    setShowEditModal(false)
     setSaving(false)
   }
 
-  async function handleToggleActive(inv: Investment) {
-    await supabase.from('investments').update({ is_active: !inv.is_active }).eq('id', inv.id)
-    await loadAll()
+  // ─── Excluir ────────────────────────────────────────────────────────────────
+
+  function handleDeleteClick(tx: Transaction) {
+    if (tx.is_recurring && tx.recurrence_id) {
+      setRecurrenceTx(tx)
+      setShowRecurrenceModal(true)
+    } else {
+      setDeleteTargetId(tx.id)
+      setShowDeleteModal(true)
+    }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Excluir este investimento?')) return
+  async function executeDeleteNormal() {
+    if (!deleteTargetId) return
+    setShowDeleteModal(false)
+    setDeletingId(deleteTargetId)
+    const { error: err } = await supabase.from('transactions').delete().eq('id', deleteTargetId)
+    if (err) showToast('Erro ao excluir.', 'error')
+    else showToast('Transacao excluida.')
+    await loadAll()
+    setDeletingId(null)
+    setDeleteTargetId(null)
+  }
+
+  async function executeTxDelete(mode: 'single' | 'all') {
+    if (!recurrenceTx) return
+    const { id, recurrence_id } = recurrenceTx
     setDeletingId(id)
-    await supabase.from('investments').delete().eq('id', id)
-    showToast('Investimento excluído.')
+    setShowRecurrenceModal(false)
+    setRecurrenceTx(null)
+
+    if (mode === 'single') {
+      const { error: err } = await supabase.from('transactions').delete().eq('id', id)
+      if (err) showToast('Erro ao excluir.', 'error')
+      else showToast('Lancamento excluido. Recorrencia mantida.')
+    } else {
+      await supabase.from('transactions').delete().eq('id', id)
+      if (recurrence_id) {
+        await supabase.from('recurrences').update({ is_active: false }).eq('id', recurrence_id)
+      }
+      showToast('Lancamento excluido e recorrencia pausada.')
+    }
+
     await loadAll()
     setDeletingId(null)
   }
 
-  const fmt    = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-  const fmtPct = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(2)}%`
+  // ─── Filtros ────────────────────────────────────────────────────────────────
 
-  const filtered = useMemo(() => investments.filter(inv => {
-    if (!showInactive && !inv.is_active) return false
-    if (filterType && inv.type !== filterType) return false
-    return true
-  }), [investments, filterType, showInactive])
-
-  const activeInvestments = investments.filter(i => i.is_active)
-  const totalInvested     = activeInvestments.reduce((s, i) => s + Number(i.current_amount), 0)
-  const totalInitial      = activeInvestments.reduce((s, i) => s + Number(i.initial_amount), 0)
-  const totalGain         = totalInvested - totalInitial
-  const gainPct           = totalInitial > 0 ? (totalGain / totalInitial) * 100 : 0
-
-  const byType = useMemo(() => {
-    const map: Record<string, number> = {}
-    activeInvestments.forEach(i => { map[i.type] = (map[i.type] ?? 0) + Number(i.current_amount) })
-    return Object.entries(map).sort((a, b) => b[1] - a[1])
-  }, [investments])
-
-  const byGoal = useMemo(() => {
-    const map: Record<string, { amount: number; goal: Goal }> = {}
-    activeInvestments.forEach(i => {
-      if (!i.goal_id) return
-      const g = goals.find(g => g.id === i.goal_id)
-      if (!g) return
-      if (!map[i.goal_id]) map[i.goal_id] = { amount: 0, goal: g }
-      map[i.goal_id].amount += Number(i.current_amount)
+  const filtered = useMemo(() => {
+    return transactions.filter(tx => {
+      if (filterType      && tx.type             !== filterType)      return false
+      if (filterAccount   && tx.account_id       !== filterAccount)   return false
+      if (filterCategory  && tx.category_id      !== filterCategory)  return false
+      if (filterLifecycle && tx.lifecycle_status !== filterLifecycle) return false
+      if (filterMonth     && tx.date.slice(0, 7) !== filterMonth)     return false
+      if (search) {
+        const q = search.toLowerCase()
+        if (
+          !tx.description.toLowerCase().includes(q) &&
+          !(tx.account_name       ?? '').toLowerCase().includes(q) &&
+          !(tx.category_name      ?? '').toLowerCase().includes(q) &&
+          !(tx.credit_card_name   ?? '').toLowerCase().includes(q)
+        ) return false
+      }
+      return true
     })
-    return Object.values(map).sort((a, b) => b.amount - a.amount)
-  }, [investments, goals])
+  }, [transactions, filterType, filterAccount, filterCategory, filterLifecycle, filterMonth, search])
 
-  const goalMap = Object.fromEntries(goals.map(g => [g.id, g]))
+  const dualSummary = useMemo(
+    () => calcDualSummary(
+      filtered.map(t => ({
+        type:             t.type,
+        amount:           t.amount,
+        lifecycle_status: t.lifecycle_status ?? 'CONFIRMED',
+      }))
+    ),
+    [filtered]
+  )
+
+  const hasActiveFilters = filterType || filterAccount || filterCategory || filterLifecycle || search
+  function clearFilters() {
+    setFilterType('')
+    setFilterAccount('')
+    setFilterCategory('')
+    setFilterLifecycle('')
+    setSearch('')
+  }
+
+  const amountColor  = (type: TxType) => type === 'income' ? 'text-green-600' : type === 'expense' ? 'text-red-500' : 'text-indigo-600'
+  const amountPrefix = (type: TxType) => type === 'income' ? '+' : type === 'expense' ? '-' : ''
+  const catsFiltradas = categories.filter(c => form.type !== 'transfer' && (c.type === form.type || c.type === 'both'))
+
+  // ─── Conteúdo da lista ───────────────────────────────────────────────────────
+
+  function renderContent() {
+    if (loading) {
+      return (
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}
+        </div>
+      )
+    }
+
+    if (loadError) {
+      return <PageErrorState message={loadError} onRetry={loadAll} />
+    }
+
+    if (filtered.length === 0) {
+      if (transactions.length === 0) {
+        return (
+          <PageEmptyState
+            Icon={Receipt}
+            title="Nenhuma transacao ainda"
+            description="Registre sua primeira receita ou despesa para comecar."
+          />
+        )
+      }
+      return (
+        <PageEmptyState
+          Icon={MagnifyingGlass}
+          title="Nenhum resultado"
+          action={{ label: 'Limpar filtros', onClick: clearFilters }}
+        />
+      )
+    }
+
+    return (
+      <div className="space-y-2">
+        <p className="text-xs text-gray-400 mb-2">
+          {filtered.length} transacao{filtered.length !== 1 ? 'oes' : ''}
+        </p>
+        {filtered.map(tx => {
+          const lcStatus     = tx.lifecycle_status ?? 'CONFIRMED'
+          const lcCfg        = LIFECYCLE_CONFIG[lcStatus]
+          const isNonDefault = lcStatus !== 'CONFIRMED'
+
+          return (
+            <div
+              key={tx.id}
+              className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex gap-4 group hover:border-gray-200 transition-colors"
+            >
+              {isNonDefault && (
+                <div className={`w-1 rounded-full shrink-0 self-stretch ${lcCfg.dotColor}`} />
+              )}
+
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 self-start mt-0.5 ${
+                tx.type === 'income'
+                  ? 'bg-green-50 text-green-600'
+                  : tx.type === 'expense'
+                  ? 'bg-red-50 text-red-500'
+                  : 'bg-indigo-50 text-indigo-600'
+              }`}>
+                {tx.category_icon
+                  ? <span className="text-sm">{tx.category_icon}</span>
+                  : <TxTypeIcon type={tx.type} />
+                }
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-medium text-gray-800 truncate">{tx.description}</p>
+
+                  {tx.is_recurring && tx.recurrence_id && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 shrink-0">
+                      <Repeat size={10} weight="duotone" />
+                      Recorrente
+                    </span>
+                  )}
+
+                  {tx.installment_total && tx.installment_current && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600 shrink-0">
+                      <CalendarBlank size={10} weight="duotone" />
+                      {tx.installment_current}/{tx.installment_total}x
+                    </span>
+                  )}
+
+                  {isNonDefault && (
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full border shrink-0 ${lcCfg.className}`}>
+                      <lcCfg.Icon size={10} weight="duotone" />
+                      {lcCfg.label}
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-xs text-gray-400 mt-0.5 truncate flex items-center gap-1">
+                  {tx.credit_card_name
+                    ? <><CreditCard size={11} weight="duotone" /> {tx.credit_card_name}</>
+                    : tx.account_name
+                  }
+                  {tx.type === 'transfer' && tx.destination_account_name ? ` → ${tx.destination_account_name}` : ''}
+                  {tx.category_name ? ` · ${tx.category_name}` : ''}
+                </p>
+
+                {!isTerminal(lcStatus) && (
+                  <div className="mt-2">
+                    <LifecycleActions
+                      tx={tx}
+                      onTransition={handleTransition}
+                      transitioning={transitioning}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <p className={`text-sm font-semibold ${amountColor(tx.type)}`}>
+                  {amountPrefix(tx.type)} {fmt(tx.amount)}
+                </p>
+                <p className="text-xs text-gray-400">{fmtDate(tx.date)}</p>
+                <div className="opacity-0 group-hover:opacity-100 transition-all flex gap-1 mt-1">
+                  <button
+                    onClick={() => openEdit(tx)}
+                    className="text-gray-300 hover:text-indigo-500 p-1.5 rounded hover:bg-indigo-50 transition-colors"
+                    title="Editar"
+                  >
+                    <PencilSimple size={14} weight="duotone" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteClick(tx)}
+                    disabled={deletingId === tx.id}
+                    className="text-gray-300 hover:text-red-400 p-1.5 rounded hover:bg-red-50 transition-colors disabled:opacity-30"
+                    title="Excluir"
+                  >
+                    {deletingId === tx.id
+                      ? <Spinner size={14} weight="bold" className="animate-spin" />
+                      : <Trash size={14} weight="duotone" />
+                    }
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <PageContainer>
+      {/* Toast */}
       {toast && (
-        <div className={`fixed top-5 right-5 z-[60] px-4 py-3 rounded-xl shadow-lg text-sm font-medium border ${
+        <div className={`fixed top-5 right-5 z-[60] px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${
           toast.type === 'success'
-            ? 'bg-success/10 text-success border-success/30'
-            : 'bg-danger/10 text-danger border-danger/30'
+            ? 'bg-green-50 text-green-700 border border-green-200'
+            : 'bg-red-50 text-red-700 border border-red-200'
         }`}>
+          {toast.type === 'success'
+            ? <CheckCircle size={14} weight="duotone" className="inline mr-1.5" />
+            : <Warning     size={14} weight="duotone" className="inline mr-1.5" />
+          }
           {toast.message}
         </div>
       )}
 
       <PageHeader
-        title="Investimentos"
-        description="Patrimônio separado do saldo operacional"
+        title="Transacoes"
         action={
-          <button onClick={openCreate} className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium">
-            <Plus size={16} weight="bold" />
-            Novo Investimento
+          <button
+            onClick={() => { setEditingId(null); setForm(emptyForm); setFormError(null); setShowEditModal(true) }}
+            className="btn-primary"
+          >
+            Nova transacao
           </button>
         }
       />
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <div className="bg-bg-surface rounded-xl p-4 sm:col-span-2">
-          <p className="text-xs text-text-secondary mb-1">Patrimônio investido</p>
-          <p className="text-3xl font-bold text-accent-primary">{fmt(totalInvested)}</p>
-          <p className="text-xs text-text-secondary mt-1">Não incluso no saldo disponível</p>
+      {/* ── Filtros ── */}
+      <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4 space-y-3">
+        <div className="relative">
+          <MagnifyingGlass
+            size={16}
+            weight="duotone"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300"
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por descricao, conta, cartao ou categoria..."
+            className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
         </div>
-        <div className="bg-bg-surface rounded-xl p-4">
-          <p className="text-xs text-text-secondary mb-1">Rendimento total</p>
-          <p className={`text-xl font-bold ${totalGain >= 0 ? 'text-success' : 'text-danger'}`}>{fmt(totalGain)}</p>
-          <p className={`text-xs mt-1 ${gainPct >= 0 ? 'text-success' : 'text-danger'}`}>{fmtPct(gainPct)}</p>
-        </div>
-        <div className="bg-bg-surface rounded-xl p-4">
-          <p className="text-xs text-text-secondary mb-1">Ativos</p>
-          <p className="text-xl font-bold text-text-primary">{activeInvestments.length}</p>
-          <p className="text-xs text-text-secondary mt-1">investimentos</p>
+
+        <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-1.5">
+            {([['', 'Todas'], ['income', 'Receitas'], ['expense', 'Despesas'], ['transfer', 'Transf.']] as [TxType | '', string][]).map(([val, label]) => (
+              <button key={val} onClick={() => setFilterType(val)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  filterType === val
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-50 border border-gray-200 text-gray-500 hover:bg-gray-100'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            {monthOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
+
+          <select
+            value={filterLifecycle}
+            onChange={e => setFilterLifecycle(e.target.value as LifecycleStatus | '')}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="">Todos os status</option>
+            {(Object.keys(LIFECYCLE_CONFIG) as LifecycleStatus[]).map(s => (
+              <option key={s} value={s}>{LIFECYCLE_CONFIG[s].label}</option>
+            ))}
+          </select>
+
+          {accounts.length > 0 && (
+            <select value={filterAccount} onChange={e => setFilterAccount(e.target.value)}
+              className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="">Todas as contas</option>
+              {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          )}
+
+          {categories.length > 0 && (
+            <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+              className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="">Todas as categorias</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+            </select>
+          )}
+
+          {hasActiveFilters && (
+            <button onClick={clearFilters}
+              className="px-3 py-1.5 rounded-lg text-xs text-red-400 hover:text-red-600 hover:bg-red-50 border border-red-100 transition-colors">
+              Limpar
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Distribuição */}
-      {activeInvestments.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-          <div className="bg-bg-surface rounded-xl p-4">
-            <p className="text-sm font-medium text-text-primary mb-3">Por tipo</p>
-            <div className="space-y-2">
-              {byType.map(([type, amount]) => {
-                const pct = totalInvested > 0 ? (amount / totalInvested) * 100 : 0
-                return (
-                  <div key={type}>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-text-secondary font-medium">{type}</span>
-                      <span className="text-text-secondary">{fmt(amount)} · {pct.toFixed(0)}%</span>
-                    </div>
-                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all"
-                        style={{ width: `${pct}%`, backgroundColor: TYPE_COLORS[type] ?? '#6b7280' }} />
-                    </div>
-                  </div>
-                )
-              })}
+      {/* ── Summary dual — ledger + operacional ── */}
+      {!loading && !loadError && filtered.length > 0 && (
+        <div className="space-y-3 mb-4">
+          <div>
+            <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted,#94A3B8)' }}>
+              Confirmado + Vencido
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-xl px-4 py-3 border"
+                style={{ background: 'var(--color-surface,#1E293B)', borderColor: 'var(--color-border,#1E293B)' }}>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted,#94A3B8)' }}>Receitas</p>
+                <p className="text-sm font-semibold mt-0.5" style={{ color: 'var(--color-success,#16A34A)' }}>
+                  {fmt(dualSummary.ledger.income)}
+                </p>
+              </div>
+              <div className="rounded-xl px-4 py-3 border"
+                style={{ background: 'var(--color-surface,#1E293B)', borderColor: 'var(--color-border,#1E293B)' }}>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted,#94A3B8)' }}>Despesas</p>
+                <p className="text-sm font-semibold mt-0.5" style={{ color: 'var(--color-danger,#DC2626)' }}>
+                  {fmt(dualSummary.ledger.expense)}
+                </p>
+              </div>
+              <div className="rounded-xl px-4 py-3 border"
+                style={{ background: 'var(--color-surface,#1E293B)', borderColor: 'var(--color-border,#1E293B)' }}>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted,#94A3B8)' }}>Saldo real</p>
+                <p className="text-sm font-semibold mt-0.5"
+                  style={{ color: dualSummary.ledger.balance >= 0
+                    ? 'var(--color-brand,#7C3AED)'
+                    : 'var(--color-danger,#DC2626)' }}>
+                  {fmt(dualSummary.ledger.balance)}
+                </p>
+              </div>
             </div>
           </div>
 
-          {byGoal.length > 0 && (
-            <div className="bg-bg-surface rounded-xl p-4">
-              <p className="text-sm font-medium text-text-primary mb-3">Por objetivo</p>
-              <div className="space-y-2">
-                {byGoal.map(({ goal, amount }) => {
-                  const pct = totalInvested > 0 ? (amount / totalInvested) * 100 : 0
-                  return (
-                    <div key={goal.id}>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-text-secondary font-medium">{goal.icon} {goal.name}</span>
-                        <span className="text-text-secondary">{pct.toFixed(0)}%</span>
-                      </div>
-                      <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full transition-all"
-                          style={{ width: `${pct}%`, backgroundColor: goal.color }} />
-                      </div>
-                    </div>
-                  )
-                })}
+          {(dualSummary.operational.income > 0 || dualSummary.operational.expense > 0) && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted,#94A3B8)' }}>
+                Previsto / Em revisão
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl px-4 py-3 border border-dashed"
+                  style={{ background: 'var(--color-surface,#1E293B)', borderColor: 'var(--color-border,#1E293B)' }}>
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted,#94A3B8)' }}>Receitas</p>
+                  <p className="text-sm font-semibold mt-0.5 opacity-60" style={{ color: 'var(--color-success,#16A34A)' }}>
+                    {fmt(dualSummary.operational.income)}
+                  </p>
+                </div>
+                <div className="rounded-xl px-4 py-3 border border-dashed"
+                  style={{ background: 'var(--color-surface,#1E293B)', borderColor: 'var(--color-border,#1E293B)' }}>
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted,#94A3B8)' }}>Despesas</p>
+                  <p className="text-sm font-semibold mt-0.5 opacity-60" style={{ color: 'var(--color-danger,#DC2626)' }}>
+                    {fmt(dualSummary.operational.expense)}
+                  </p>
+                </div>
+                <div className="rounded-xl px-4 py-3 border border-dashed"
+                  style={{ background: 'var(--color-surface,#1E293B)', borderColor: 'var(--color-border,#1E293B)' }}>
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted,#94A3B8)' }}>Impacto prev.</p>
+                  <p className="text-sm font-semibold mt-0.5 opacity-60"
+                    style={{ color: dualSummary.operational.balance >= 0
+                      ? 'var(--color-brand,#7C3AED)'
+                      : 'var(--color-danger,#DC2626)' }}>
+                    {fmt(dualSummary.operational.balance)}
+                  </p>
+                </div>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Filtros */}
-      <div className="flex gap-2 flex-wrap mb-4 items-center">
-        <button onClick={() => setFilterType('')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            !filterType
-              ? 'bg-accent-primary text-white'
-              : 'bg-bg-surface text-text-secondary hover:bg-white/10'
-          }`}>
-          Todos
-        </button>
-        {TYPES.map(t => investments.some(i => i.type === t) && (
-          <button key={t} onClick={() => setFilterType(t)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              filterType === t ? 'text-white' : 'bg-bg-surface text-text-secondary hover:bg-white/10'
-            }`}
-            style={filterType === t ? { backgroundColor: TYPE_COLORS[t] } : {}}>
-            {t}
-          </button>
-        ))}
-        <label className="ml-auto flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer">
-          <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} className="rounded" />
-          Mostrar inativos
-        </label>
-      </div>
+      {renderContent()}
 
-      {/* Lista */}
-      {loading ? (
-        <p className="text-text-secondary text-sm">Carregando...</p>
-      ) : filtered.length === 0 ? (
-        <div className="bg-bg-surface border border-dashed border-text-secondary/20 rounded-xl p-10 text-center">
-          <TrendUp size={40} weight="duotone" className="text-text-secondary mx-auto mb-3" />
-          <p className="text-text-primary text-sm font-medium">Nenhum investimento cadastrado</p>
-          <p className="text-text-secondary text-xs mt-1 mb-4">
-            Cadastre seus investimentos para acompanhar seu patrimônio separado do saldo operacional.
-          </p>
-          <button onClick={openCreate}
-            className="bg-accent-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
-            Novo Investimento
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {filtered.map(inv => {
-            const gain    = Number(inv.current_amount) - Number(inv.initial_amount)
-            const gainPct = Number(inv.initial_amount) > 0 ? (gain / Number(inv.initial_amount)) * 100 : 0
-            const goal    = inv.goal_id ? goalMap[inv.goal_id] : null
-            return (
-              <div key={inv.id}
-                className={`bg-bg-surface rounded-xl p-4 transition-opacity ${!inv.is_active ? 'opacity-50' : ''}`}>
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-8 rounded-full" style={{ backgroundColor: TYPE_COLORS[inv.type] ?? '#6b7280' }} />
-                    <div>
-                      <p className="font-semibold text-text-primary text-sm">{inv.name}</p>
-                      <p className="text-xs text-text-secondary">
-                        {inv.type}{inv.institution ? ` · ${inv.institution}` : ''}
-                      </p>
-                    </div>
-                  </div>
-                  {goal && (
-                    <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                      style={{ backgroundColor: goal.color + '20', color: goal.color }}>
-                      {goal.icon} {goal.name}
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-end justify-between mb-3">
-                  <div>
-                    <p className="text-xs text-text-secondary">Valor atual</p>
-                    <p className="text-xl font-bold text-text-primary">{fmt(Number(inv.current_amount))}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className={`text-sm font-semibold ${gain >= 0 ? 'text-success' : 'text-danger'}`}>{fmt(gain)}</p>
-                    <p className={`text-xs ${gainPct >= 0 ? 'text-success' : 'text-danger'}`}>{fmtPct(gainPct)}</p>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {inv.liquidity_type && (
-                    <span className="text-xs bg-white/5 text-text-secondary px-2 py-0.5 rounded-full border border-white/10 flex items-center gap-1">
-                      <Drop size={10} weight="duotone" />
-                      {LIQUIDITY_LABELS[inv.liquidity_type] ?? inv.liquidity_type}
-                      {inv.liquidity_type === 'fixed_date' && inv.liquidity_date
-                        ? ` · ${new Date(inv.liquidity_date + 'T12:00:00').toLocaleDateString('pt-BR')}`
-                        : ''}
-                    </span>
-                  )}
-                  {inv.profitability && (
-                    <span className="text-xs bg-success/10 text-success px-2 py-0.5 rounded-full border border-success/20 flex items-center gap-1">
-                      <ChartBar size={10} weight="duotone" />
-                      {inv.profitability}
-                    </span>
-                  )}
-                  {inv.start_date && (
-                    <span className="text-xs bg-white/5 text-text-secondary px-2 py-0.5 rounded-full border border-white/10 flex items-center gap-1">
-                      <CalendarBlank size={10} weight="duotone" />
-                      {new Date(inv.start_date + 'T12:00:00').toLocaleDateString('pt-BR')}
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex gap-1 pt-2 border-t border-white/5">
-                  <button onClick={() => openEdit(inv)}
-                    className="flex items-center gap-1 text-xs text-text-secondary hover:text-accent-primary px-2 py-1 rounded hover:bg-accent-primary/10 transition-colors">
-                    <PencilSimple size={12} weight="duotone" />
-                    Editar
-                  </button>
-                  <button onClick={() => handleToggleActive(inv)}
-                    className="flex items-center gap-1 text-xs text-text-secondary hover:text-warning px-2 py-1 rounded hover:bg-warning/10 transition-colors">
-                    {inv.is_active
-                      ? <><Pause size={12} weight="duotone" /> Desativar</>
-                      : <><Play size={12} weight="duotone" /> Ativar</>
-                    }
-                  </button>
-                  <button onClick={() => handleDelete(inv.id)} disabled={deletingId === inv.id}
-                    className="flex items-center gap-1 text-xs text-text-secondary hover:text-danger px-2 py-1 rounded hover:bg-danger/10 transition-colors disabled:opacity-50">
-                    <Trash size={12} weight="duotone" />
-                    {deletingId === inv.id ? '…' : 'Excluir'}
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Modal */}
-{showModal && (
-  <div
-    className="fixed inset-0 flex items-center justify-center z-50 p-4"
-    style={{ backgroundColor: 'var(--overlay)' }}
-    onClick={() => setShowModal(false)}
-  >
-    <div
-      className="bg-surface rounded-2xl w-full max-w-md p-6 shadow-lg border border-border max-h-[90vh] overflow-y-auto"
-      onClick={(e) => e.stopPropagation()}
-    >
-      {/* Cabeçalho */}
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="text-lg font-semibold text-text">
-          {editingId ? 'Editar Investimento' : 'Novo Investimento'}
-        </h2>
-        <button
-          onClick={() => setShowModal(false)}
-          className="text-text-secondary hover:text-text transition-colors"
-        >
-          <X size={20} weight="bold" />
-        </button>
-      </div>
-
-      {/* Formulário */}
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm text-text-secondary mb-1">Nome</label>
-          <input
-            type="text"
-            value={form.name}
-            onChange={e => setForm({ ...form, name: e.target.value })}
-            placeholder="Ex: Tesouro Selic 2029, PETR4..."
-            className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm text-text-secondary mb-1">Tipo</label>
-            <select
-              value={form.type}
-              onChange={e => setForm({ ...form, type: e.target.value })}
-              className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary"
+      {/* ── Modal confirmação exclusão simples ── */}
+      <AppModal
+        open={showDeleteModal}
+        onClose={() => { setShowDeleteModal(false); setDeleteTargetId(null) }}
+        title="Excluir transacao"
+        size="sm"
+        footer={
+          <AppModal.Footer align="between">
+            <button
+              onClick={() => { setShowDeleteModal(false); setDeleteTargetId(null) }}
+              className="flex-1 rounded-lg py-2 text-sm transition-colors hover:opacity-80"
+              style={{
+                border:     '1px solid var(--color-border)',
+                color:      'var(--color-text-muted)',
+                background: 'transparent',
+              }}
             >
-              {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+              Cancelar
+            </button>
+            <button
+              onClick={executeDeleteNormal}
+              className="flex-1 rounded-lg py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+              style={{ background: 'var(--color-danger)' }}
+            >
+              Excluir
+            </button>
+          </AppModal.Footer>
+        }
+      >
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+            style={{ background: 'var(--color-danger, #DC2626)20' }}>
+            <Trash size={20} weight="duotone" style={{ color: 'var(--color-danger)' }} />
           </div>
-          <div>
-            <label className="block text-sm text-text-secondary mb-1">Instituição</label>
-            <input
-              type="text"
-              value={form.institution}
-              onChange={e => setForm({ ...form, institution: e.target.value })}
-              placeholder="Ex: XP, Nubank..."
-              className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
+          <p className="text-sm pt-2" style={{ color: 'var(--color-text-muted)' }}>
+            Essa acao nao pode ser desfeita.
+          </p>
         </div>
+      </AppModal>
 
-        <div>
-          <label className="block text-sm text-text-secondary mb-1">Objetivo</label>
-          {!showNewGoal ? (
-            <div className="flex gap-2">
-              <select
-                value={form.goal_id}
-                onChange={e => setForm({ ...form, goal_id: e.target.value })}
-                className="flex-1 bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="">Sem objetivo</option>
-                {goals.map(g => (
-                  <option key={g.id} value={g.id}>{g.icon} {g.name}</option>
-                ))}
-              </select>
+      {/* ── Modal exclusão recorrente ── */}
+      <AppModal
+        open={showRecurrenceModal && !!recurrenceTx}
+        onClose={() => { setShowRecurrenceModal(false); setRecurrenceTx(null) }}
+        title="Excluir lancamento recorrente"
+        size="sm"
+      >
+        {recurrenceTx && (
+          <>
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                style={{ background: 'rgba(59,130,246,0.1)' }}>
+                <Repeat size={20} weight="duotone" className="text-blue-500" />
+              </div>
+              <p className="text-sm pt-2" style={{ color: 'var(--color-text-muted)' }}>
+                <span className="font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                  "{recurrenceTx.description}"
+                </span>
+                {' · '}{fmtDate(recurrenceTx.date)}
+              </p>
+            </div>
+
+            <div className="rounded-xl px-4 py-3 mb-4 text-xs"
+              style={{
+                background:   'rgba(59,130,246,0.08)',
+                border:       '1px solid rgba(59,130,246,0.2)',
+                color:        '#1d4ed8',
+              }}>
+              <p className="font-semibold mb-1 flex items-center gap-1">
+                <Warning size={12} weight="duotone" />
+                Este lancamento faz parte de uma recorrencia ativa.
+              </p>
+              <p>Excluir apenas este lancamento nao afeta os demais nem a automacao futura.</p>
+              <p className="mt-1">Para gerenciar a recorrencia completa, acesse <strong>Recorrencias</strong>.</p>
+            </div>
+
+            <div className="space-y-2">
               <button
-                onClick={() => setShowNewGoal(true)}
-                className="px-3 py-2 rounded-lg border border-dashed border-primary text-primary text-xs hover:bg-primary/10 transition-colors whitespace-nowrap"
+                onClick={() => executeTxDelete('single')}
+                className="w-full text-left rounded-xl px-4 py-3 transition-colors"
+                style={{
+                  border:     '2px solid var(--color-border)',
+                  background: 'transparent',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.borderColor = 'rgba(234,88,12,0.4)'
+                  e.currentTarget.style.background  = 'rgba(234,88,12,0.05)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.borderColor = 'var(--color-border)'
+                  e.currentTarget.style.background  = 'transparent'
+                }}
               >
-                + Novo
+                <p className="text-sm font-semibold flex items-center gap-2"
+                  style={{ color: 'var(--color-text-primary)' }}>
+                  <Trash size={14} weight="duotone" className="text-orange-400" />
+                  Excluir so este lancamento
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                  Remove {fmtDate(recurrenceTx.date)}. Recorrencia continua gerando normalmente.
+                </p>
+              </button>
+
+              <button
+                onClick={() => executeTxDelete('all')}
+                className="w-full text-left rounded-xl px-4 py-3 transition-colors"
+                style={{
+                  border:     '2px solid var(--color-border)',
+                  background: 'transparent',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.borderColor = 'rgba(220,38,38,0.4)'
+                  e.currentTarget.style.background  = 'rgba(220,38,38,0.05)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.borderColor = 'var(--color-border)'
+                  e.currentTarget.style.background  = 'transparent'
+                }}
+              >
+                <p className="text-sm font-semibold flex items-center gap-2"
+                  style={{ color: 'var(--color-danger)' }}>
+                  <ArrowCounterClockwise size={14} weight="duotone" />
+                  Excluir e pausar recorrencia
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                  Remove este lancamento e para de gerar novos. Historico passado preservado.
+                </p>
               </button>
             </div>
-          ) : (
-            <div className="border border-primary/20 rounded-xl p-3 space-y-2 bg-primary/5">
-              <p className="text-xs font-medium text-primary">Novo objetivo</p>
-              <input
-                type="text"
-                value={goalForm.name}
-                onChange={e => setGoalForm({ ...goalForm, name: e.target.value })}
-                placeholder="Nome do objetivo"
-                className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+
+            <button
+              onClick={() => { setShowRecurrenceModal(false); setRecurrenceTx(null) }}
+              className="w-full rounded-lg py-2 text-sm mt-4 transition-colors hover:opacity-80"
+              style={{
+                border:     '1px solid var(--color-border)',
+                color:      'var(--color-text-muted)',
+                background: 'transparent',
+              }}
+            >
+              Cancelar
+            </button>
+          </>
+        )}
+      </AppModal>
+
+      {/* ── Modal criar/editar transacao ── */}
+      <AppModal
+        open={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        title={editingId ? 'Editar Transacao' : 'Nova Transacao'}
+        size="md"
+        footer={
+          <AppModal.Footer align="between">
+            <button
+              onClick={() => setShowEditModal(false)}
+              className="flex-1 rounded-lg py-2 text-sm transition-colors hover:opacity-80"
+              style={{
+                border:     '1px solid var(--color-border)',
+                color:      'var(--color-text-muted)',
+                background: 'transparent',
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 rounded-lg py-2 text-sm font-medium text-white transition-colors disabled:opacity-50"
+              style={{
+                background: form.use_credit_card    ? '#9333ea'
+                          : form.type === 'income'  ? 'var(--color-success)'
+                          : form.type === 'expense' ? 'var(--color-danger)'
+                          : 'var(--color-brand)',
+              }}
+            >
+              {saving
+                ? 'Salvando...'
+                : form.is_installment
+                ? `Criar ${form.installment_total || '?'} parcelas`
+                : form.is_recurring
+                ? 'Salvar recorrencia'
+                : editingId
+                ? 'Salvar alteracoes'
+                : 'Salvar'
+              }
+            </button>
+          </AppModal.Footer>
+        }
+      >
+        <div className="space-y-4">
+
+          <div>
+            <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>Tipo</label>
+            <div className="flex gap-2">
+              {(['expense', 'income', 'transfer'] as TxType[]).map(t => (
+                <button key={t}
+                  onClick={() => setForm({ ...form, type: t, category_id: '', use_credit_card: false, is_installment: false, is_recurring: false })}
+                  className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
+                    form.type === t
+                      ? t === 'income'   ? 'bg-green-100 text-green-700'
+                      : t === 'expense'  ? 'bg-red-100 text-red-600'
+                      : 'bg-indigo-100 text-indigo-700'
+                      : 'border border-gray-200 text-gray-500 hover:bg-gray-50'
+                  }`}>
+                  {TYPE_LABELS[t]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {form.type === 'expense' && creditCards.length > 0 && (
+            <div className="flex items-center justify-between rounded-lg px-3 py-2.5"
+              style={{ background: 'rgba(147,51,234,0.08)', border: '1px solid rgba(147,51,234,0.2)' }}>
+              <div className="flex items-center gap-2">
+                <CreditCard size={16} weight="duotone" className="text-purple-500" />
+                <span className="text-sm font-medium text-purple-700">Pagar com cartao de credito</span>
+              </div>
+              <Toggle
+                checked={form.use_credit_card}
+                onChange={() => setForm({ ...form, use_credit_card: !form.use_credit_card, credit_card_id: creditCards[0]?.id ?? '' })}
               />
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <p className="text-xs text-text-secondary mb-1 flex items-center gap-1">
-                    <Target size={10} weight="duotone" /> Ícone
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {GOAL_ICONS.map(icon => (
-                      <button
-                        key={icon}
-                        onClick={() => setGoalForm({ ...goalForm, icon })}
-                        className={`w-7 h-7 rounded-lg text-sm flex items-center justify-center transition-colors ${
-                          goalForm.icon === icon
-                            ? 'bg-primary/20 ring-2 ring-primary'
-                            : 'hover:bg-surface-hover'
-                        }`}
-                      >
-                        {icon}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs text-text-secondary mb-1 flex items-center gap-1">
-                    <Palette size={10} weight="duotone" /> Cor
-                  </p>
-                  <input
-                    type="color"
-                    value={goalForm.color}
-                    onChange={e => setGoalForm({ ...goalForm, color: e.target.value })}
-                    className="w-10 h-10 rounded-lg border border-border-md cursor-pointer bg-transparent"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowNewGoal(false)}
-                  className="flex-1 border border-border text-text-secondary rounded-lg py-1.5 text-xs hover:bg-surface-hover transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSaveGoal}
-                  disabled={savingGoal || !goalForm.name.trim()}
-                  className="flex-1 bg-primary text-white rounded-lg py-1.5 text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-                >
-                  {savingGoal ? 'Salvando...' : 'Criar objetivo'}
-                </button>
-              </div>
             </div>
           )}
-        </div>
 
-        <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm text-text-secondary mb-1">Valor inicial (R$)</label>
+            <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>Descricao</label>
             <input
-              type="number"
-              value={form.initial_amount}
-              onChange={e => setForm({ ...form, initial_amount: e.target.value })}
-              placeholder="0,00"
-              step="0.01"
-              min="0"
-              className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+              type="text"
+              value={form.description}
+              onChange={e => setForm({ ...form, description: e.target.value })}
+              placeholder={form.type === 'income' ? 'Ex: Salario, Freelance...' : form.type === 'expense' ? 'Ex: Mercado, Aluguel...' : 'Ex: Para reserva...'}
+              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              style={{
+                background: 'var(--color-bg)',
+                color:      'var(--color-text-primary)',
+                border:     '1px solid var(--color-border)',
+              }}
             />
           </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>Valor (R$)</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={form.amount}
+                onChange={e => setForm({ ...form, amount: e.target.value })}
+                placeholder="0,00"
+                className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                style={{
+                  background: 'var(--color-bg)',
+                  color:      'var(--color-text-primary)',
+                  border:     '1px solid var(--color-border)',
+                }}
+              />
+            </div>
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>Data</label>
+              <input
+                type="date"
+                value={form.date}
+                onChange={e => setForm({ ...form, date: e.target.value })}
+                className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                style={{
+                  background: 'var(--color-bg)',
+                  color:      'var(--color-text-primary)',
+                  border:     '1px solid var(--color-border)',
+                }}
+              />
+            </div>
+          </div>
+
+          {form.use_credit_card && form.type === 'expense' ? (
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>Cartao</label>
+              <select
+                value={form.credit_card_id}
+                onChange={e => setForm({ ...form, credit_card_id: e.target.value })}
+                className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                style={{
+                  background: 'var(--color-bg)',
+                  color:      'var(--color-text-primary)',
+                  border:     '1px solid var(--color-border)',
+                }}
+              >
+                <option value="">Selecione o cartao...</option>
+                {creditCards.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-purple-500 mt-1">A despesa sera lancada na fatura do cartao.</p>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>Status</label>
+                <select
+                  value={form.status}
+                  onChange={e => setForm({ ...form, status: e.target.value })}
+                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  style={{
+                    background: 'var(--color-bg)',
+                    color:      'var(--color-text-primary)',
+                    border:     '1px solid var(--color-border)',
+                  }}
+                >
+                  <option value="paid">Pago</option>
+                  <option value="pending">Pendente</option>
+                  <option value="overdue">Vencido</option>
+                  <option value="cancelled">Cancelado</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                  {form.type === 'transfer' ? 'Conta de Origem' : 'Conta'}
+                </label>
+                <select
+                  value={form.account_id}
+                  onChange={e => setForm({ ...form, account_id: e.target.value })}
+                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  style={{
+                    background: 'var(--color-bg)',
+                    color:      'var(--color-text-primary)',
+                    border:     '1px solid var(--color-border)',
+                  }}
+                >
+                  <option value="">Selecione...</option>
+                  {accounts.map(a => <option key={a.id} value={a.id}>{a.name} — {fmt(a.current_balance)}</option>)}
+                </select>
+              </div>
+              {form.type === 'transfer' && (
+                <div>
+                  <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                    Conta de Destino
+                  </label>
+                  <select
+                    value={form.destination_account_id}
+                    onChange={e => setForm({ ...form, destination_account_id: e.target.value })}
+                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    style={{
+                      background: 'var(--color-bg)',
+                      color:      'var(--color-text-primary)',
+                      border:     '1px solid var(--color-border)',
+                    }}
+                  >
+                    <option value="">Selecione...</option>
+                    {accounts.filter(a => a.id !== form.account_id).map(a => (
+                      <option key={a.id} value={a.id}>{a.name} — {fmt(a.current_balance)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </>
+          )}
+
+          {form.type !== 'transfer' && (
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                Categoria <span style={{ opacity: 0.6 }}>(opcional)</span>
+              </label>
+              <select
+                value={form.category_id}
+                onChange={e => setForm({ ...form, category_id: e.target.value })}
+                className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                style={{
+                  background: 'var(--color-bg)',
+                  color:      'var(--color-text-primary)',
+                  border:     '1px solid var(--color-border)',
+                }}
+              >
+                <option value="">Sem categoria</option>
+                {catsFiltradas.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+              </select>
+            </div>
+          )}
+
+          {form.type !== 'transfer' && !form.is_installment && (
+            <div className="rounded-xl p-3 space-y-3"
+              style={{ border: '1px solid var(--color-border)' }}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Repeat size={16} weight="duotone" className="text-gray-400" />
+                  <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                    Recorrente
+                  </span>
+                </div>
+                <Toggle
+                  checked={form.is_recurring}
+                  onChange={() => setForm({ ...form, is_recurring: !form.is_recurring })}
+                />
+              </div>
+              {form.is_recurring && (
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                      Frequencia
+                    </label>
+                    <select
+                      value={form.recurrence}
+                      onChange={e => setForm({ ...form, recurrence: e.target.value })}
+                      className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      style={{
+                        background: 'var(--color-bg)',
+                        color:      'var(--color-text-primary)',
+                        border:     '1px solid var(--color-border)',
+                      }}
+                    >
+                      <option value="daily">Diaria</option>
+                      <option value="weekly">Semanal</option>
+                      <option value="monthly">Mensal</option>
+                      <option value="yearly">Anual</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                      Data fim (opcional)
+                    </label>
+                    <input
+                      type="date"
+                      value={form.recurrence_end}
+                      onChange={e => setForm({ ...form, recurrence_end: e.target.value })}
+                      className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      style={{
+                        background: 'var(--color-bg)',
+                        color:      'var(--color-text-primary)',
+                        border:     '1px solid var(--color-border)',
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {form.type !== 'transfer' && !form.is_recurring && !editingId && (
+            <div className="rounded-xl p-3 space-y-3"
+              style={{ border: '1px solid var(--color-border)' }}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CalendarBlank size={16} weight="duotone" className="text-gray-400" />
+                  <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                    Parcelado
+                  </span>
+                </div>
+                <Toggle
+                  checked={form.is_installment}
+                  onChange={() => setForm({ ...form, is_installment: !form.is_installment })}
+                />
+              </div>
+              {form.is_installment && (
+                <div className="pt-1">
+                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                    Numero de parcelas
+                  </label>
+                  <input
+                    type="number"
+                    min={2}
+                    max={48}
+                    value={form.installment_total}
+                    onChange={e => setForm({ ...form, installment_total: e.target.value })}
+                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    style={{
+                      background: 'var(--color-bg)',
+                      color:      'var(--color-text-primary)',
+                      border:     '1px solid var(--color-border)',
+                    }}
+                    placeholder="Ex: 12"
+                  />
+                  {form.installment_total && parseInt(form.installment_total) >= 2 && (
+                    <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                      {parseInt(form.installment_total)}x de {fmt(parseFloat(String(form.amount).replace(',', '.')) || 0)} — total {fmt((parseFloat(String(form.amount).replace(',', '.')) || 0) * parseInt(form.installment_total))}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div>
-            <label className="block text-sm text-text-secondary mb-1">Valor atual (R$)</label>
-            <input
-              type="number"
-              value={form.current_amount}
-              onChange={e => setForm({ ...form, current_amount: e.target.value })}
-              placeholder="0,00"
-              step="0.01"
-              min="0"
-              className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+            <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>
+              Observacao <span style={{ opacity: 0.6 }}>(opcional)</span>
+            </label>
+            <textarea
+              value={form.notes}
+              onChange={e => setForm({ ...form, notes: e.target.value })}
+              rows={2}
+              placeholder="Notas adicionais..."
+              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              style={{
+                background: 'var(--color-bg)',
+                color:      'var(--color-text-primary)',
+                border:     '1px solid var(--color-border)',
+              }}
             />
           </div>
-        </div>
 
-        <div>
-          <label className="block text-sm text-text-secondary mb-1">
-            Rentabilidade <span className="opacity-50">(opcional)</span>
-          </label>
-          <input
-            type="text"
-            value={form.profitability}
-            onChange={e => setForm({ ...form, profitability: e.target.value })}
-            placeholder="Ex: 110% CDI, IPCA + 6%, 12% a.a., Variável"
-            className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm text-text-secondary mb-1">Liquidez</label>
-          <select
-            value={form.liquidity_type}
-            onChange={e => setForm({ ...form, liquidity_type: e.target.value, liquidity_date: '' })}
-            className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            <option value="daily">Liquidez diária</option>
-            <option value="fixed_date">Data de vencimento</option>
-            <option value="none">Sem liquidez</option>
-          </select>
-          {form.liquidity_type === 'fixed_date' && (
-            <input
-              type="date"
-              value={form.liquidity_date}
-              onChange={e => setForm({ ...form, liquidity_date: e.target.value })}
-              className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary mt-2"
-            />
+          {formError && (
+            <p className="text-sm" style={{ color: 'var(--color-danger)' }}>{formError}</p>
           )}
         </div>
-
-        <div>
-          <label className="block text-sm text-text-secondary mb-1">Data de início</label>
-          <input
-            type="date"
-            value={form.start_date}
-            onChange={e => setForm({ ...form, start_date: e.target.value })}
-            className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm text-text-secondary mb-1">
-            Observações <span className="opacity-50">(opcional)</span>
-          </label>
-          <textarea
-            value={form.notes}
-            onChange={e => setForm({ ...form, notes: e.target.value })}
-            rows={2}
-            placeholder="Notas adicionais..."
-            className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-          />
-        </div>
-
-        {error && <p className="text-sm text-danger">{error}</p>}
-      </div>
-
-      {/* Rodapé */}
-      <div className="flex gap-3 mt-6">
-        <button
-          onClick={() => setShowModal(false)}
-          className="flex-1 border border-border text-text-secondary rounded-lg py-2 text-sm hover:bg-surface-hover transition-colors"
-        >
-          Cancelar
-        </button>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex-1 bg-primary text-white rounded-lg py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-        >
-          {saving ? 'Salvando...' : editingId ? 'Salvar' : 'Cadastrar'}
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-          </PageContainer>
+      </AppModal>
+    </PageContainer>
   )
 }
