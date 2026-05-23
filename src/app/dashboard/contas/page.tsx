@@ -6,14 +6,15 @@ import { awardXP } from '@/lib/gamification'
 import { Account, AccountType } from '@/types'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { AppModal } from '@/components/AppModal'
 import { Bank, PiggyBank, Wallet, TrendUp, Folder, Plus, CheckCircle, XCircle } from '@phosphor-icons/react'
 
 const ACCOUNT_TYPES: { value: AccountType; label: string; Icon: React.ElementType }[] = [
   { value: 'checking',   label: 'Conta Corrente', Icon: Bank },
   { value: 'savings',    label: 'Poupança',        Icon: PiggyBank },
   { value: 'cash',       label: 'Dinheiro',        Icon: Wallet },
-  { value: 'investment', label: 'Investimentos', Icon: TrendUp },
-  { value: 'other',      label: 'Outro',           Icon: Folder },
+  { value: 'investment', label: 'Investimentos',   Icon: TrendUp },
+  { value: 'other',      label: 'Outro',            Icon: Folder },
 ]
 
 const COLORS = [
@@ -261,132 +262,156 @@ export default function ContasPage() {
         </div>
       )}
 
-      {/* Modal */}
-{showModal && (
-  <div
-    className="fixed inset-0 flex items-center justify-center z-50 p-4"
-    style={{ backgroundColor: 'var(--overlay)' }}
-    onClick={() => setShowModal(false)}
-  >
-    <div
-      className="bg-surface rounded-2xl w-full max-w-md p-6 shadow-lg border border-border max-h-[90vh] overflow-y-auto"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="text-lg font-semibold text-text">
-          {editingId ? 'Editar Conta' : 'Nova Conta'}
-        </h2>
-      </div>
-
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm text-text-secondary mb-1">Nome da conta</label>
-          <input
-            type="text"
-            value={form.name}
-            onChange={e => setForm({ ...form, name: e.target.value })}
-            placeholder="Ex: Nubank, Bradesco..."
-            className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm text-text-secondary mb-1">Tipo</label>
-          <select
-            value={form.type}
-            onChange={e => setForm({ ...form, type: e.target.value as AccountType })}
-            className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            {ACCOUNT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
-          <p className="text-xs text-text-secondary mt-1">
-            Para cartões de crédito, use{' '}
-            <a href="/dashboard/cartoes" className="text-primary hover:underline">Cartões</a>.
-          </p>
-        </div>
-
-        <div>
-          <label className="block text-sm text-text-secondary mb-1">
-            Ícone <span className="opacity-60">(emoji opcional — category_icon)</span>
-          </label>
-          <input
-            type="text"
-            value={form.icon}
-            onChange={e => setForm({ ...form, icon: e.target.value })}
-            placeholder="Ex: 💜 🏦 💰"
-            maxLength={4}
-            className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
-
-        {!editingId && (
+      {/* ── Modal criar/editar conta ── */}
+      <AppModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        title={editingId ? 'Editar Conta' : 'Nova Conta'}
+        size="md"
+        footer={
+          <AppModal.Footer align="between">
+            <button
+              onClick={() => setShowModal(false)}
+              className="flex-1 rounded-lg py-2 text-sm transition-colors hover:opacity-80"
+              style={{
+                border:     '1px solid var(--color-border)',
+                color:      'var(--color-text-muted)',
+                background: 'transparent',
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 rounded-lg py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50 btn-primary"
+            >
+              {saving ? 'Salvando...' : editingId ? 'Salvar alterações' : 'Criar conta'}
+            </button>
+          </AppModal.Footer>
+        }
+      >
+        <div className="space-y-4">
           <div>
-            <label className="block text-sm text-text-secondary mb-1">Saldo inicial (R$)</label>
+            <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>
+              Nome da conta
+            </label>
             <input
-              type="number"
-              value={form.initial_balance}
-              onChange={e => setForm({ ...form, initial_balance: e.target.value })}
-              placeholder="0,00"
-              min="0"
-              step="0.01"
-              className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+              type="text"
+              value={form.name}
+              onChange={e => setForm({ ...form, name: e.target.value })}
+              placeholder="Ex: Nubank, Bradesco..."
+              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              style={{
+                background: 'var(--color-bg)',
+                color:      'var(--color-text-primary)',
+                border:     '1px solid var(--color-border)',
+              }}
             />
-            <p className="text-xs text-text-secondary mt-1">Saldo atual da conta no momento do cadastro.</p>
           </div>
-        )}
 
-        <div>
-          <label className="block text-sm text-text-secondary mb-2">Cor</label>
-          <div className="flex gap-2 flex-wrap">
-            {COLORS.map(color => (
-              <button
-                key={color}
-                onClick={() => setForm({ ...form, color })}
-                className="w-7 h-7 rounded-full transition-transform hover:scale-110"
+          <div>
+            <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>Tipo</label>
+            <select
+              value={form.type}
+              onChange={e => setForm({ ...form, type: e.target.value as AccountType })}
+              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              style={{
+                background: 'var(--color-bg)',
+                color:      'var(--color-text-primary)',
+                border:     '1px solid var(--color-border)',
+              }}
+            >
+              {ACCOUNT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+              Para cartões de crédito, use{' '}
+              <a href="/dashboard/cartoes" style={{ color: 'var(--color-brand)' }} className="hover:underline">Cartões</a>.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>
+              Ícone <span style={{ opacity: 0.6 }}>(emoji opcional — category_icon)</span>
+            </label>
+            <input
+              type="text"
+              value={form.icon}
+              onChange={e => setForm({ ...form, icon: e.target.value })}
+              placeholder="Ex: 💜 🏦 💰"
+              maxLength={4}
+              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              style={{
+                background: 'var(--color-bg)',
+                color:      'var(--color-text-primary)',
+                border:     '1px solid var(--color-border)',
+              }}
+            />
+          </div>
+
+          {!editingId && (
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                Saldo inicial (R$)
+              </label>
+              <input
+                type="number"
+                value={form.initial_balance}
+                onChange={e => setForm({ ...form, initial_balance: e.target.value })}
+                placeholder="0,00"
+                min="0"
+                step="0.01"
+                className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 style={{
-                  backgroundColor: color,
-                  outline: form.color === color ? `3px solid ${color}` : 'none',
-                  outlineOffset: '2px',
+                  background: 'var(--color-bg)',
+                  color:      'var(--color-text-primary)',
+                  border:     '1px solid var(--color-border)',
                 }}
               />
-            ))}
+              <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                Saldo atual da conta no momento do cadastro.
+              </p>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm mb-2" style={{ color: 'var(--color-text-muted)' }}>Cor</label>
+            <div className="flex gap-2 flex-wrap">
+              {COLORS.map(color => (
+                <button
+                  key={color}
+                  onClick={() => setForm({ ...form, color })}
+                  className="w-7 h-7 rounded-full transition-transform hover:scale-110"
+                  style={{
+                    backgroundColor: color,
+                    outline:         form.color === color ? `3px solid ${color}` : 'none',
+                    outlineOffset:   '2px',
+                  }}
+                />
+              ))}
+            </div>
           </div>
+
+          {editingId && (
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="is_active"
+                checked={form.is_active}
+                onChange={e => setForm({ ...form, is_active: e.target.checked })}
+                className="w-4 h-4 accent-primary"
+              />
+              <label htmlFor="is_active" className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                Conta ativa
+              </label>
+            </div>
+          )}
+
+          {error && (
+            <p className="text-sm" style={{ color: 'var(--color-danger)' }}>{error}</p>
+          )}
         </div>
-
-        {editingId && (
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="is_active"
-              checked={form.is_active}
-              onChange={e => setForm({ ...form, is_active: e.target.checked })}
-              className="w-4 h-4 accent-primary"
-            />
-            <label htmlFor="is_active" className="text-sm text-text-secondary">Conta ativa</label>
-          </div>
-        )}
-
-        {error && <p className="text-sm text-danger">{error}</p>}
-      </div>
-
-      <div className="flex gap-3 mt-6">
-        <button
-          onClick={() => setShowModal(false)}
-          className="flex-1 border border-border text-text-secondary rounded-lg py-2 text-sm hover:bg-surface-hover transition-colors"
-        >
-          Cancelar
-        </button>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex-1 btn-primary rounded-lg py-2 text-sm font-medium disabled:opacity-50"
-        >
-          {saving ? 'Salvando...' : editingId ? 'Salvar alterações' : 'Criar conta'}
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+      </AppModal>
     </PageContainer>
   )
 }

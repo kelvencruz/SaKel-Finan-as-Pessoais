@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { AppModal } from '@/components/AppModal'
 import { CreditCard, Plus } from '@phosphor-icons/react'
 
 interface CreditCard {
@@ -178,7 +179,6 @@ export default function CartoesPage() {
                 !card.is_active ? 'opacity-50' : ''
               }`}
             >
-              {/* Visual do cartão */}
               <div
                 className="w-14 h-10 rounded-lg flex items-center justify-center text-white flex-shrink-0 shadow-sm"
                 style={{ backgroundColor: card.color }}
@@ -186,7 +186,6 @@ export default function CartoesPage() {
                 <CreditCard weight="duotone" size={22} />
               </div>
 
-              {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="font-semibold text-text">{card.name}</p>
@@ -214,7 +213,6 @@ export default function CartoesPage() {
                 </div>
               </div>
 
-              {/* Ações */}
               <div className="flex gap-1 flex-shrink-0">
                 <button
                   onClick={() => openEdit(card)}
@@ -241,138 +239,169 @@ export default function CartoesPage() {
         </div>
       )}
 
-      {/* Modal */}
-      {showModal && (
-        <div
-          className="fixed inset-0 flex items-center justify-center z-50 p-4"
-          style={{ backgroundColor: 'var(--overlay)' }}
-          onClick={() => setShowModal(false)}
-        >
-          <div
-            className="bg-surface rounded-2xl w-full max-w-md p-6 shadow-lg border border-border max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold text-text">
-                {editingId ? 'Editar Cartão' : 'Novo Cartão'}
-              </h2>
+      {/* ── Modal criar/editar cartão ── */}
+      <AppModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        title={editingId ? 'Editar Cartão' : 'Novo Cartão'}
+        size="md"
+        footer={
+          <AppModal.Footer align="between">
+            <button
+              onClick={() => setShowModal(false)}
+              className="flex-1 rounded-lg py-2 text-sm transition-colors hover:opacity-80"
+              style={{
+                border:     '1px solid var(--color-border)',
+                color:      'var(--color-text-muted)',
+                background: 'transparent',
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 rounded-lg py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50 btn-primary"
+            >
+              {saving ? 'Salvando...' : editingId ? 'Salvar' : 'Adicionar'}
+            </button>
+          </AppModal.Footer>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>
+              Nome do cartão
+            </label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={e => setForm({ ...form, name: e.target.value })}
+              placeholder="Ex: Nubank, Itaú Platinum..."
+              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              style={{
+                background: 'var(--color-bg)',
+                color:      'var(--color-text-primary)',
+                border:     '1px solid var(--color-border)',
+              }}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>
+              Limite (R$)
+            </label>
+            <input
+              type="number"
+              value={form.limit_amount}
+              onChange={e => setForm({ ...form, limit_amount: e.target.value })}
+              placeholder="0,00"
+              step="0.01"
+              min="0"
+              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              style={{
+                background: 'var(--color-bg)',
+                color:      'var(--color-text-primary)',
+                border:     '1px solid var(--color-border)',
+              }}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                Dia de fechamento
+              </label>
+              <input
+                type="number"
+                value={form.closing_day}
+                onChange={e => setForm({ ...form, closing_day: e.target.value })}
+                min="1"
+                max="31"
+                className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                style={{
+                  background: 'var(--color-bg)',
+                  color:      'var(--color-text-primary)',
+                  border:     '1px solid var(--color-border)',
+                }}
+              />
             </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-text-secondary mb-1">Nome do cartão</label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={e => setForm({ ...form, name: e.target.value })}
-                  placeholder="Ex: Nubank, Itaú Platinum..."
-                  className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-text-secondary mb-1">Limite (R$)</label>
-                <input
-                  type="number"
-                  value={form.limit_amount}
-                  onChange={e => setForm({ ...form, limit_amount: e.target.value })}
-                  placeholder="0,00"
-                  step="0.01"
-                  min="0"
-                  className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm text-text-secondary mb-1">Dia de fechamento</label>
-                  <input
-                    type="number"
-                    value={form.closing_day}
-                    onChange={e => setForm({ ...form, closing_day: e.target.value })}
-                    min="1"
-                    max="31"
-                    className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-text-secondary mb-1">Dia de vencimento</label>
-                  <input
-                    type="number"
-                    value={form.due_day}
-                    onChange={e => setForm({ ...form, due_day: e.target.value })}
-                    min="1"
-                    max="31"
-                    className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm text-text-secondary mb-1">
-                  Conta para pagamento <span className="opacity-60">(opcional)</span>
-                </label>
-                <select
-                  value={form.account_id}
-                  onChange={e => setForm({ ...form, account_id: e.target.value })}
-                  className="w-full bg-bg border border-border-md rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary"
-                >
-                  <option value="">Nenhuma conta vinculada</option>
-                  {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm text-text-secondary mb-2">Cor do cartão</label>
-                <div className="flex gap-2 flex-wrap">
-                  {COLORS.map(color => (
-                    <button
-                      key={color}
-                      onClick={() => setForm({ ...form, color })}
-                      className="w-7 h-7 rounded-full transition-transform hover:scale-110"
-                      style={{
-                        backgroundColor: color,
-                        outline: form.color === color ? `3px solid ${color}` : 'none',
-                        outlineOffset: '2px',
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* Preview */}
-              <div
-                className="rounded-xl p-4 text-white text-sm font-medium flex items-center justify-between"
-                style={{ backgroundColor: form.color }}
-              >
-                <span className="flex items-center gap-2">
-                  <CreditCard weight="duotone" size={18} />
-                  {form.name || 'Nome do cartão'}
-                </span>
-                <span>{form.limit_amount ? fmt(parseFloat(form.limit_amount)) : 'R$ 0,00'}</span>
-              </div>
-
-              {error && <p className="text-sm text-danger">{error}</p>}
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowModal(false)}
-                className="flex-1 border border-border text-text-secondary rounded-lg py-2 text-sm hover:bg-surface-hover transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex-1 btn-primary rounded-lg py-2 text-sm font-medium disabled:opacity-50"
-              >
-                {saving ? 'Salvando...' : editingId ? 'Salvar' : 'Adicionar'}
-              </button>
+            <div>
+              <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                Dia de vencimento
+              </label>
+              <input
+                type="number"
+                value={form.due_day}
+                onChange={e => setForm({ ...form, due_day: e.target.value })}
+                min="1"
+                max="31"
+                className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                style={{
+                  background: 'var(--color-bg)',
+                  color:      'var(--color-text-primary)',
+                  border:     '1px solid var(--color-border)',
+                }}
+              />
             </div>
           </div>
+
+          <div>
+            <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>
+              Conta para pagamento <span style={{ opacity: 0.6 }}>(opcional)</span>
+            </label>
+            <select
+              value={form.account_id}
+              onChange={e => setForm({ ...form, account_id: e.target.value })}
+              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              style={{
+                background: 'var(--color-bg)',
+                color:      'var(--color-text-primary)',
+                border:     '1px solid var(--color-border)',
+              }}
+            >
+              <option value="">Nenhuma conta vinculada</option>
+              {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm mb-2" style={{ color: 'var(--color-text-muted)' }}>
+              Cor do cartão
+            </label>
+            <div className="flex gap-2 flex-wrap">
+              {COLORS.map(color => (
+                <button
+                  key={color}
+                  onClick={() => setForm({ ...form, color })}
+                  className="w-7 h-7 rounded-full transition-transform hover:scale-110"
+                  style={{
+                    backgroundColor: color,
+                    outline:         form.color === color ? `3px solid ${color}` : 'none',
+                    outlineOffset:   '2px',
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Preview */}
+          <div
+            className="rounded-xl p-4 text-white text-sm font-medium flex items-center justify-between"
+            style={{ backgroundColor: form.color }}
+          >
+            <span className="flex items-center gap-2">
+              <CreditCard weight="duotone" size={18} />
+              {form.name || 'Nome do cartão'}
+            </span>
+            <span>{form.limit_amount ? fmt(parseFloat(form.limit_amount)) : 'R$ 0,00'}</span>
+          </div>
+
+          {error && (
+            <p className="text-sm" style={{ color: 'var(--color-danger)' }}>{error}</p>
+          )}
         </div>
-      )}
+      </AppModal>
     </PageContainer>
   )
 }
