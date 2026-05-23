@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { AppModal } from '@/components/AppModal'
 import {
   CreditCard,
   CaretLeft,
@@ -78,7 +79,7 @@ const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Loading skeleton (página inteira)
+// Loading skeleton
 // ─────────────────────────────────────────────────────────────────────────────
 function FaturasSkeleton() {
   return (
@@ -295,7 +296,6 @@ export default function FaturasPage() {
         }
       />
 
-      {/* Sem cartões cadastrados */}
       {cards.length === 0 ? (
         <div className="bg-bg-surface border border-dashed border-text-secondary/20 rounded-xl p-10 text-center">
           <CreditCard size={40} weight="duotone" className="text-text-secondary mx-auto mb-3" />
@@ -430,7 +430,7 @@ export default function FaturasPage() {
               ) : (
                 <>
                   {invoice && invoice.status !== 'paid' && invoice.status !== 'cancelled' && computedTotal > 0 && (
-                    <button onClick={() => { setShowPayModal(true); setPayError(null) }}
+                    <button onClick={() => { setShowPayModal(true); setPayAccountId(''); setPayError(null) }}
                       className="flex-1 bg-success text-white rounded-lg py-2.5 text-sm font-medium hover:opacity-90 transition-opacity">
                       Pagar fatura
                     </button>
@@ -505,36 +505,69 @@ export default function FaturasPage() {
         </div>
       )}
 
-      {/* Modal pagar fatura */}
+      {/* ── Modal pagar fatura — usa AppModal (padrão global) ── */}
       {showPayModal && invoice && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-bg-surface rounded-2xl w-full max-w-sm p-6 shadow-xl border border-white/10">
-            <h2 className="text-lg font-semibold text-text-primary mb-2">Pagar fatura</h2>
-            <p className="text-sm text-text-secondary mb-5">
-              {selectedCard?.name} · {MONTHS[invoice.month - 1]}/{invoice.year} ·{' '}
-              <span className="font-semibold text-text-primary">{fmt(computedTotal)}</span>
-            </p>
-            <div>
-              <label className="block text-sm text-text-secondary mb-1">Débitar da conta</label>
-              <select value={payAccountId} onChange={e => setPayAccountId(e.target.value)}
-                className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary">
-                <option value="">Selecione a conta</option>
-                {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
-            </div>
-            {payError && <p className="text-sm text-danger mt-3">{payError}</p>}
-            <div className="flex gap-3 mt-6">
-              <button onClick={() => setShowPayModal(false)}
-                className="flex-1 border border-white/10 text-text-secondary rounded-lg py-2 text-sm hover:bg-white/5 transition-colors">
-                Cancelar
-              </button>
-              <button onClick={handlePayInvoice} disabled={paying}
-                className="flex-1 bg-success text-white rounded-lg py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity">
-                {paying ? 'Processando...' : 'Confirmar pagamento'}
-              </button>
-            </div>
+        <AppModal
+          title="Pagar fatura"
+          onClose={() => setShowPayModal(false)}
+          maxWidth="sm"
+        >
+          <p className="text-sm mb-5" style={{ color: 'var(--color-text-muted)' }}>
+            {selectedCard?.name} · {MONTHS[invoice.month - 1]}/{invoice.year} ·{' '}
+            <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+              {fmt(computedTotal)}
+            </span>
+          </p>
+
+          <div>
+            <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>
+              Débitar da conta
+            </label>
+            <select
+              value={payAccountId}
+              onChange={e => setPayAccountId(e.target.value)}
+              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              style={{
+                background:  'var(--color-surface)',
+                color:       'var(--color-text-primary)',
+                border:      '1px solid var(--color-border)',
+              }}
+            >
+              <option value="">Selecione a conta</option>
+              {accounts.map(a => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
           </div>
-        </div>
+
+          {payError && (
+            <p className="text-sm mt-3" style={{ color: 'var(--color-danger)' }}>
+              {payError}
+            </p>
+          )}
+
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={() => setShowPayModal(false)}
+              className="flex-1 rounded-lg py-2 text-sm transition-colors hover:opacity-80"
+              style={{
+                border:     '1px solid var(--color-border)',
+                color:      'var(--color-text-muted)',
+                background: 'transparent',
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handlePayInvoice}
+              disabled={paying}
+              className="flex-1 rounded-lg py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              style={{ background: 'var(--color-success, var(--success))' }}
+            >
+              {paying ? 'Processando...' : 'Confirmar pagamento'}
+            </button>
+          </div>
+        </AppModal>
       )}
     </PageContainer>
   )
