@@ -505,48 +505,14 @@ export default function FaturasPage() {
         </div>
       )}
 
-      {/* ── Modal pagar fatura — usa AppModal (padrão global) ── */}
-      {showPayModal && invoice && (
-        <AppModal
-          title="Pagar fatura"
-          onClose={() => setShowPayModal(false)}
-          maxWidth="sm"
-        >
-          <p className="text-sm mb-5" style={{ color: 'var(--color-text-muted)' }}>
-            {selectedCard?.name} · {MONTHS[invoice.month - 1]}/{invoice.year} ·{' '}
-            <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-              {fmt(computedTotal)}
-            </span>
-          </p>
-
-          <div>
-            <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>
-              Débitar da conta
-            </label>
-            <select
-              value={payAccountId}
-              onChange={e => setPayAccountId(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              style={{
-                background:  'var(--color-surface)',
-                color:       'var(--color-text-primary)',
-                border:      '1px solid var(--color-border)',
-              }}
-            >
-              <option value="">Selecione a conta</option>
-              {accounts.map(a => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {payError && (
-            <p className="text-sm mt-3" style={{ color: 'var(--color-danger)' }}>
-              {payError}
-            </p>
-          )}
-
-          <div className="flex gap-3 mt-6">
+      {/* ── Modal pagar fatura ── */}
+      <AppModal
+        open={showPayModal && !!invoice}
+        onClose={() => setShowPayModal(false)}
+        title="Pagar fatura"
+        size="sm"
+        footer={
+          <AppModal.Footer align="between">
             <button
               onClick={() => setShowPayModal(false)}
               className="flex-1 rounded-lg py-2 text-sm transition-colors hover:opacity-80"
@@ -566,9 +532,43 @@ export default function FaturasPage() {
             >
               {paying ? 'Processando...' : 'Confirmar pagamento'}
             </button>
-          </div>
-        </AppModal>
-      )}
+          </AppModal.Footer>
+        }
+      >
+        <p className="text-sm mb-5" style={{ color: 'var(--color-text-muted)' }}>
+          {selectedCard?.name} · {invoice ? `${MONTHS[invoice.month - 1]}/${invoice.year}` : ''} ·{' '}
+          <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+            {fmt(computedTotal)}
+          </span>
+        </p>
+
+        <div>
+          <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>
+            Débitar da conta
+          </label>
+          <select
+            value={payAccountId}
+            onChange={e => setPayAccountId(e.target.value)}
+            className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            style={{
+              background:  'var(--color-surface)',
+              color:       'var(--color-text-primary)',
+              border:      '1px solid var(--color-border)',
+            }}
+          >
+            <option value="">Selecione a conta</option>
+            {accounts.map(a => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {payError && (
+          <p className="text-sm mt-3" style={{ color: 'var(--color-danger)' }}>
+            {payError}
+          </p>
+        )}
+      </AppModal>
     </PageContainer>
   )
 }
