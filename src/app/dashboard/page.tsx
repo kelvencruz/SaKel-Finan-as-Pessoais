@@ -12,9 +12,10 @@ import {
   ArrowUp, ArrowDown, ArrowUpRight, CalendarCheck, Eye, EyeSlash,
 } from '@phosphor-icons/react'
 
-import { PageContainer }   from '@/components/layout/PageContainer'
-import { usePrivacyStore } from '@/stores/usePrivacyStore'
-import { PrivateValue }    from '@/components/ui/PrivateValue'
+import { PageContainer }    from '@/components/layout/PageContainer'
+import { usePrivacyStore }  from '@/stores/usePrivacyStore'
+import { PrivateValue }     from '@/components/ui/PrivateValue'
+import { AnimatedValue }    from '@/components/ui/AnimatedValue'
 import {
   getMonthRange,
   getCurrentMonthKey,
@@ -72,8 +73,6 @@ function occurrencesInWindow(nextDueDate: string, frequency: string, horizonDate
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tooltip customizado — fix dark mode (BUG-DARK-MODE-TEXT)
-// O Recharts ignora `color` do contentStyle para texto interno;
-// usar `content` prop com componente próprio é a única solução confiável.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ChartTooltip({ active, payload, label }: any) {
@@ -81,12 +80,13 @@ function ChartTooltip({ active, payload, label }: any) {
   return (
     <div style={{
       background:   'var(--surface-premium, var(--surface))',
-      border:       '1px solid var(--border-subtle, var(--border))',
+      border:       '1px solid var(--glass-border, var(--border-subtle, var(--border)))',
       borderRadius: 8,
       padding:      '6px 10px',
       fontSize:     12,
       color:        'var(--text)',
       boxShadow:    'var(--card-shadow)',
+      backdropFilter: 'blur(var(--glass-blur, 12px))',
     }}>
       {label && (
         <p style={{ color: 'var(--text-secondary)', marginBottom: 2 }}>{label}</p>
@@ -109,16 +109,19 @@ function DashboardSkeleton() {
     <PageContainer>
       <div className="animate-pulse space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1,2,3,4].map(i => <div key={i} className="h-24 rounded-xl bg-[var(--surface-raised,var(--color-surface-raised,#1E293B))] opacity-60" />)}
+          {[1,2,3,4].map(i => (
+            <div key={i} className="h-24 rounded-xl opacity-60"
+              style={{ background: 'var(--surface-raised, var(--surface))' }} />
+          ))}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <div className="lg:col-span-2 space-y-5">
-            <div className="h-64 rounded-xl bg-[var(--surface-raised,var(--color-surface-raised,#1E293B))] opacity-60" />
-            <div className="h-48 rounded-xl bg-[var(--surface-raised,var(--color-surface-raised,#1E293B))] opacity-60" />
+            <div className="h-64 rounded-xl opacity-60" style={{ background: 'var(--surface-raised, var(--surface))' }} />
+            <div className="h-48 rounded-xl opacity-60" style={{ background: 'var(--surface-raised, var(--surface))' }} />
           </div>
           <div className="space-y-5">
-            <div className="h-64 rounded-xl bg-[var(--surface-raised,var(--color-surface-raised,#1E293B))] opacity-60" />
-            <div className="h-40 rounded-xl bg-[var(--surface-raised,var(--color-surface-raised,#1E293B))] opacity-60" />
+            <div className="h-64 rounded-xl opacity-60" style={{ background: 'var(--surface-raised, var(--surface))' }} />
+            <div className="h-40 rounded-xl opacity-60" style={{ background: 'var(--surface-raised, var(--surface))' }} />
           </div>
         </div>
       </div>
@@ -129,20 +132,11 @@ function DashboardSkeleton() {
 function DashboardError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <PageContainer>
-      <div className="rounded-xl p-10 text-center border border-dashed relative overflow-hidden"
-        style={{
-          background:   'var(--surface-premium, var(--surface))',
-          borderColor:  'var(--color-danger,#DC2626)22',
-          boxShadow:    'var(--card-shadow)',
-        }}>
-        <div aria-hidden="true" style={{
-          position: 'absolute', top: 0, left: 0, right: 0, height: 1,
-          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
-          borderRadius: '12px 12px 0 0',
-        }} />
+      <div className="glass-card rounded-xl p-10 text-center border border-dashed"
+        style={{ borderColor: 'rgba(220,38,38,0.13)' }}>
         <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
-          style={{ background: 'var(--color-danger,#DC2626)18' }}>
-          <Warning weight="duotone" size={26} style={{ color: 'var(--color-danger,#DC2626)' }} />
+          style={{ background: 'rgba(220,38,38,0.1)' }}>
+          <Warning weight="duotone" size={26} style={{ color: 'var(--danger, #DC2626)' }} />
         </div>
         <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text)' }}>
           Erro ao carregar o dashboard
@@ -162,17 +156,8 @@ function DashboardError({ message, onRetry }: { message: string; onRetry: () => 
 function EmptyDashboard() {
   return (
     <PageContainer>
-      <div className="rounded-xl p-10 text-center mb-6 border-2 border-dashed relative overflow-hidden"
-        style={{
-          background:  'var(--surface-premium, var(--surface))',
-          borderColor: 'var(--border-subtle, var(--border))',
-          boxShadow:   'var(--card-shadow)',
-        }}>
-        <div aria-hidden="true" style={{
-          position: 'absolute', top: 0, left: 0, right: 0, height: 1,
-          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
-          borderRadius: '12px 12px 0 0',
-        }} />
+      <div className="glass-card rounded-xl p-10 text-center mb-6 border-2 border-dashed"
+        style={{ borderColor: 'var(--border-subtle, var(--border))' }}>
         <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
           style={{ background: 'var(--primary-glow)' }}>
           <Bank weight="duotone" size={28} style={{ color: 'var(--primary)' }} />
@@ -196,17 +181,8 @@ function EmptyDashboard() {
           { icon: Tag,        title: 'Ver categorias',    desc: '14 categorias padrão já foram criadas para você.',         href: '/dashboard/categorias' },
         ].map(item => (
           <a key={item.href} href={item.href}
-            className="rounded-xl p-4 border relative overflow-hidden transition-all duration-300 group hover:-translate-y-0.5 hover:shadow-md"
-            style={{
-              background:   'var(--surface-premium, var(--surface))',
-              borderColor:  'var(--border-subtle, var(--border))',
-              boxShadow:    'var(--card-shadow)',
-            }}>
-            <div aria-hidden="true" style={{
-              position: 'absolute', top: 0, left: 0, right: 0, height: 1,
-              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
-              borderRadius: '12px 12px 0 0',
-            }} />
+            className="glass-card rounded-xl p-4 border transition-all duration-300 group hover:-translate-y-0.5"
+            style={{ borderColor: 'var(--glass-border, var(--border-subtle, var(--border)))' }}>
             <item.icon weight="duotone" size={24} className="mb-2" style={{ color: 'var(--primary)' }} />
             <p className="text-sm font-medium mb-1" style={{ color: 'var(--text)' }}>{item.title}</p>
             <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{item.desc}</p>
@@ -231,7 +207,6 @@ function InvoiceBadge({ days }: { days: number }) {
 export default function DashboardPage() {
   const supabase = createClient()
 
-  // ── Privacy store (DT-002) ──────────────────────────────────────────────
   const {
     syncFromDB,
     financialVisible,
@@ -240,7 +215,6 @@ export default function DashboardPage() {
     toggleInvestments,
   } = usePrivacyStore()
 
-  // ── Estado local de dados ───────────────────────────────────────────────
   const [saldoContas,         setSaldoContas]         = useState(0)
   const [totalFaturas,        setTotalFaturas]        = useState(0)
   const [patrimonioInvestido, setPatrimonioInvestido] = useState(0)
@@ -266,11 +240,10 @@ export default function DashboardPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/auth/login'; return }
 
-      const now    = new Date()
-      const year   = now.getFullYear()
-      const month  = now.getMonth()
+      const now   = new Date()
+      const year  = now.getFullYear()
+      const month = now.getMonth()
 
-      // ── Datas do mês — UTC-safe via financialEngine ──────────
       const { inicioMes, fimMes } = getMonthRange(year, month)
       const monthKey = getCurrentMonthKey()
 
@@ -324,7 +297,7 @@ export default function DashboardPage() {
           }))
       )
 
-      // ── Transações do mês (KPIs receita/despesa) ─────────────
+      // ── Transações do mês ────────────────────────────────────
       const { data: txMes, error: txErr } = await supabase
         .from('transactions')
         .select('type, amount')
@@ -340,7 +313,7 @@ export default function DashboardPage() {
       setRecMes(recMesVal)
       setDespMes(despMesVal)
 
-      // ── Histórico 6 meses → gráfico de área ──────────────────
+      // ── Histórico 6 meses ────────────────────────────────────
       const meses = Array.from({ length: 6 }, (_, i) => {
         const d = new Date(year, month - (5 - i), 1)
         return { key: d.toISOString().slice(0, 7), label: MONTH_NAMES[d.getMonth()] }
@@ -361,11 +334,9 @@ export default function DashboardPage() {
         return { mes: label, saldo: rec - desp }
       }))
 
-      // ── Categorias base (para últimas transações e catIcons) ──
+      // ── Categorias ───────────────────────────────────────────
       const { data: cats } = await supabase
-        .from('categories')
-        .select('id, name, icon')
-        .eq('user_id', user.id)
+        .from('categories').select('id, name, icon').eq('user_id', user.id)
 
       const catNameMap = Object.fromEntries(
         ((cats ?? []) as { id: string; name: string }[]).map(c => [c.id, c.name])
@@ -374,7 +345,6 @@ export default function DashboardPage() {
         ((cats ?? []) as { id: string; icon?: string }[]).map(c => [c.id, c])
       )
 
-      // ── Categorias — view SQL (source of truth, BUG-CHART-FILTER) ──
       const { data: catData } = await supabase
         .from('expenses_by_category')
         .select('category_id, category_name, total_amount')
@@ -458,11 +428,11 @@ export default function DashboardPage() {
       const previsto = saldo + recEntradas + parcRec - recSaidas - totalParcelas - faturas
       setSaldoPrevisto(previsto)
       setProjecaoItens([
-        { label: 'Saldo atual em contas',      value: saldo,         color: 'var(--primary)',                     sign: ''  },
-        { label: 'Receitas recorrentes (30d)', value: recEntradas,   color: 'var(--color-success,#16A34A)',       sign: '+' },
-        { label: 'Despesas recorrentes (30d)', value: recSaidas,     color: 'var(--color-danger,#DC2626)',        sign: '−' },
-        { label: 'Parcelas pendentes (30d)',   value: totalParcelas, color: 'var(--color-warning,#D97706)',       sign: '−' },
-        { label: 'Faturas em aberto',          value: faturas,       color: 'var(--color-danger,#DC2626)',        sign: '−' },
+        { label: 'Saldo atual em contas',      value: saldo,         color: 'var(--primary)',                sign: ''  },
+        { label: 'Receitas recorrentes (30d)', value: recEntradas,   color: 'var(--success, #16A34A)',       sign: '+' },
+        { label: 'Despesas recorrentes (30d)', value: recSaidas,     color: 'var(--danger, #DC2626)',        sign: '−' },
+        { label: 'Parcelas pendentes (30d)',   value: totalParcelas, color: 'var(--warning, #D97706)',       sign: '−' },
+        { label: 'Faturas em aberto',          value: faturas,       color: 'var(--danger, #DC2626)',        sign: '−' },
       ])
 
     } catch (err: unknown) {
@@ -472,16 +442,15 @@ export default function DashboardPage() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Efeitos ─────────────────────────────────────────────────────────────
-  useEffect(() => { load() },        [load])
-  useEffect(() => { syncFromDB() },  [syncFromDB])
+  useEffect(() => { load() },       [load])
+  useEffect(() => { syncFromDB() }, [syncFromDB])
 
   if (loading)      return <DashboardSkeleton />
   if (loadError)    return <DashboardError message={loadError} onRetry={load} />
   if (!hasAccounts) return <EmptyDashboard />
 
   // ─────────────────────────────────────────────────────────────────────────
-  // KPIs — accentColor adicionado conforme seção 6.1 do plano de migração
+  // KPIs
   // ─────────────────────────────────────────────────────────────────────────
 
   const kpis = [
@@ -490,7 +459,7 @@ export default function DashboardPage() {
       value:       saldoContas,
       sub:         'Excluindo cartões',
       icon:        Wallet,
-      color:       saldoContas >= 0 ? 'var(--primary)' : 'var(--color-danger,#DC2626)',
+      color:       saldoContas >= 0 ? 'var(--primary)' : 'var(--danger, #DC2626)',
       iconBg:      'var(--primary-glow)',
       accentColor: 'rgba(99,102,241,0.5)',
       group:       'financial' as const,
@@ -500,7 +469,7 @@ export default function DashboardPage() {
       value:       recMes,
       sub:         'Este mês',
       icon:        ArrowUp,
-      color:       'var(--color-success,#16A34A)',
+      color:       'var(--success, #16A34A)',
       iconBg:      'rgba(22,163,74,0.12)',
       accentColor: 'rgba(34,197,94,0.5)',
       group:       'financial' as const,
@@ -510,7 +479,7 @@ export default function DashboardPage() {
       value:       despMes,
       sub:         'Este mês',
       icon:        ArrowDown,
-      color:       'var(--color-danger,#DC2626)',
+      color:       'var(--danger, #DC2626)',
       iconBg:      'rgba(220,38,38,0.12)',
       accentColor: 'rgba(248,113,113,0.5)',
       group:       'financial' as const,
@@ -523,7 +492,7 @@ export default function DashboardPage() {
       color:       '#a78bfa',
       iconBg:      'rgba(167,139,250,0.12)',
       accentColor: 'rgba(56,189,248,0.4)',
-      group:       'investments' as const,
+      group:       'investment' as const,
     },
   ]
 
@@ -544,8 +513,7 @@ export default function DashboardPage() {
         >
           {financialVisible
             ? <Eye weight="duotone" size={14} />
-            : <EyeSlash weight="duotone" size={14} />
-          }
+            : <EyeSlash weight="duotone" size={14} />}
           Financeiro
         </button>
         <button
@@ -556,28 +524,19 @@ export default function DashboardPage() {
         >
           {investmentsVisible
             ? <Eye weight="duotone" size={14} />
-            : <EyeSlash weight="duotone" size={14} />
-          }
+            : <EyeSlash weight="duotone" size={14} />}
           Investimentos
         </button>
       </div>
 
-      {/* ── KPI Cards — Padrão Premium + Shine + Bottom Glow Bar (§6.1) ── */}
+      {/* ── KPI Cards — glass-card + AnimatedValue + accent bar ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {kpis.map(kpi => (
-          <div key={kpi.label}
-            className="rounded-xl p-4 flex flex-col gap-3 border relative overflow-hidden transition-all duration-300 group cursor-default hover:-translate-y-0.5 hover:shadow-md"
-            style={{
-              background:   'var(--surface-premium, var(--surface))',
-              borderColor:  'var(--border-subtle, var(--border))',
-              boxShadow:    'var(--card-shadow)',
-            }}>
-            {/* Shine — luz vindo de cima */}
-            <div aria-hidden="true" style={{
-              position: 'absolute', top: 0, left: 0, right: 0, height: 1,
-              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
-              borderRadius: '12px 12px 0 0',
-            }} />
+        {kpis.map((kpi, idx) => (
+          <div
+            key={kpi.label}
+            className="glass-card rounded-xl p-4 flex flex-col gap-3 cursor-default"
+            style={{ '--accent-color': kpi.accentColor } as React.CSSProperties}
+          >
             <div className="flex items-center justify-between">
               <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{kpi.label}</p>
               <div className="w-8 h-8 rounded-lg flex items-center justify-center"
@@ -585,15 +544,31 @@ export default function DashboardPage() {
                 <kpi.icon size={16} weight="duotone" style={{ color: kpi.color }} />
               </div>
             </div>
-            <p className="text-xl font-bold" style={{ color: kpi.color }}>
-              <PrivateValue value={fmt(kpi.value)} group={kpi.group} />
-            </p>
+
+            {/* AnimatedValue — substitui PrivateValue + fmt() */}
+            {kpi.group === 'investment' ? (
+              <AnimatedValue
+                value={kpi.value}
+                trigger={!loading}
+                group="investment"
+                delay={idx * 80}
+                colorize={false}
+                className="text-xl font-bold"
+                style={{ color: kpi.color } as React.CSSProperties}
+              />
+            ) : (
+              <AnimatedValue
+                value={kpi.value}
+                trigger={!loading}
+                group="financial"
+                delay={idx * 80}
+                colorize={false}
+                className="text-xl font-bold"
+                style={{ color: kpi.color } as React.CSSProperties}
+              />
+            )}
+
             <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>{kpi.sub}</p>
-            {/* Bottom Glow Bar — aparece no hover */}
-            <div aria-hidden="true"
-              className="absolute bottom-0 left-0 right-0 h-px opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-              style={{ background: `linear-gradient(90deg, transparent, ${kpi.accentColor}, transparent)` }}
-            />
           </div>
         ))}
       </div>
@@ -604,18 +579,8 @@ export default function DashboardPage() {
         {/* ── Coluna principal — 2/3 ── */}
         <div className="lg:col-span-2 space-y-5">
 
-          {/* Gráfico evolução do saldo — AreaChart com gradiente (§6.3) */}
-          <div className="rounded-xl p-5 border relative overflow-hidden transition-all duration-300 group cursor-default"
-            style={{
-              background:  'var(--surface-premium, var(--surface))',
-              borderColor: 'var(--border-subtle, var(--border))',
-              boxShadow:   'var(--card-shadow)',
-            }}>
-            <div aria-hidden="true" style={{
-              position: 'absolute', top: 0, left: 0, right: 0, height: 1,
-              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
-              borderRadius: '12px 12px 0 0',
-            }} />
+          {/* Gráfico evolução do saldo — AreaChart Luminous (gradiente 3 stops) */}
+          <div className="glass-card rounded-xl p-5 cursor-default">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
@@ -633,25 +598,27 @@ export default function DashboardPage() {
             <ResponsiveContainer width="100%" height={180}>
               <AreaChart data={monthLine}>
                 <defs>
-                  {/* Gradiente horizontal na linha — var(--primary) → var(--info) */}
+                  {/* Gradiente da linha — tokens Luminous (--chart-line-start/mid/end) */}
                   <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%"   stopColor="var(--primary)" />
-                    <stop offset="100%" stopColor="var(--info, #38bdf8)" />
+                    <stop offset="0%"   stopColor="var(--chart-line-start, #4f46e5)" />
+                    <stop offset="50%"  stopColor="var(--chart-line-mid,   #0ea5e9)" />
+                    <stop offset="100%" stopColor="var(--chart-line-end,   #a78bfa)" />
                   </linearGradient>
-                  {/* Gradiente vertical na área preenchida */}
+                  {/* Gradiente da área — token Luminous (--chart-area-fill) */}
                   <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%"   stopColor="var(--primary)" stopOpacity={0.15} />
-                    <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+                    <stop offset="0%"   stopColor="var(--chart-line-start, #4f46e5)" stopOpacity={0.18} />
+                    <stop offset="60%"  stopColor="var(--chart-line-mid,   #0ea5e9)" stopOpacity={0.06} />
+                    <stop offset="100%" stopColor="var(--chart-line-end,   #a78bfa)" stopOpacity={0}    />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border, #1E293B)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, var(--border))" />
                 <XAxis
                   dataKey="mes"
-                  tick={{ fontSize: 11, fill: 'var(--text-secondary, #94A3B8)' }}
+                  tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
                   axisLine={false} tickLine={false}
                 />
                 <YAxis
-                  tick={{ fontSize: 11, fill: 'var(--text-secondary, #94A3B8)' }}
+                  tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
                   tickFormatter={fmtK}
                   axisLine={false} tickLine={false}
                 />
@@ -660,25 +627,24 @@ export default function DashboardPage() {
                   type="monotone" dataKey="saldo"
                   stroke="url(#lineGradient)" strokeWidth={2.5}
                   fill="url(#areaGradient)"
-                  dot={{ fill: 'var(--primary)', r: 4, strokeWidth: 2, stroke: 'var(--surface-premium, var(--surface))' }}
-                  activeDot={{ r: 6, fill: 'var(--primary)', stroke: 'var(--primary)', strokeWidth: 2 }}
+                  dot={{
+                    fill: 'var(--chart-line-start, #4f46e5)',
+                    r: 4, strokeWidth: 2,
+                    stroke: 'var(--glass-bg, var(--surface))',
+                  }}
+                  activeDot={{
+                    r: 6,
+                    fill: 'var(--chart-line-mid, #0ea5e9)',
+                    stroke: 'var(--chart-line-mid, #0ea5e9)',
+                    strokeWidth: 2,
+                  }}
                 />
               </AreaChart>
             </ResponsiveContainer>
           </div>
 
-          {/* Despesas por categoria — Donut refinado (§6.4) */}
-          <div className="rounded-xl p-5 border relative overflow-hidden transition-all duration-300 group cursor-default"
-            style={{
-              background:  'var(--surface-premium, var(--surface))',
-              borderColor: 'var(--border-subtle, var(--border))',
-              boxShadow:   'var(--card-shadow)',
-            }}>
-            <div aria-hidden="true" style={{
-              position: 'absolute', top: 0, left: 0, right: 0, height: 1,
-              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
-              borderRadius: '12px 12px 0 0',
-            }} />
+          {/* Despesas por categoria — Donut + glow nos dots */}
+          <div className="glass-card rounded-xl p-5 cursor-default">
             <p className="text-sm font-semibold mb-4" style={{ color: 'var(--text)' }}>
               Despesas por categoria
             </p>
@@ -697,11 +663,13 @@ export default function DashboardPage() {
                       innerRadius={48}
                       outerRadius={72}
                       dataKey="value"
-                      stroke="var(--surface-premium, var(--surface))"
+                      stroke="var(--glass-bg, var(--surface))"
                       strokeWidth={3}
                       paddingAngle={2}
                     >
-                      {catSlices.map((_, i) => <Cell key={i} fill={SLICE_COLORS[i % SLICE_COLORS.length]} />)}
+                      {catSlices.map((_, i) => (
+                        <Cell key={i} fill={SLICE_COLORS[i % SLICE_COLORS.length]} />
+                      ))}
                     </Pie>
                     <Tooltip content={<ChartTooltip />} />
                   </PieChart>
@@ -712,7 +680,6 @@ export default function DashboardPage() {
                     const pct   = total > 0 ? Math.round((slice.value / total) * 100) : 0
                     return (
                       <div key={slice.name} className="flex items-center gap-2">
-                        {/* Dot com glow sutil (§6.4) */}
                         <div className="w-2 h-2 rounded-full shrink-0"
                           style={{
                             backgroundColor: SLICE_COLORS[i % SLICE_COLORS.length],
@@ -736,18 +703,8 @@ export default function DashboardPage() {
         {/* ── Coluna lateral — 1/3 ── */}
         <div className="space-y-5">
 
-          {/* 1. Saldo Previsto */}
-          <div className="rounded-xl p-5 border relative overflow-hidden transition-all duration-300 group cursor-default"
-            style={{
-              background:  'var(--surface-premium, var(--surface))',
-              borderColor: 'var(--border-subtle, var(--border))',
-              boxShadow:   'var(--card-shadow)',
-            }}>
-            <div aria-hidden="true" style={{
-              position: 'absolute', top: 0, left: 0, right: 0, height: 1,
-              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
-              borderRadius: '12px 12px 0 0',
-            }} />
+          {/* Saldo Previsto */}
+          <div className="glass-card rounded-xl p-5 cursor-default">
             <div className="flex items-center justify-between mb-1">
               <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
                 Saldo previsto
@@ -760,16 +717,21 @@ export default function DashboardPage() {
             <p className="text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
               Projeção para os próximos 30 dias
             </p>
-            <p className="text-3xl font-bold mb-5"
-              style={{ color: saldoPrevisto >= 0 ? 'var(--color-success,#16A34A)' : 'var(--color-danger,#DC2626)' }}>
-              <PrivateValue value={fmt(saldoPrevisto)} group="financial" />
-            </p>
-            {/* Rows de projeção — border-subtle (§6.5 row refinement) */}
+
+            {/* AnimatedValue no saldo previsto */}
+            <AnimatedValue
+              value={saldoPrevisto}
+              trigger={!loading}
+              group="financial"
+              colorize={true}
+              className="text-3xl font-bold mb-5"
+            />
+
             <div className="space-y-0">
               {projecaoItens.map(item => (
                 <div key={item.label}
                   className="flex items-center justify-between py-2 border-b last:border-0 transition-colors duration-200"
-                  style={{ borderColor: 'var(--border-subtle, var(--border))' }}>
+                  style={{ borderColor: 'var(--glass-border, var(--border-subtle, var(--border)))' }}>
                   <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{item.label}</p>
                   <p className="text-[11px] font-semibold" style={{ color: item.color }}>
                     {item.sign && <span className="mr-0.5">{item.sign}</span>}
@@ -787,18 +749,8 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* 2. Últimas transações — row refinement (§6.5) */}
-          <div className="rounded-xl p-5 border relative overflow-hidden transition-all duration-300 group cursor-default"
-            style={{
-              background:  'var(--surface-premium, var(--surface))',
-              borderColor: 'var(--border-subtle, var(--border))',
-              boxShadow:   'var(--card-shadow)',
-            }}>
-            <div aria-hidden="true" style={{
-              position: 'absolute', top: 0, left: 0, right: 0, height: 1,
-              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
-              borderRadius: '12px 12px 0 0',
-            }} />
+          {/* Últimas transações */}
+          <div className="glass-card rounded-xl p-5 cursor-default">
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
                 Últimas transações
@@ -821,8 +773,7 @@ export default function DashboardPage() {
                 {recentTxs.map(tx => (
                   <div key={tx.id}
                     className="flex items-center gap-3 py-3 border-b last:border-0 transition-colors duration-200"
-                    style={{ borderColor: 'var(--border-subtle, var(--border))' }}>
-                    {/* Ícone — rounded-lg (§6.5) */}
+                    style={{ borderColor: 'var(--glass-border, var(--border-subtle, var(--border)))' }}>
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-xs"
                       style={{
                         background: tx.type === 'income'
@@ -834,8 +785,8 @@ export default function DashboardPage() {
                       {tx.category_icon
                         ? <span className="text-[13px]">{tx.category_icon}</span>
                         : tx.type === 'income'
-                        ? <ArrowUp size={13} weight="duotone" style={{ color: 'var(--color-success,#16A34A)' }} />
-                        : <ArrowDown size={13} weight="duotone" style={{ color: 'var(--color-danger,#DC2626)' }} />
+                        ? <ArrowUp size={13} weight="duotone" style={{ color: 'var(--success, #16A34A)' }} />
+                        : <ArrowDown size={13} weight="duotone" style={{ color: 'var(--danger, #DC2626)' }} />
                       }
                     </div>
                     <div className="flex-1 min-w-0">
@@ -850,9 +801,9 @@ export default function DashboardPage() {
                       <p className="text-xs font-semibold"
                         style={{
                           color: tx.type === 'income'
-                            ? 'var(--color-success,#16A34A)'
+                            ? 'var(--success, #16A34A)'
                             : tx.type === 'expense'
-                            ? 'var(--color-danger,#DC2626)'
+                            ? 'var(--danger, #DC2626)'
                             : 'var(--primary)',
                         }}>
                         {tx.type === 'income' ? '+' : tx.type === 'expense' ? '−' : ''}
@@ -868,19 +819,9 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* 3. Faturas próximas */}
+          {/* Faturas próximas */}
           {invoicesDue.length > 0 && (
-            <div className="rounded-xl p-5 border relative overflow-hidden transition-all duration-300 group cursor-default"
-              style={{
-                background:  'var(--surface-premium, var(--surface))',
-                borderColor: 'var(--border-subtle, var(--border))',
-                boxShadow:   'var(--card-shadow)',
-              }}>
-              <div aria-hidden="true" style={{
-                position: 'absolute', top: 0, left: 0, right: 0, height: 1,
-                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
-                borderRadius: '12px 12px 0 0',
-              }} />
+            <div className="glass-card rounded-xl p-5 cursor-default">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <CalendarCheck weight="duotone" size={14} style={{ color: 'var(--text-secondary)' }} />
@@ -898,7 +839,7 @@ export default function DashboardPage() {
                 {invoicesDue.slice(0, 4).map(inv => (
                   <div key={inv.id}
                     className="flex items-center justify-between py-2.5 border-b last:border-0 transition-colors duration-200"
-                    style={{ borderColor: 'var(--border-subtle, var(--border))' }}>
+                    style={{ borderColor: 'var(--glass-border, var(--border-subtle, var(--border)))' }}>
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
                         style={{ backgroundColor: inv.card_color }}>
@@ -925,19 +866,9 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* 4. Investimentos */}
+          {/* Investimentos */}
           {patrimonioInvestido > 0 && (
-            <div className="rounded-xl px-5 py-4 border relative overflow-hidden transition-all duration-300 group cursor-default"
-              style={{
-                background:  'var(--surface-premium, var(--surface))',
-                borderColor: 'var(--border-subtle, var(--border))',
-                boxShadow:   'var(--card-shadow)',
-              }}>
-              <div aria-hidden="true" style={{
-                position: 'absolute', top: 0, left: 0, right: 0, height: 1,
-                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
-                borderRadius: '12px 12px 0 0',
-              }} />
+            <div className="glass-card rounded-xl px-5 py-4 cursor-default">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <TrendUp weight="duotone" size={14} style={{ color: '#a78bfa' }} />
@@ -953,13 +884,20 @@ export default function DashboardPage() {
                 >
                   {investmentsVisible
                     ? <Eye weight="duotone" size={14} />
-                    : <EyeSlash weight="duotone" size={14} />
-                  }
+                    : <EyeSlash weight="duotone" size={14} />}
                 </button>
               </div>
-              <p className="text-xl font-bold mb-2" style={{ color: '#a78bfa' }}>
-                <PrivateValue value={fmt(patrimonioInvestido)} group="investments" />
-              </p>
+
+              {/* AnimatedValue no patrimônio investido */}
+              <AnimatedValue
+                value={patrimonioInvestido}
+                trigger={!loading}
+                group="investment"
+                colorize={false}
+                className="text-xl font-bold mb-2"
+                style={{ color: '#a78bfa' } as React.CSSProperties}
+              />
+
               <a href="/dashboard/investimentos"
                 className="text-[11px] flex items-center gap-1 transition-opacity hover:opacity-70"
                 style={{ color: '#a78bfa' }}>
