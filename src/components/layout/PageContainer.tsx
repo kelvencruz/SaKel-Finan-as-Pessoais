@@ -16,9 +16,32 @@ export function PageContainer({ children, maxWidth = 'xl', className = '' }: Pag
   return (
     <div
       className={`min-h-screen p-6 mx-auto w-full ${MAX_W[maxWidth]} ${className}`}
-      style={{ background: 'var(--bg)' }}
+      style={{ backgroundColor: 'var(--bg)' }}
     >
-      {children}
+      {/* Ambient glow — puramente decorativo, aria-hidden */}
+      <div aria-hidden="true" style={{
+        position: 'fixed', inset: 0,
+        pointerEvents: 'none', zIndex: 0,
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          position: 'absolute', width: 700, height: 700,
+          top: -200, left: -200, borderRadius: '50%',
+          background: 'radial-gradient(circle, var(--glow-ambient-brand) 0%, transparent 65%)',
+          animation: 'pulseGlow 6s ease-in-out infinite',
+        }} />
+        <div style={{
+          position: 'absolute', width: 500, height: 500,
+          bottom: -150, right: -100, borderRadius: '50%',
+          background: 'radial-gradient(circle, var(--glow-ambient-blue) 0%, transparent 65%)',
+          animation: 'pulseGlow 8s ease-in-out infinite reverse',
+        }} />
+      </div>
+
+      {/* Conteúdo acima do glow */}
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        {children}
+      </div>
     </div>
   )
 }
