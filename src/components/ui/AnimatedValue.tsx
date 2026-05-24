@@ -1,5 +1,6 @@
 'use client'
 
+import { type CSSProperties } from 'react'
 import { useCountUp } from '@/hooks/useCountUp'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -19,6 +20,8 @@ interface AnimatedValueProps {
   delay?: number
   /** Classes CSS adicionais no span externo */
   className?: string
+  /** Estilos inline no span externo (ex: cor via kpi.color) */
+  style?: CSSProperties
   /** Se true, valores negativos ficam em vermelho (default: true) */
   colorize?: boolean
 }
@@ -77,6 +80,7 @@ export function AnimatedValue({
   duration = 2000,
   delay = 0,
   className = '',
+  style,
   colorize = true,
 }: AnimatedValueProps) {
   const isPrivate = useIsPrivate(group)
@@ -86,6 +90,7 @@ export function AnimatedValue({
     return (
       <span
         className={`text-glow-value ${className}`}
+        style={style}
         aria-label="Valor oculto"
         data-private="true"
       >
@@ -104,6 +109,7 @@ export function AnimatedValue({
   return (
     <span
       className={`text-glow-value tabular-nums ${colorClass} ${className}`.trim()}
+      style={style}
       aria-live="polite"
       aria-atomic="true"
     >
