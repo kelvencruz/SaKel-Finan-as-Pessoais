@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts'
 import {
@@ -80,18 +80,19 @@ function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
   return (
     <div style={{
-      background:   'var(--color-surface)',
-      border:       '1px solid var(--color-border)',
+      background:   'var(--surface-premium, var(--surface))',
+      border:       '1px solid var(--border-subtle, var(--border))',
       borderRadius: 8,
       padding:      '6px 10px',
       fontSize:     12,
-      color:        'var(--color-text-primary)',
+      color:        'var(--text)',
+      boxShadow:    'var(--card-shadow)',
     }}>
       {label && (
-        <p style={{ color: 'var(--color-text-muted)', marginBottom: 2 }}>{label}</p>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: 2 }}>{label}</p>
       )}
       {payload.map((entry: any, i: number) => (
-        <p key={i} style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>
+        <p key={i} style={{ color: 'var(--text)', fontWeight: 500 }}>
           {entry.name ? `${entry.name}: ` : ''}{fmt(Number(entry.value))}
         </p>
       ))}
@@ -108,16 +109,16 @@ function DashboardSkeleton() {
     <PageContainer>
       <div className="animate-pulse space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1,2,3,4].map(i => <div key={i} className="h-24 rounded-xl bg-[var(--color-surface-raised,#1E293B)] opacity-60" />)}
+          {[1,2,3,4].map(i => <div key={i} className="h-24 rounded-xl bg-[var(--surface-raised,var(--color-surface-raised,#1E293B))] opacity-60" />)}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <div className="lg:col-span-2 space-y-5">
-            <div className="h-64 rounded-xl bg-[var(--color-surface-raised,#1E293B)] opacity-60" />
-            <div className="h-48 rounded-xl bg-[var(--color-surface-raised,#1E293B)] opacity-60" />
+            <div className="h-64 rounded-xl bg-[var(--surface-raised,var(--color-surface-raised,#1E293B))] opacity-60" />
+            <div className="h-48 rounded-xl bg-[var(--surface-raised,var(--color-surface-raised,#1E293B))] opacity-60" />
           </div>
           <div className="space-y-5">
-            <div className="h-64 rounded-xl bg-[var(--color-surface-raised,#1E293B)] opacity-60" />
-            <div className="h-40 rounded-xl bg-[var(--color-surface-raised,#1E293B)] opacity-60" />
+            <div className="h-64 rounded-xl bg-[var(--surface-raised,var(--color-surface-raised,#1E293B))] opacity-60" />
+            <div className="h-40 rounded-xl bg-[var(--surface-raised,var(--color-surface-raised,#1E293B))] opacity-60" />
           </div>
         </div>
       </div>
@@ -128,19 +129,28 @@ function DashboardSkeleton() {
 function DashboardError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <PageContainer>
-      <div className="rounded-2xl p-10 text-center border border-dashed"
-        style={{ background: 'var(--color-surface)', borderColor: 'var(--color-danger,#DC2626)22' }}>
+      <div className="rounded-xl p-10 text-center border border-dashed relative overflow-hidden"
+        style={{
+          background:   'var(--surface-premium, var(--surface))',
+          borderColor:  'var(--color-danger,#DC2626)22',
+          boxShadow:    'var(--card-shadow)',
+        }}>
+        <div aria-hidden="true" style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
+          borderRadius: '12px 12px 0 0',
+        }} />
         <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
           style={{ background: 'var(--color-danger,#DC2626)18' }}>
           <Warning weight="duotone" size={26} style={{ color: 'var(--color-danger,#DC2626)' }} />
         </div>
-        <p className="text-sm font-semibold mb-1" style={{ color: 'var(--color-text-primary)' }}>
+        <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text)' }}>
           Erro ao carregar o dashboard
         </p>
-        <p className="text-xs mb-6 max-w-xs mx-auto" style={{ color: 'var(--color-text-muted)' }}>{message}</p>
+        <p className="text-xs mb-6 max-w-xs mx-auto" style={{ color: 'var(--text-secondary)' }}>{message}</p>
         <button onClick={onRetry}
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
-          style={{ background: 'var(--color-brand,#7C3AED)' }}>
+          style={{ background: 'var(--primary)' }}>
           <ArrowClockwise size={14} weight="bold" />
           Tentar novamente
         </button>
@@ -152,21 +162,30 @@ function DashboardError({ message, onRetry }: { message: string; onRetry: () => 
 function EmptyDashboard() {
   return (
     <PageContainer>
-      <div className="rounded-2xl p-10 text-center mb-6 border-2 border-dashed"
-        style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+      <div className="rounded-xl p-10 text-center mb-6 border-2 border-dashed relative overflow-hidden"
+        style={{
+          background:  'var(--surface-premium, var(--surface))',
+          borderColor: 'var(--border-subtle, var(--border))',
+          boxShadow:   'var(--card-shadow)',
+        }}>
+        <div aria-hidden="true" style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
+          borderRadius: '12px 12px 0 0',
+        }} />
         <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-          style={{ background: 'var(--color-brand,#7C3AED)18' }}>
-          <Bank weight="duotone" size={28} style={{ color: 'var(--color-brand,#7C3AED)' }} />
+          style={{ background: 'var(--primary-glow)' }}>
+          <Bank weight="duotone" size={28} style={{ color: 'var(--primary)' }} />
         </div>
-        <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
+        <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--text)' }}>
           Sua central financeira começa aqui
         </h2>
-        <p className="text-sm max-w-sm mx-auto mb-6" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="text-sm max-w-sm mx-auto mb-6" style={{ color: 'var(--text-secondary)' }}>
           Adicione uma conta para acompanhar saldo, transações e investimentos.
         </p>
         <a href="/dashboard/contas"
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
-          style={{ background: 'var(--color-brand,#7C3AED)' }}>
+          style={{ background: 'var(--primary)' }}>
           Criar minha primeira conta
         </a>
       </div>
@@ -177,11 +196,20 @@ function EmptyDashboard() {
           { icon: Tag,        title: 'Ver categorias',    desc: '14 categorias padrão já foram criadas para você.',         href: '/dashboard/categorias' },
         ].map(item => (
           <a key={item.href} href={item.href}
-            className="rounded-xl p-4 border transition-colors"
-            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
-            <item.icon weight="duotone" size={24} className="mb-2" style={{ color: 'var(--color-brand,#7C3AED)' }} />
-            <p className="text-sm font-medium mb-1" style={{ color: 'var(--color-text-primary)' }}>{item.title}</p>
-            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{item.desc}</p>
+            className="rounded-xl p-4 border relative overflow-hidden transition-all duration-300 group hover:-translate-y-0.5 hover:shadow-md"
+            style={{
+              background:   'var(--surface-premium, var(--surface))',
+              borderColor:  'var(--border-subtle, var(--border))',
+              boxShadow:    'var(--card-shadow)',
+            }}>
+            <div aria-hidden="true" style={{
+              position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
+              borderRadius: '12px 12px 0 0',
+            }} />
+            <item.icon weight="duotone" size={24} className="mb-2" style={{ color: 'var(--primary)' }} />
+            <p className="text-sm font-medium mb-1" style={{ color: 'var(--text)' }}>{item.title}</p>
+            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{item.desc}</p>
           </a>
         ))}
       </div>
@@ -193,7 +221,7 @@ function InvoiceBadge({ days }: { days: number }) {
   if (days < 0)   return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-500/10 text-red-400">Vencida</span>
   if (days === 0) return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-500/10 text-red-400">Hoje</span>
   if (days <= 7)  return <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400">Em {days}d</span>
-  return               <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-[var(--color-text-muted)]">{days}d</span>
+  return               <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-[var(--text-secondary)]">{days}d</span>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -312,7 +340,7 @@ export default function DashboardPage() {
       setRecMes(recMesVal)
       setDespMes(despMesVal)
 
-      // ── Histórico 6 meses → gráfico de linha ─────────────────
+      // ── Histórico 6 meses → gráfico de área ──────────────────
       const meses = Array.from({ length: 6 }, (_, i) => {
         const d = new Date(year, month - (5 - i), 1)
         return { key: d.toISOString().slice(0, 7), label: MONTH_NAMES[d.getMonth()] }
@@ -430,11 +458,11 @@ export default function DashboardPage() {
       const previsto = saldo + recEntradas + parcRec - recSaidas - totalParcelas - faturas
       setSaldoPrevisto(previsto)
       setProjecaoItens([
-        { label: 'Saldo atual em contas',      value: saldo,         color: 'var(--color-brand,#7C3AED)',   sign: ''  },
-        { label: 'Receitas recorrentes (30d)', value: recEntradas,   color: 'var(--color-success,#16A34A)', sign: '+' },
-        { label: 'Despesas recorrentes (30d)', value: recSaidas,     color: 'var(--color-danger,#DC2626)',  sign: '−' },
-        { label: 'Parcelas pendentes (30d)',   value: totalParcelas, color: 'var(--color-warning,#D97706)', sign: '−' },
-        { label: 'Faturas em aberto',          value: faturas,       color: 'var(--color-danger,#DC2626)',  sign: '−' },
+        { label: 'Saldo atual em contas',      value: saldo,         color: 'var(--primary)',                     sign: ''  },
+        { label: 'Receitas recorrentes (30d)', value: recEntradas,   color: 'var(--color-success,#16A34A)',       sign: '+' },
+        { label: 'Despesas recorrentes (30d)', value: recSaidas,     color: 'var(--color-danger,#DC2626)',        sign: '−' },
+        { label: 'Parcelas pendentes (30d)',   value: totalParcelas, color: 'var(--color-warning,#D97706)',       sign: '−' },
+        { label: 'Faturas em aberto',          value: faturas,       color: 'var(--color-danger,#DC2626)',        sign: '−' },
       ])
 
     } catch (err: unknown) {
@@ -453,45 +481,49 @@ export default function DashboardPage() {
   if (!hasAccounts) return <EmptyDashboard />
 
   // ─────────────────────────────────────────────────────────────────────────
-  // KPIs
+  // KPIs — accentColor adicionado conforme seção 6.1 do plano de migração
   // ─────────────────────────────────────────────────────────────────────────
 
   const kpis = [
     {
-      label:  'Saldo Total',
-      value:  saldoContas,
-      sub:    'Excluindo cartões',
-      icon:   Wallet,
-      color:  saldoContas >= 0 ? 'var(--color-brand,#7C3AED)' : 'var(--color-danger,#DC2626)',
-      iconBg: 'rgba(124,58,237,0.12)',
-      group:  'financial' as const,
+      label:       'Saldo Total',
+      value:       saldoContas,
+      sub:         'Excluindo cartões',
+      icon:        Wallet,
+      color:       saldoContas >= 0 ? 'var(--primary)' : 'var(--color-danger,#DC2626)',
+      iconBg:      'var(--primary-glow)',
+      accentColor: 'rgba(99,102,241,0.5)',
+      group:       'financial' as const,
     },
     {
-      label:  'Receitas',
-      value:  recMes,
-      sub:    'Este mês',
-      icon:   ArrowUp,
-      color:  'var(--color-success,#16A34A)',
-      iconBg: 'rgba(22,163,74,0.12)',
-      group:  'financial' as const,
+      label:       'Receitas',
+      value:       recMes,
+      sub:         'Este mês',
+      icon:        ArrowUp,
+      color:       'var(--color-success,#16A34A)',
+      iconBg:      'rgba(22,163,74,0.12)',
+      accentColor: 'rgba(34,197,94,0.5)',
+      group:       'financial' as const,
     },
     {
-      label:  'Despesas',
-      value:  despMes,
-      sub:    'Este mês',
-      icon:   ArrowDown,
-      color:  'var(--color-danger,#DC2626)',
-      iconBg: 'rgba(220,38,38,0.12)',
-      group:  'financial' as const,
+      label:       'Despesas',
+      value:       despMes,
+      sub:         'Este mês',
+      icon:        ArrowDown,
+      color:       'var(--color-danger,#DC2626)',
+      iconBg:      'rgba(220,38,38,0.12)',
+      accentColor: 'rgba(248,113,113,0.5)',
+      group:       'financial' as const,
     },
     {
-      label:  'Investimentos',
-      value:  patrimonioInvestido,
-      sub:    'Total investido',
-      icon:   TrendUp,
-      color:  '#a78bfa',
-      iconBg: 'rgba(167,139,250,0.12)',
-      group:  'investments' as const,
+      label:       'Investimentos',
+      value:       patrimonioInvestido,
+      sub:         'Total investido',
+      icon:        TrendUp,
+      color:       '#a78bfa',
+      iconBg:      'rgba(167,139,250,0.12)',
+      accentColor: 'rgba(56,189,248,0.4)',
+      group:       'investments' as const,
     },
   ]
 
@@ -507,7 +539,7 @@ export default function DashboardPage() {
         <button
           onClick={toggleFinancial}
           className="flex items-center gap-1.5 text-xs transition-opacity hover:opacity-70"
-          style={{ color: 'var(--color-text-muted)' }}
+          style={{ color: 'var(--text-secondary)' }}
           aria-label={financialVisible ? 'Ocultar valores financeiros' : 'Mostrar valores financeiros'}
         >
           {financialVisible
@@ -519,7 +551,7 @@ export default function DashboardPage() {
         <button
           onClick={toggleInvestments}
           className="flex items-center gap-1.5 text-xs transition-opacity hover:opacity-70"
-          style={{ color: 'var(--color-text-muted)' }}
+          style={{ color: 'var(--text-secondary)' }}
           aria-label={investmentsVisible ? 'Ocultar investimentos' : 'Mostrar investimentos'}
         >
           {investmentsVisible
@@ -530,14 +562,24 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      {/* ── KPIs ── */}
+      {/* ── KPI Cards — Padrão Premium + Shine + Bottom Glow Bar (§6.1) ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {kpis.map(kpi => (
           <div key={kpi.label}
-            className="rounded-xl p-4 flex flex-col gap-3 border"
-            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+            className="rounded-xl p-4 flex flex-col gap-3 border relative overflow-hidden transition-all duration-300 group cursor-default hover:-translate-y-0.5 hover:shadow-md"
+            style={{
+              background:   'var(--surface-premium, var(--surface))',
+              borderColor:  'var(--border-subtle, var(--border))',
+              boxShadow:    'var(--card-shadow)',
+            }}>
+            {/* Shine — luz vindo de cima */}
+            <div aria-hidden="true" style={{
+              position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
+              borderRadius: '12px 12px 0 0',
+            }} />
             <div className="flex items-center justify-between">
-              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{kpi.label}</p>
+              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{kpi.label}</p>
               <div className="w-8 h-8 rounded-lg flex items-center justify-center"
                 style={{ background: kpi.iconBg }}>
                 <kpi.icon size={16} weight="duotone" style={{ color: kpi.color }} />
@@ -546,7 +588,12 @@ export default function DashboardPage() {
             <p className="text-xl font-bold" style={{ color: kpi.color }}>
               <PrivateValue value={fmt(kpi.value)} group={kpi.group} />
             </p>
-            <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{kpi.sub}</p>
+            <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>{kpi.sub}</p>
+            {/* Bottom Glow Bar — aparece no hover */}
+            <div aria-hidden="true"
+              className="absolute bottom-0 left-0 right-0 h-px opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+              style={{ background: `linear-gradient(90deg, transparent, ${kpi.accentColor}, transparent)` }}
+            />
           </div>
         ))}
       </div>
@@ -557,63 +604,103 @@ export default function DashboardPage() {
         {/* ── Coluna principal — 2/3 ── */}
         <div className="lg:col-span-2 space-y-5">
 
-          {/* Gráfico evolução do saldo */}
-          <div className="rounded-xl p-5 border"
-            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+          {/* Gráfico evolução do saldo — AreaChart com gradiente (§6.3) */}
+          <div className="rounded-xl p-5 border relative overflow-hidden transition-all duration-300 group cursor-default"
+            style={{
+              background:  'var(--surface-premium, var(--surface))',
+              borderColor: 'var(--border-subtle, var(--border))',
+              boxShadow:   'var(--card-shadow)',
+            }}>
+            <div aria-hidden="true" style={{
+              position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
+              borderRadius: '12px 12px 0 0',
+            }} />
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
                   Evolução do saldo
                 </p>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
                   Resultado mensal dos últimos 6 meses
                 </p>
               </div>
               <span className="text-[10px] font-medium px-2.5 py-1 rounded-full"
-                style={{ background: 'rgba(124,58,237,0.12)', color: 'var(--color-brand,#7C3AED)' }}>
+                style={{ background: 'var(--primary-glow)', color: 'var(--primary)' }}>
                 Últimos 6 meses
               </span>
             </div>
             <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={monthLine}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border,#1E293B)" />
+              <AreaChart data={monthLine}>
+                <defs>
+                  {/* Gradiente horizontal na linha — var(--primary) → var(--info) */}
+                  <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%"   stopColor="var(--primary)" />
+                    <stop offset="100%" stopColor="var(--info, #38bdf8)" />
+                  </linearGradient>
+                  {/* Gradiente vertical na área preenchida */}
+                  <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%"   stopColor="var(--primary)" stopOpacity={0.15} />
+                    <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border, #1E293B)" />
                 <XAxis
                   dataKey="mes"
-                  tick={{ fontSize: 11, fill: 'var(--color-text-muted,#94A3B8)' }}
+                  tick={{ fontSize: 11, fill: 'var(--text-secondary, #94A3B8)' }}
                   axisLine={false} tickLine={false}
                 />
                 <YAxis
-                  tick={{ fontSize: 11, fill: 'var(--color-text-muted,#94A3B8)' }}
+                  tick={{ fontSize: 11, fill: 'var(--text-secondary, #94A3B8)' }}
                   tickFormatter={fmtK}
                   axisLine={false} tickLine={false}
                 />
                 <Tooltip content={<ChartTooltip />} />
-                <Line
+                <Area
                   type="monotone" dataKey="saldo"
-                  stroke="var(--color-brand,#7C3AED)" strokeWidth={2.5}
-                  dot={{ fill: 'var(--color-brand,#7C3AED)', strokeWidth: 0, r: 4 }}
-                  activeDot={{ r: 6, fill: 'var(--color-brand,#7C3AED)' }}
+                  stroke="url(#lineGradient)" strokeWidth={2.5}
+                  fill="url(#areaGradient)"
+                  dot={{ fill: 'var(--primary)', r: 4, strokeWidth: 2, stroke: 'var(--surface-premium, var(--surface))' }}
+                  activeDot={{ r: 6, fill: 'var(--primary)', stroke: 'var(--primary)', strokeWidth: 2 }}
                 />
-              </LineChart>
+              </AreaChart>
             </ResponsiveContainer>
           </div>
 
-          {/* Despesas por categoria */}
-          <div className="rounded-xl p-5 border"
-            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
-            <p className="text-sm font-semibold mb-4" style={{ color: 'var(--color-text-primary)' }}>
+          {/* Despesas por categoria — Donut refinado (§6.4) */}
+          <div className="rounded-xl p-5 border relative overflow-hidden transition-all duration-300 group cursor-default"
+            style={{
+              background:  'var(--surface-premium, var(--surface))',
+              borderColor: 'var(--border-subtle, var(--border))',
+              boxShadow:   'var(--card-shadow)',
+            }}>
+            <div aria-hidden="true" style={{
+              position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
+              borderRadius: '12px 12px 0 0',
+            }} />
+            <p className="text-sm font-semibold mb-4" style={{ color: 'var(--text)' }}>
               Despesas por categoria
             </p>
             {catSlices.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-36 gap-2">
-                <Receipt weight="duotone" size={32} style={{ color: 'var(--color-border)' }} />
-                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Sem despesas este mês</p>
+                <Receipt weight="duotone" size={32} style={{ color: 'var(--border)' }} />
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Sem despesas este mês</p>
               </div>
             ) : (
               <div className="flex items-center gap-6">
                 <ResponsiveContainer width="45%" height={160}>
                   <PieChart>
-                    <Pie data={catSlices} cx="50%" cy="50%" innerRadius={44} outerRadius={68} dataKey="value">
+                    <Pie
+                      data={catSlices}
+                      cx="50%" cy="50%"
+                      innerRadius={48}
+                      outerRadius={72}
+                      dataKey="value"
+                      stroke="var(--surface-premium, var(--surface))"
+                      strokeWidth={3}
+                      paddingAngle={2}
+                    >
                       {catSlices.map((_, i) => <Cell key={i} fill={SLICE_COLORS[i % SLICE_COLORS.length]} />)}
                     </Pie>
                     <Tooltip content={<ChartTooltip />} />
@@ -625,12 +712,16 @@ export default function DashboardPage() {
                     const pct   = total > 0 ? Math.round((slice.value / total) * 100) : 0
                     return (
                       <div key={slice.name} className="flex items-center gap-2">
+                        {/* Dot com glow sutil (§6.4) */}
                         <div className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: SLICE_COLORS[i % SLICE_COLORS.length] }} />
-                        <p className="text-xs truncate flex-1" style={{ color: 'var(--color-text-muted)' }}>
+                          style={{
+                            backgroundColor: SLICE_COLORS[i % SLICE_COLORS.length],
+                            boxShadow: `0 0 6px ${SLICE_COLORS[i % SLICE_COLORS.length]}88`,
+                          }} />
+                        <p className="text-xs truncate flex-1" style={{ color: 'var(--text-secondary)' }}>
                           {slice.name}
                         </p>
-                        <p className="text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                        <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>
                           {pct}%
                         </p>
                       </div>
@@ -646,30 +737,40 @@ export default function DashboardPage() {
         <div className="space-y-5">
 
           {/* 1. Saldo Previsto */}
-          <div className="rounded-xl p-5 border"
-            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+          <div className="rounded-xl p-5 border relative overflow-hidden transition-all duration-300 group cursor-default"
+            style={{
+              background:  'var(--surface-premium, var(--surface))',
+              borderColor: 'var(--border-subtle, var(--border))',
+              boxShadow:   'var(--card-shadow)',
+            }}>
+            <div aria-hidden="true" style={{
+              position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
+              borderRadius: '12px 12px 0 0',
+            }} />
             <div className="flex items-center justify-between mb-1">
-              <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+              <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
                 Saldo previsto
               </p>
               <span className="text-[10px] font-medium px-2.5 py-1 rounded-full"
-                style={{ background: 'rgba(124,58,237,0.12)', color: 'var(--color-brand,#7C3AED)' }}>
+                style={{ background: 'var(--primary-glow)', color: 'var(--primary)' }}>
                 30 dias
               </span>
             </div>
-            <p className="text-xs mb-4" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
               Projeção para os próximos 30 dias
             </p>
             <p className="text-3xl font-bold mb-5"
               style={{ color: saldoPrevisto >= 0 ? 'var(--color-success,#16A34A)' : 'var(--color-danger,#DC2626)' }}>
               <PrivateValue value={fmt(saldoPrevisto)} group="financial" />
             </p>
-            <div className="space-y-2">
+            {/* Rows de projeção — border-subtle (§6.5 row refinement) */}
+            <div className="space-y-0">
               {projecaoItens.map(item => (
                 <div key={item.label}
-                  className="flex items-center justify-between py-1.5 border-b last:border-0"
-                  style={{ borderColor: 'var(--color-border)' }}>
-                  <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{item.label}</p>
+                  className="flex items-center justify-between py-2 border-b last:border-0 transition-colors duration-200"
+                  style={{ borderColor: 'var(--border-subtle, var(--border))' }}>
+                  <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{item.label}</p>
                   <p className="text-[11px] font-semibold" style={{ color: item.color }}>
                     {item.sign && <span className="mr-0.5">{item.sign}</span>}
                     <PrivateValue value={fmt(item.value)} group="financial" />
@@ -678,7 +779,7 @@ export default function DashboardPage() {
               ))}
             </div>
             {(recCount > 0 || instCount > 0) && (
-              <p className="text-[10px] mt-3" style={{ color: 'var(--color-text-muted)' }}>
+              <p className="text-[10px] mt-3" style={{ color: 'var(--text-secondary)' }}>
                 {recCount > 0 && <>{recCount} recorrência{recCount !== 1 ? 's' : ''}</>}
                 {recCount > 0 && instCount > 0 && <span className="mx-1">·</span>}
                 {instCount > 0 && <>{instCount} parcela{instCount !== 1 ? 's' : ''}</>}
@@ -686,39 +787,49 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* 2. Últimas transações */}
-          <div className="rounded-xl p-5 border"
-            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+          {/* 2. Últimas transações — row refinement (§6.5) */}
+          <div className="rounded-xl p-5 border relative overflow-hidden transition-all duration-300 group cursor-default"
+            style={{
+              background:  'var(--surface-premium, var(--surface))',
+              borderColor: 'var(--border-subtle, var(--border))',
+              boxShadow:   'var(--card-shadow)',
+            }}>
+            <div aria-hidden="true" style={{
+              position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
+              borderRadius: '12px 12px 0 0',
+            }} />
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+              <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
                 Últimas transações
               </p>
               <a href="/dashboard/transacoes"
                 className="text-xs flex items-center gap-1 transition-opacity hover:opacity-70"
-                style={{ color: 'var(--color-brand,#7C3AED)' }}>
+                style={{ color: 'var(--primary)' }}>
                 Ver todas <ArrowUpRight size={11} weight="bold" />
               </a>
             </div>
             {recentTxs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-24 gap-2">
-                <ListBullets weight="duotone" size={28} style={{ color: 'var(--color-border)' }} />
-                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                <ListBullets weight="duotone" size={28} style={{ color: 'var(--border)' }} />
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                   Nenhuma transação confirmada
                 </p>
               </div>
             ) : (
-              <div className="space-y-0.5">
+              <div className="space-y-0">
                 {recentTxs.map(tx => (
                   <div key={tx.id}
-                    className="flex items-center gap-3 py-2.5 border-b last:border-0"
-                    style={{ borderColor: 'var(--color-border)' }}>
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs"
+                    className="flex items-center gap-3 py-3 border-b last:border-0 transition-colors duration-200"
+                    style={{ borderColor: 'var(--border-subtle, var(--border))' }}>
+                    {/* Ícone — rounded-lg (§6.5) */}
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-xs"
                       style={{
                         background: tx.type === 'income'
-                          ? 'rgba(22,163,74,0.12)'
+                          ? 'rgba(34,197,94,0.12)'
                           : tx.type === 'expense'
-                          ? 'rgba(220,38,38,0.12)'
-                          : 'rgba(124,58,237,0.12)',
+                          ? 'rgba(248,113,113,0.10)'
+                          : 'var(--primary-glow)',
                       }}>
                       {tx.category_icon
                         ? <span className="text-[13px]">{tx.category_icon}</span>
@@ -728,10 +839,10 @@ export default function DashboardPage() {
                       }
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
+                      <p className="text-xs font-medium truncate" style={{ color: 'var(--text)' }}>
                         {tx.description}
                       </p>
-                      <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                      <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
                         {tx.category_name ?? 'Sem categoria'}
                       </p>
                     </div>
@@ -742,12 +853,12 @@ export default function DashboardPage() {
                             ? 'var(--color-success,#16A34A)'
                             : tx.type === 'expense'
                             ? 'var(--color-danger,#DC2626)'
-                            : 'var(--color-brand,#7C3AED)',
+                            : 'var(--primary)',
                         }}>
                         {tx.type === 'income' ? '+' : tx.type === 'expense' ? '−' : ''}
                         <PrivateValue value={fmt(tx.amount)} group="financial" />
                       </p>
-                      <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                      <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
                         {new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
                       </p>
                     </div>
@@ -759,43 +870,52 @@ export default function DashboardPage() {
 
           {/* 3. Faturas próximas */}
           {invoicesDue.length > 0 && (
-            <div className="rounded-xl p-5 border"
-              style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+            <div className="rounded-xl p-5 border relative overflow-hidden transition-all duration-300 group cursor-default"
+              style={{
+                background:  'var(--surface-premium, var(--surface))',
+                borderColor: 'var(--border-subtle, var(--border))',
+                boxShadow:   'var(--card-shadow)',
+              }}>
+              <div aria-hidden="true" style={{
+                position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
+                borderRadius: '12px 12px 0 0',
+              }} />
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <CalendarCheck weight="duotone" size={14} style={{ color: 'var(--color-text-muted)' }} />
-                  <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                  <CalendarCheck weight="duotone" size={14} style={{ color: 'var(--text-secondary)' }} />
+                  <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
                     Faturas próximas
                   </p>
                 </div>
                 <a href="/dashboard/faturas"
                   className="text-xs transition-opacity hover:opacity-70"
-                  style={{ color: 'var(--color-brand,#7C3AED)' }}>
+                  style={{ color: 'var(--primary)' }}>
                   Ver todas
                 </a>
               </div>
-              <div className="space-y-0.5">
+              <div className="space-y-0">
                 {invoicesDue.slice(0, 4).map(inv => (
                   <div key={inv.id}
-                    className="flex items-center justify-between py-2.5 border-b last:border-0"
-                    style={{ borderColor: 'var(--color-border)' }}>
+                    className="flex items-center justify-between py-2.5 border-b last:border-0 transition-colors duration-200"
+                    style={{ borderColor: 'var(--border-subtle, var(--border))' }}>
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
                         style={{ backgroundColor: inv.card_color }}>
                         <CreditCard weight="duotone" size={12} style={{ color: '#fff' }} />
                       </div>
                       <div>
-                        <p className="text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                        <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>
                           {inv.card_name}
                         </p>
-                        <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                        <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
                           {new Date(inv.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}
                         </p>
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <InvoiceBadge days={inv.days_until_due} />
-                      <p className="text-xs font-semibold" style={{ color: 'var(--color-brand,#7C3AED)' }}>
+                      <p className="text-xs font-semibold" style={{ color: 'var(--primary)' }}>
                         <PrivateValue value={fmt(inv.total_amount)} group="financial" />
                       </p>
                     </div>
@@ -807,19 +927,28 @@ export default function DashboardPage() {
 
           {/* 4. Investimentos */}
           {patrimonioInvestido > 0 && (
-            <div className="rounded-xl px-5 py-4 border"
-              style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+            <div className="rounded-xl px-5 py-4 border relative overflow-hidden transition-all duration-300 group cursor-default"
+              style={{
+                background:  'var(--surface-premium, var(--surface))',
+                borderColor: 'var(--border-subtle, var(--border))',
+                boxShadow:   'var(--card-shadow)',
+              }}>
+              <div aria-hidden="true" style={{
+                position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
+                borderRadius: '12px 12px 0 0',
+              }} />
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <TrendUp weight="duotone" size={14} style={{ color: '#a78bfa' }} />
-                  <p className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                  <p className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
                     Patrimônio investido
                   </p>
                 </div>
                 <button
                   onClick={toggleInvestments}
                   className="transition-opacity hover:opacity-70"
-                  style={{ color: 'var(--color-text-muted)' }}
+                  style={{ color: 'var(--text-secondary)' }}
                   aria-label={investmentsVisible ? 'Ocultar investimentos' : 'Mostrar investimentos'}
                 >
                   {investmentsVisible
