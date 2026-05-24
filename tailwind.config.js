@@ -16,11 +16,15 @@ module.exports = {
         surface: {
           DEFAULT: 'var(--surface)',
           hover: 'var(--surface-hover)',
+          premium: 'var(--surface-premium)',
+          raised: 'var(--surface-raised)',
         },
         border: {
           DEFAULT: 'var(--border)',
           md: 'var(--border-md)',
           strong: 'var(--border-strong)',
+          subtle: 'var(--border-subtle)',
+          hover: 'var(--border-hover)',
         },
         text: {
           DEFAULT: 'var(--text)',
@@ -100,17 +104,19 @@ module.exports = {
           from: { backgroundPosition: '-200% 0' },
           to:   { backgroundPosition:  '200% 0' },
         },
+        // pulse-glow: opacity no compositor da GPU — sem repaint
         pulseGlow: {
-          '0%, 100%': { boxShadow: '0 0 4px var(--primary-glow)' },
-          '50%':      { boxShadow: '0 0 16px var(--primary-glow)' },
+          '0%, 100%': { opacity: '0.6' },
+          '50%':      { opacity: '1' },
         },
       },
       animation: {
-        'fade-up':    'fadeUp .25s ease both',
+        'fade-up':    'fadeUp .25s cubic-bezier(0.22,1,0.36,1) both',
         'fade-in':    'fadeIn .2s ease both',
         'scale-in':   'scaleIn .2s ease both',
         'shimmer':    'shimmer 1.4s ease-in-out infinite',
-        'pulse-glow': 'pulseGlow 2s ease-in-out infinite',
+        // 6s respirado — adequado para ambient glow atmosférico
+        'pulse-glow': 'pulseGlow 6s ease-in-out infinite',
       },
     },
   },
