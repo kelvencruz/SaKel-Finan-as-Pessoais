@@ -102,6 +102,19 @@
   --glow-ambient-brand: rgba(79, 70, 229, 0.04);
   --glow-ambient-blue:  rgba(14, 165, 233, 0.03);
   --gradient-name:      linear-gradient(90deg, #4f46e5, #0ea5e9);
+
+  /* ── Luminous Design System — light ────────────────────── */
+  --glass-bg:           rgba(255, 255, 255, 0.85);
+  --glass-blur:         12px;
+  --glass-border:       rgba(0, 0, 0, 0.08);
+  --glass-hover-border: rgba(124, 58, 237, 0.35);
+  --glass-shadow-hover: 0 12px 30px rgba(79, 70, 229, 0.12);
+  --glass-accent-bar:   linear-gradient(90deg, transparent, var(--primary), transparent);
+  --glow-text-primary:  none;
+  --chart-line-start:   #4f46e5;
+  --chart-line-mid:     #0ea5e9;
+  --chart-line-end:     #a78bfa;
+  --chart-area-fill:    rgba(79, 70, 229, 0.08);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -187,6 +200,19 @@
   --glow-ambient-brand: rgba(99, 102, 241, 0.09);
   --glow-ambient-blue:  rgba(99, 102, 241, 0.05);
   --gradient-name:      linear-gradient(90deg, #a5b4fc, #93c5fd);
+
+  /* ── Luminous Design System — dark ─────────────────────── */
+  --glass-bg:           rgba(17, 17, 17, 0.7);
+  --glass-blur:         20px;
+  --glass-border:       rgba(255, 255, 255, 0.08);
+  --glass-hover-border: rgba(124, 58, 237, 0.4);
+  --glass-shadow-hover: 0 20px 40px rgba(0, 0, 0, 0.4), inset 0 0 20px rgba(124, 58, 237, 0.05);
+  --glass-accent-bar:   linear-gradient(90deg, transparent, var(--primary), transparent);
+  --glow-text-primary:  0 0 10px rgba(210, 187, 255, 0.3);
+  --chart-line-start:   #7c3aed;
+  --chart-line-mid:     #3b82f6;
+  --chart-line-end:     #ec4899;
+  --chart-area-fill:    rgba(99, 102, 241, 0.12);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -272,6 +298,19 @@
   --glow-ambient-brand: rgba(0, 212, 255, 0.07);
   --glow-ambient-blue:  rgba(176, 106, 255, 0.05);
   --gradient-name:      linear-gradient(90deg, #00d4ff, #b06aff);
+
+  /* ── Luminous Design System — arcade ───────────────────── */
+  --glass-bg:           rgba(11, 15, 32, 0.8);
+  --glass-blur:         20px;
+  --glass-border:       rgba(0, 212, 255, 0.08);
+  --glass-hover-border: rgba(0, 212, 255, 0.4);
+  --glass-shadow-hover: 0 20px 40px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 212, 255, 0.04);
+  --glass-accent-bar:   linear-gradient(90deg, transparent, var(--primary), transparent);
+  --glow-text-primary:  0 0 10px rgba(0, 212, 255, 0.4);
+  --chart-line-start:   #00d4ff;
+  --chart-line-mid:     #b06aff;
+  --chart-line-end:     #00ff88;
+  --chart-area-fill:    rgba(0, 212, 255, 0.08);
 }
 
 /* Grid decorativo no Kal Arcade */
@@ -413,6 +452,43 @@ input:focus, select:focus, textarea:focus {
 }
 
 /* ════════════════════════════════════════════════════════════
+   GLASS-CARD — Luminous Design System
+   ════════════════════════════════════════════════════════════ */
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  transition:
+    border-color 300ms ease,
+    box-shadow 300ms ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-card:hover {
+  border-color: var(--glass-hover-border);
+  box-shadow: var(--glass-shadow-hover);
+}
+
+/* Accent bar no hover — linha inferior colorida */
+.glass-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  background: var(--glass-accent-bar);
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+
+.glass-card:hover::after {
+  opacity: 1;
+}
+
+/* ════════════════════════════════════════════════════════════
    UTILITÁRIOS DE TEMA
    ════════════════════════════════════════════════════════════ */
 
@@ -434,6 +510,11 @@ input:focus, select:focus, textarea:focus {
 
 [data-theme="arcade"] .text-glow-primary {
   text-shadow: 0 0 10px var(--primary), 0 0 30px var(--primary-glow);
+}
+
+/* Glow text para valores financeiros (Luminous) */
+.text-glow-value {
+  text-shadow: var(--glow-text-primary);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -499,9 +580,6 @@ input:focus, select:focus, textarea:focus {
 .animate-bounce-in  { animation: bounce-in   0.55s cubic-bezier(.22,1,.36,1) forwards; }
 
 /* ── pulse-glow: 6s respirado para ambient glow premium ─── */
-/* Nota: alterado de 2s para 6s — adequado para ambient glow atmosférico.        */
-/* O keyframe foi simplificado para opacity, removendo box-shadow do loop         */
-/* (box-shadow em loop causa repaint contínuo — opacity usa compositor da GPU).   */
 .animate-pulse-glow { animation: pulse-glow 6s ease-in-out infinite; }
 
 /* Skeleton shimmer */
