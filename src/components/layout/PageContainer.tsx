@@ -28,12 +28,14 @@ export function PageContainer({ children, maxWidth = 'xl', className = '' }: Pag
           position: 'absolute', width: 700, height: 700,
           top: -200, left: -200, borderRadius: '50%',
           background: 'radial-gradient(circle, var(--glow-ambient-brand) 0%, transparent 65%)',
+          filter: 'blur(80px)',
           animation: 'pulseGlow 6s ease-in-out infinite',
         }} />
         <div style={{
           position: 'absolute', width: 500, height: 500,
           bottom: -150, right: -100, borderRadius: '50%',
           background: 'radial-gradient(circle, var(--glow-ambient-blue) 0%, transparent 65%)',
+          filter: 'blur(80px)',
           animation: 'pulseGlow 8s ease-in-out infinite reverse',
         }} />
       </div>
