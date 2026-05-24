@@ -22,15 +22,15 @@
   --overlay:       rgba(247, 248, 252, 0.85);
 
   /* Bordas */
-  --border:    #e4e7ec;
-  --border-md: #d0d5dd;
+  --border:        #e4e7ec;
+  --border-md:     #d0d5dd;
   --border-strong: #b0b8cc;
 
   /* Texto */
-  --text:       #101828;
+  --text:           #101828;
   --text-secondary: #475467;
-  --text-muted: #98a2b3;
-  --text-faint: #c4cad8;
+  --text-muted:     #98a2b3;
+  --text-faint:     #c4cad8;
 
   /* Brand / Primary */
   --primary:       #4f46e5;
@@ -50,20 +50,20 @@
   --info-light:    #e0f2fe;
 
   /* Card */
-  --card:          var(--surface);
-  --card-hover:    var(--surface-hover);
-  --card-border:   var(--border);
-  --card-shadow:   0 1px 3px rgba(16,24,40,.10), 0 1px 2px rgba(16,24,40,.06);
-  --card-shadow-md:0 4px 8px -2px rgba(16,24,40,.10), 0 2px 4px -2px rgba(16,24,40,.06);
-  --card-shadow-lg:0 12px 24px -6px rgba(16,24,40,.12), 0 4px 8px -4px rgba(16,24,40,.08);
+  --card:           var(--surface);
+  --card-hover:     var(--surface-hover);
+  --card-border:    var(--border);
+  --card-shadow:    0 1px 3px rgba(16,24,40,.10), 0 1px 2px rgba(16,24,40,.06);
+  --card-shadow-md: 0 4px 8px -2px rgba(16,24,40,.10), 0 2px 4px -2px rgba(16,24,40,.06);
+  --card-shadow-lg: 0 12px 24px -6px rgba(16,24,40,.12), 0 4px 8px -4px rgba(16,24,40,.08);
 
   /* Raios */
-  --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
-  --radius-2xl:24px;
+  --radius-xs:   4px;
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-xl:   20px;
+  --radius-2xl:  24px;
   --radius-full: 9999px;
 
   /* Sombras */
@@ -73,11 +73,11 @@
   --shadow-lg: var(--card-shadow-lg);
 
   /* Sidebar */
-  --sidebar-bg:     #ffffff;
-  --sidebar-border: var(--border);
-  --sidebar-active-bg: var(--primary-light);
+  --sidebar-bg:          #ffffff;
+  --sidebar-border:      var(--border);
+  --sidebar-active-bg:   var(--primary-light);
   --sidebar-active-text: var(--primary);
-  --sidebar-hover-bg: var(--bg-secondary);
+  --sidebar-hover-bg:    var(--bg-secondary);
 
   /* Aliases legados (compatibilidade) */
   --color-bg:             var(--bg);
@@ -93,6 +93,15 @@
   --color-success:        var(--success);
   --color-danger:         var(--danger);
   --color-warning:        var(--warning);
+
+  /* ── Premium Visual Tokens — light ─────────────────────── */
+  --surface-premium:    var(--surface);
+  --surface-raised:     var(--bg-secondary);
+  --border-subtle:      rgba(0, 0, 0, 0.07);
+  --border-hover:       rgba(79, 70, 229, 0.25);
+  --glow-ambient-brand: rgba(79, 70, 229, 0.04);
+  --glow-ambient-blue:  rgba(14, 165, 233, 0.03);
+  --gradient-name:      linear-gradient(90deg, #4f46e5, #0ea5e9);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -169,6 +178,15 @@
   --color-success:        var(--success);
   --color-danger:         var(--danger);
   --color-warning:        var(--warning);
+
+  /* ── Premium Visual Tokens — dark ──────────────────────── */
+  --surface-premium:    #141721;
+  --surface-raised:     #1e2235;
+  --border-subtle:      rgba(255, 255, 255, 0.06);
+  --border-hover:       rgba(99, 102, 241, 0.35);
+  --glow-ambient-brand: rgba(99, 102, 241, 0.09);
+  --glow-ambient-blue:  rgba(99, 102, 241, 0.05);
+  --gradient-name:      linear-gradient(90deg, #a5b4fc, #93c5fd);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -245,6 +263,15 @@
   --color-success:        var(--success);
   --color-danger:         var(--danger);
   --color-warning:        var(--warning);
+
+  /* ── Premium Visual Tokens — arcade ────────────────────── */
+  --surface-premium:    #0e1528;
+  --surface-raised:     #131c35;
+  --border-subtle:      rgba(0, 212, 255, 0.08);
+  --border-hover:       rgba(0, 212, 255, 0.30);
+  --glow-ambient-brand: rgba(0, 212, 255, 0.07);
+  --glow-ambient-blue:  rgba(176, 106, 255, 0.05);
+  --gradient-name:      linear-gradient(90deg, #00d4ff, #b06aff);
 }
 
 /* Grid decorativo no Kal Arcade */
@@ -453,18 +480,29 @@ input:focus, select:focus, textarea:focus {
   to   { background-position:  200% 0; }
 }
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 4px var(--primary-glow); }
-  50%       { box-shadow: 0 0 16px var(--primary-glow); }
+  0%, 100% { opacity: 0.6; }
+  50%       { opacity: 1; }
 }
 @keyframes scanline {
   from { transform: translateY(-100%); }
   to   { transform: translateY(100vh); }
 }
+@keyframes bounce-in {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(16px) scale(0.92); }
+  60%  { opacity: 1; transform: translateX(-50%) translateY(-4px) scale(1.02); }
+  100% { transform: translateX(-50%) translateY(0) scale(1); }
+}
 
-.animate-fade-up   { animation: fadeUp   .25s ease both; }
-.animate-fade-in   { animation: fadeIn   .2s  ease both; }
-.animate-scale-in  { animation: scaleIn  .2s  ease both; }
-.animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+.animate-fade-up    { animation: fadeUp      .25s ease both; }
+.animate-fade-in    { animation: fadeIn      .2s  ease both; }
+.animate-scale-in   { animation: scaleIn     .2s  ease both; }
+.animate-bounce-in  { animation: bounce-in   0.55s cubic-bezier(.22,1,.36,1) forwards; }
+
+/* ── pulse-glow: 6s respirado para ambient glow premium ─── */
+/* Nota: alterado de 2s para 6s — adequado para ambient glow atmosférico.        */
+/* O keyframe foi simplificado para opacity, removendo box-shadow do loop         */
+/* (box-shadow em loop causa repaint contínuo — opacity usa compositor da GPU).   */
+.animate-pulse-glow { animation: pulse-glow 6s ease-in-out infinite; }
 
 /* Skeleton shimmer */
 .skeleton {
@@ -554,17 +592,10 @@ a, button {
 [data-theme="arcade"] .sakel-logo {
   filter: brightness(0) invert(1) opacity(0.9);
 }
+
 /* ════════════════════════════════════════════════════════════
    TOAST DE XP
    ════════════════════════════════════════════════════════════ */
-@keyframes bounce-in {
-  0%   { opacity: 0; transform: translateX(-50%) translateY(16px) scale(0.92); }
-  60%  { opacity: 1; transform: translateX(-50%) translateY(-4px) scale(1.02); }
-  100% { transform: translateX(-50%) translateY(0) scale(1); }
-}
-.animate-bounce-in {
-  animation: bounce-in 0.55s cubic-bezier(.22,1,.36,1) forwards;
-}
 @keyframes spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
