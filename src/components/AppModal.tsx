@@ -1,3 +1,4 @@
+// src/components/AppModal.tsx
 'use client'
 
 import { useEffect, useRef, useCallback } from 'react'
@@ -118,9 +119,10 @@ export function AppModal({
         'motion-safe:animate-[fadeIn_200ms_ease-out]',
       ].join(' ')}
       style={{
-        background:           'var(--glass-bg)',
-        backdropFilter:       'blur(var(--glass-blur))',
-        WebkitBackdropFilter: 'blur(var(--glass-blur))',
+        // BUG-02 fix: rgba direto evita o token --glass-bg opaco em dark/arcade
+        background:           'rgba(0, 0, 0, 0.55)',
+        backdropFilter:       'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
       }}
       onClick={onClose}
       aria-hidden="true"

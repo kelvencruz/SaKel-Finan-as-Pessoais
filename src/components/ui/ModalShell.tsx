@@ -1,3 +1,4 @@
+// src/components/ui/ModalShell.tsx
 'use client'
 
 import { useEffect } from 'react'
@@ -28,9 +29,10 @@ export function ModalShell({ open, onClose, title, children, maxWidth = 'max-w-m
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{
-        background:           'var(--glass-bg)',
-        backdropFilter:       'blur(var(--glass-blur))',
-        WebkitBackdropFilter: 'blur(var(--glass-blur))',
+        // BUG-02 fix: rgba direto evita o token --glass-bg opaco em dark/arcade
+        background:           'rgba(0, 0, 0, 0.55)',
+        backdropFilter:       'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
       }}
       onClick={onClose}
     >

@@ -20,6 +20,8 @@ export function PageHeader({
     <div
       className="flex items-start justify-between mb-6 gap-4 rounded-2xl"
       style={{
+        position: 'relative',       // ← necessário para z-index ter efeito
+        zIndex: 10,                 // ← abaixo de z-50 (modais). Resolve o stacking context
         padding: '16px 20px',
         background: 'var(--glass-bg)',
         backdropFilter: 'blur(var(--glass-blur))',
