@@ -1,13 +1,27 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { awardXP } from '@/lib/gamification'
 import type { Account, Category, CreditCard, Recorrencia, Frequency } from '@/types'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { PageHeader } from '@/components/layout/PageHeader'
-// linha 31 — troca por:
-import { Warning, ArrowsClockwise } from '@phosphor-icons/react'
+import {
+  Warning,
+  ArrowsClockwise,
+  Pause,
+  Play,
+  PencilSimple,
+  Trash,
+  CreditCard as CreditCardIcon,
+  ArrowUp,
+  ArrowDown,
+  CalendarBlank,
+  CheckCircle,
+  XCircle,
+} from '@phosphor-icons/react'
+
 type TxType = 'income' | 'expense'
 type Toast  = { message: string; type: 'success' | 'error' }
 
@@ -29,10 +43,16 @@ const FREQ_LABELS: Record<Frequency, string> = {
 }
 
 function nextDueDate(startDate: string, frequency: Frequency): string {
+  if (!startDate) return new Date().toISOString().split('T')[0]
+  const d = new Date(startDate + 'T12:00:00')
+  if (isNaN(d.getTime())) return new Date().toISOString().split('T')[0]
+
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  const d = new Date(startDate + 'T12:00:00')
+
+  let iterations = 0
   while (d < today) {
+    if (++iterations > 3650) break
     switch (frequency) {
       case 'daily':   d.setDate(d.getDate() + 1); break
       case 'weekly':  d.setDate(d.getDate() + 7); break
@@ -56,12 +76,30 @@ const emptyForm = {
   end_date:        '',
 }
 
+const OVERLAY_STYLE: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(0,0,0,0.55)',
+  backdropFilter: 'blur(20px)',
+  WebkitBackdropFilter: 'blur(20px)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 9999,
+  padding: '1rem',
+}
+
 function RecorrenciasError({ message, onRetry }: { message?: string; onRetry: () => void }) {
   return (
     <PageContainer maxWidth="lg">
       <PageHeader title="Recorrências" />
       <div className="rounded-2xl p-10 text-center"
-        style={{ background: 'var(--surface)', border: '1px dashed #fca5a5' }}>
+        style={{
+          background: 'var(--glass-bg)',
+          backdropFilter: 'blur(var(--glass-blur))',
+          WebkitBackdropFilter: 'blur(var(--glass-blur))',
+          border: '1px dashed #fca5a5',
+        }}>
         <Warning weight="duotone" size={32} style={{ color: 'var(--danger)' }} className="mx-auto mb-2" />
         <p className="text-sm font-medium mb-1" style={{ color: 'var(--text)' }}>Erro ao carregar recorrências</p>
         <p className="text-xs mb-5" style={{ color: 'var(--text-muted)' }}>
@@ -96,23 +134,41 @@ export default function RecorrenciasPage() {
   })
   const [deleting, setDeleting] = useState(false)
 
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   function showToast(message: string, type: Toast['type'] = 'success') {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     setToast({ message, type })
-    setTimeout(() => setToast(null), 3500)
+    toastTimerRef.current = setTimeout(() => setToast(null), 3500)
   }
 
-  async function loadAll() {
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    }
+  }, [])
+
+  const loadAll = useCallback(async () => {
     setLoading(true)
     setLoadError(null)
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/auth/login'; return }
 
-      const [{ data: rec, error: recErr }, { data: acc }, { data: cat }, { data: cards }] = await Promise.all([
+      const [
+        { data: rec, error: recErr },
+        { data: acc },
+        { data: cat },
+        { data: cards },
+      ] = await Promise.all([
         supabase.from('recurrences').select('*').eq('user_id', user.id).order('next_due_date'),
         supabase.from('accounts').select('id, name, current_balance').eq('user_id', user.id).order('name'),
         supabase.from('categories').select('id, name, type, icon').eq('user_id', user.id).order('name'),
-        supabase.from('credit_cards').select('id, name, closing_day, due_day').eq('user_id', user.id).eq('is_active', true).order('name'),
+        supabase.from('credit_cards')
+          .select('id, name, closing_day, due_day')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .order('name'),
       ])
 
       if (recErr) { setLoadError(recErr.message); return }
@@ -141,9 +197,9 @@ export default function RecorrenciasPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [supabase])
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll() }, [loadAll])
 
   function openCreate() {
     setForm({ ...emptyForm, account_id: accounts[0]?.id ?? '' })
@@ -171,7 +227,9 @@ export default function RecorrenciasPage() {
   }
 
   async function handleSave() {
+    if (saving) return
     setFormError(null)
+
     const amount = parseFloat(String(form.amount).replace(',', '.'))
     if (!form.description.trim())                      { setFormError('Descrição é obrigatória.'); return }
     if (isNaN(amount) || amount <= 0)                  { setFormError('Valor deve ser maior que zero.'); return }
@@ -179,43 +237,46 @@ export default function RecorrenciasPage() {
     if (form.use_credit_card  && !form.credit_card_id) { setFormError('Selecione um cartão.'); return }
 
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setFormError('Não autenticado.'); setSaving(false); return }
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { setFormError('Não autenticado.'); return }
 
-    const next = nextDueDate(form.start_date, form.frequency)
-    const payload = {
-      type:           form.type,
-      description:    form.description.trim(),
-      amount,
-      category_id:    form.category_id    || null,
-      account_id:     form.use_credit_card ? null : (form.account_id || null),
-      credit_card_id: form.use_credit_card ? form.credit_card_id : null,
-      frequency:      form.frequency,
-      start_date:     form.start_date,
-      end_date:       form.end_date || null,
-      is_active:      true,
-    }
-
-    if (editingId) {
-      const { error: err } = await supabase.from('recurrences').update(payload).eq('id', editingId)
-      if (err) { setFormError(err.message); setSaving(false); return }
-      showToast('Recorrência atualizada!')
-    } else {
-      const { error: err } = await supabase
-        .from('recurrences').insert({ ...payload, user_id: user.id, next_due_date: next })
-      if (err) { setFormError(err.message); setSaving(false); return }
-      try {
-        const result = await awardXP(user.id, 'first_recurring', 'first_recurring')
-        if (result.newBadge) showToast('🔁 Badge desbloqueado: Automatizador! +20 XP')
-        else showToast('Recorrência criada! +20 XP 🎉')
-      } catch {
-        showToast('Recorrência criada!')
+      const next = nextDueDate(form.start_date, form.frequency)
+      const payload = {
+        type:           form.type,
+        description:    form.description.trim(),
+        amount,
+        category_id:    form.category_id    || null,
+        account_id:     form.use_credit_card ? null : (form.account_id || null),
+        credit_card_id: form.use_credit_card ? form.credit_card_id : null,
+        frequency:      form.frequency,
+        start_date:     form.start_date,
+        end_date:       form.end_date || null,
+        is_active:      true,
       }
-    }
 
-    await loadAll()
-    setShowModal(false)
-    setSaving(false)
+      if (editingId) {
+        const { error: err } = await supabase.from('recurrences').update(payload).eq('id', editingId)
+        if (err) { setFormError(err.message); return }
+        showToast('Recorrência atualizada!')
+      } else {
+        const { error: err } = await supabase
+          .from('recurrences').insert({ ...payload, user_id: user.id, next_due_date: next })
+        if (err) { setFormError(err.message); return }
+        try {
+          const result = await awardXP(user.id, 'first_recurring', 'first_recurring')
+          if (result.newBadge) showToast('Badge desbloqueado: Automatizador! +20 XP')
+          else showToast('Recorrência criada! +20 XP')
+        } catch {
+          showToast('Recorrência criada!')
+        }
+      }
+
+      await loadAll()
+      setShowModal(false)
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function toggleActive(r: Recorrencia) {
@@ -234,95 +295,121 @@ export default function RecorrenciasPage() {
   }
 
   async function executeDelete(mode: 'pause' | 'future' | 'all') {
-    if (!deleteModal.recorrencia) return
+    if (!deleteModal.recorrencia || deleting) return
     setDeleting(true)
     const { id } = deleteModal.recorrencia
     const today = new Date().toISOString().split('T')[0]
 
-    if (mode === 'pause') {
-      await supabase.from('recurrences').update({ is_active: false }).eq('id', id)
-      showToast('Recorrência pausada. Histórico preservado.')
-    } else if (mode === 'future') {
-      await supabase.from('transactions').delete().eq('recurrence_id', id).gte('date', today)
-      await supabase.from('recurrences').update({ is_active: false }).eq('id', id)
-      showToast(`Recorrência pausada e ${deleteModal.futureTxCount} lançamento(s) futuro(s) removido(s).`)
-    } else {
-      await supabase.from('transactions').delete().eq('recurrence_id', id)
-      await supabase.from('recurrences').delete().eq('id', id)
-      showToast('Recorrência e todos os lançamentos excluídos.')
+    try {
+      if (mode === 'pause') {
+        await supabase.from('recurrences').update({ is_active: false }).eq('id', id)
+        showToast('Recorrência pausada. Histórico preservado.')
+      } else if (mode === 'future') {
+        await supabase.from('transactions').delete().eq('recurrence_id', id).gte('date', today)
+        await supabase.from('recurrences').update({ is_active: false }).eq('id', id)
+        showToast(`Recorrência pausada e ${deleteModal.futureTxCount} lançamento(s) futuro(s) removido(s).`)
+      } else {
+        await supabase.from('transactions').delete().eq('recurrence_id', id)
+        await supabase.from('recurrences').delete().eq('id', id)
+        showToast('Recorrência e todos os lançamentos excluídos.')
+      }
+    } catch {
+      showToast('Erro ao processar. Tente novamente.', 'error')
+    } finally {
+      setDeleteModal({ open: false, recorrencia: null, txCount: 0, futureTxCount: 0 })
+      setDeleting(false)
+      await loadAll()
     }
-
-    setDeleteModal({ open: false, recorrencia: null, txCount: 0, futureTxCount: 0 })
-    setDeleting(false)
-    await loadAll()
   }
 
   async function generateNow(r: Recorrencia) {
+    if (generatingId) return
     setGeneratingId(r.id)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setGeneratingId(null); return }
 
-    const today = new Date().toISOString().split('T')[0]
-    let invoiceId: string | null = null
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
 
-    if (r.credit_card_id) {
-      const card = creditCards.find(c => c.id === r.credit_card_id)
-      if (card) {
-        const d = new Date(today + 'T12:00:00')
-        let month = d.getMonth() + 1
-        let year  = d.getFullYear()
-        if (d.getDate() > card.closing_day) {
-          month = month === 12 ? 1 : month + 1
-          year  = month === 1  ? year + 1 : year
-        }
-        const { data: existing } = await supabase
-          .from('credit_card_invoices').select('id')
-          .eq('credit_card_id', r.credit_card_id).eq('month', month).eq('year', year).single()
+      const today = new Date().toISOString().split('T')[0]
+      let invoiceId: string | null = null
 
-        if (existing) {
-          invoiceId = existing.id
-        } else {
-          const dueMonth = month === 12 ? 1 : month + 1
-          const dueYear  = month === 12 ? year + 1 : year
-          const dueDate  = `${dueYear}-${String(dueMonth).padStart(2, '0')}-${String(card.due_day).padStart(2, '0')}`
-          const { data: created } = await supabase
-            .from('credit_card_invoices')
-            .insert({ credit_card_id: r.credit_card_id, user_id: user.id, month, year, total_amount: 0, status: 'open', due_date: dueDate })
-            .select('id').single()
-          invoiceId = created?.id ?? null
+      if (r.credit_card_id) {
+        const card = creditCards.find(c => c.id === r.credit_card_id)
+        if (card) {
+          const d = new Date(today + 'T12:00:00')
+          let month = d.getMonth() + 1
+          let year  = d.getFullYear()
+          if (d.getDate() > card.closing_day) {
+            month = month === 12 ? 1 : month + 1
+            year  = month === 1  ? year + 1 : year
+          }
+
+          const { data: existing } = await supabase
+            .from('credit_card_invoices').select('id')
+            .eq('credit_card_id', r.credit_card_id).eq('month', month).eq('year', year).single()
+
+          if (existing) {
+            invoiceId = existing.id
+          } else {
+            const dueMonth = month === 12 ? 1 : month + 1
+            const dueYear  = month === 12 ? year + 1 : year
+            const dueDate  = `${dueYear}-${String(dueMonth).padStart(2, '0')}-${String(card.due_day).padStart(2, '0')}`
+            const { data: created, error: invoiceErr } = await supabase
+              .from('credit_card_invoices')
+              .insert({
+                credit_card_id: r.credit_card_id,
+                user_id: user.id,
+                month, year,
+                total_amount: 0,
+                status: 'open',
+                due_date: dueDate,
+              })
+              .select('id').single()
+            if (invoiceErr) {
+              const { data: retry } = await supabase
+                .from('credit_card_invoices').select('id')
+                .eq('credit_card_id', r.credit_card_id).eq('month', month).eq('year', year).single()
+              invoiceId = retry?.id ?? null
+            } else {
+              invoiceId = created?.id ?? null
+            }
+          }
         }
       }
+
+      const { error: err } = await supabase.from('transactions').insert({
+        user_id:        user.id,
+        type:           r.type,
+        description:    r.description,
+        amount:         r.amount,
+        date:           today,
+        account_id:     r.credit_card_id ? null : r.account_id,
+        credit_card_id: r.credit_card_id ?? null,
+        invoice_id:     invoiceId,
+        category_id:    r.category_id,
+        status:         r.credit_card_id ? 'posted' : 'pending',
+        is_recurring:   true,
+        recurrence_id:  r.id,
+      })
+
+      if (err) { showToast('Erro ao gerar transação.', 'error'); return }
+
+      if (invoiceId) {
+        const { data } = await supabase.from('transactions').select('amount').eq('invoice_id', invoiceId)
+        const total = (data ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
+        await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
+      }
+
+      await awardXP(user.id, 'transaction_created').catch(() => {})
+      const next = nextDueDate(today, r.frequency)
+      await supabase.from('recurrences').update({ next_due_date: next }).eq('id', r.id)
+      showToast(r.credit_card_id ? 'Transação gerada e lançada na fatura!' : 'Transação gerada com sucesso!')
+      await loadAll()
+    } catch {
+      showToast('Erro inesperado ao gerar transação.', 'error')
+    } finally {
+      setGeneratingId(null)
     }
-
-    const { error: err } = await supabase.from('transactions').insert({
-      user_id:        user.id,
-      type:           r.type,
-      description:    r.description,
-      amount:         r.amount,
-      date:           today,
-      account_id:     r.credit_card_id ? null : r.account_id,
-      credit_card_id: r.credit_card_id ?? null,
-      invoice_id:     invoiceId,
-      category_id:    r.category_id,
-      status:         r.credit_card_id ? 'posted' : 'pending',
-      is_recurring:   true,
-      recurrence_id:  r.id,
-    })
-
-    if (err) { showToast('Erro ao gerar transação.', 'error'); setGeneratingId(null); return }
-
-    if (invoiceId) {
-      const { data } = await supabase.from('transactions').select('amount').eq('invoice_id', invoiceId)
-      const total = (data ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
-      await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
-    }
-
-    await awardXP(user.id, 'transaction_created').catch(() => {})
-    const next = nextDueDate(today, r.frequency)
-    await supabase.from('recurrences').update({ next_due_date: next }).eq('id', r.id)
-    showToast(r.credit_card_id ? 'Transação gerada e lançada na fatura!' : 'Transação gerada com sucesso!')
-    await loadAll()
-    setGeneratingId(null)
   }
 
   const catsFiltradas = categories.filter(c => c.type === form.type || c.type === 'both')
@@ -334,13 +421,18 @@ export default function RecorrenciasPage() {
   return (
     <PageContainer maxWidth="lg">
 
+      {/* Toast */}
       {toast && (
-        <div className={`fixed top-5 right-5 z-[60] px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${
+        <div className={`fixed top-5 right-5 z-[9999] px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 ${
           toast.type === 'success'
             ? 'bg-green-50 text-green-700 border border-green-200'
             : 'bg-red-50 text-red-700 border border-red-200'
         }`}>
-          {toast.type === 'success' ? '✓ ' : '✕ '}{toast.message}
+          {toast.type === 'success'
+            ? <CheckCircle weight="duotone" size={16} />
+            : <XCircle weight="duotone" size={16} />
+          }
+          {toast.message}
         </div>
       )}
 
@@ -358,13 +450,23 @@ export default function RecorrenciasPage() {
         <div className="space-y-3">
           {[1, 2, 3].map(i => (
             <div key={i} className="h-20 rounded-xl animate-pulse"
-              style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
+              style={{
+                background: 'var(--glass-bg)',
+                backdropFilter: 'blur(var(--glass-blur))',
+                WebkitBackdropFilter: 'blur(var(--glass-blur))',
+                border: '1px solid var(--glass-border)',
+              }} />
           ))}
         </div>
       ) : recorrencias.length === 0 ? (
         <div className="rounded-2xl p-12 text-center"
-          style={{ background: 'var(--surface)', border: '1px dashed var(--border)' }}>
-          <p className="text-4xl mb-3">🔁</p>
+          style={{
+            background: 'var(--glass-bg)',
+            backdropFilter: 'blur(var(--glass-blur))',
+            WebkitBackdropFilter: 'blur(var(--glass-blur))',
+            border: '1px dashed var(--glass-border)',
+          }}>
+          <ArrowsClockwise weight="duotone" size={40} className="mx-auto mb-3" style={{ color: 'var(--primary)' }} />
           <p className="text-base font-semibold mb-1" style={{ color: 'var(--text)' }}>
             Nenhuma recorrência ainda
           </p>
@@ -411,16 +513,20 @@ export default function RecorrenciasPage() {
       )}
 
       {/* Modal exclusão */}
-      {deleteModal.open && deleteModal.recorrencia && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      {deleteModal.open && deleteModal.recorrencia && createPortal(
+        <div style={OVERLAY_STYLE}>
           <div className="rounded-2xl w-full max-w-sm p-6 shadow-xl" style={{ background: 'var(--surface)' }}>
             <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-lg"
-                style={{ background: 'var(--danger-light)' }}>⚠️</div>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                style={{ background: 'var(--danger-light)' }}>
+                <Warning weight="duotone" size={20} style={{ color: 'var(--danger)' }} />
+              </div>
               <div>
                 <h3 className="font-semibold" style={{ color: 'var(--text)' }}>Excluir recorrência</h3>
                 <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                  <span className="font-medium" style={{ color: 'var(--text)' }}>"{deleteModal.recorrencia.description}"</span>
+                  <span className="font-medium" style={{ color: 'var(--text)' }}>
+                    "{deleteModal.recorrencia.description}"
+                  </span>
                   {' · '}{fmt(deleteModal.recorrencia.amount)}{' · '}{FREQ_LABELS[deleteModal.recorrencia.frequency]}
                 </p>
               </div>
@@ -429,7 +535,10 @@ export default function RecorrenciasPage() {
             {deleteModal.txCount > 0 && (
               <div className="rounded-xl px-4 py-3 mb-4 text-xs space-y-1"
                 style={{ background: 'var(--warning-light)', border: '1px solid var(--warning)', color: 'var(--text)' }}>
-                <p className="font-semibold">⚠️ Esta recorrência possui lançamentos vinculados:</p>
+                <p className="font-semibold flex items-center gap-1.5">
+                  <Warning weight="duotone" size={14} style={{ color: 'var(--warning)' }} />
+                  Esta recorrência possui lançamentos vinculados:
+                </p>
                 <p>• <span className="font-medium">{deleteModal.txCount} transação(ões)</span> no total</p>
                 {deleteModal.futureTxCount > 0 && (
                   <p>• <span className="font-medium">{deleteModal.futureTxCount} futura(s)</span> (data ≥ hoje)</p>
@@ -441,14 +550,20 @@ export default function RecorrenciasPage() {
               <button onClick={() => executeDelete('pause')} disabled={deleting}
                 className="w-full text-left rounded-xl px-4 py-3 transition-colors disabled:opacity-40"
                 style={{ border: '1px solid var(--border)', background: 'var(--bg)' }}>
-                <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>⏸ Pausar automação</p>
+                <p className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text)' }}>
+                  <Pause weight="duotone" size={15} />
+                  Pausar automação
+                </p>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Para de gerar novas transações. Histórico completo preservado.</p>
               </button>
               {deleteModal.futureTxCount > 0 && (
                 <button onClick={() => executeDelete('future')} disabled={deleting}
                   className="w-full text-left rounded-xl px-4 py-3 transition-colors disabled:opacity-40"
                   style={{ border: '1px solid var(--border)', background: 'var(--bg)' }}>
-                  <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>🗓️ Pausar + remover futuras</p>
+                  <p className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text)' }}>
+                    <CalendarBlank weight="duotone" size={15} />
+                    Pausar + remover futuras
+                  </p>
                   <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                     Remove {deleteModal.futureTxCount} lançamento(s) com data ≥ hoje.
                   </p>
@@ -457,7 +572,10 @@ export default function RecorrenciasPage() {
               <button onClick={() => executeDelete('all')} disabled={deleting}
                 className="w-full text-left rounded-xl px-4 py-3 transition-colors disabled:opacity-40"
                 style={{ border: '1px solid var(--danger)', background: 'var(--danger-light)' }}>
-                <p className="text-sm font-semibold" style={{ color: 'var(--danger)' }}>🗑️ Excluir tudo</p>
+                <p className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--danger)' }}>
+                  <Trash weight="duotone" size={15} />
+                  Excluir tudo
+                </p>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                   Remove a recorrência e todos os {deleteModal.txCount} lançamento(s). Irreversível.
                 </p>
@@ -472,12 +590,13 @@ export default function RecorrenciasPage() {
               {deleting ? 'Processando...' : 'Cancelar'}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal criar/editar */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      {showModal && createPortal(
+        <div style={OVERLAY_STYLE}>
           <div className="rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto"
             style={{ background: 'var(--surface)' }}>
             <h2 className="text-lg font-semibold mb-5" style={{ color: 'var(--text)' }}>
@@ -490,13 +609,16 @@ export default function RecorrenciasPage() {
                 <div className="flex gap-2">
                   {(['expense', 'income'] as TxType[]).map(t => (
                     <button key={t} onClick={() => setForm({ ...form, type: t, category_id: '' })}
-                      className="flex-1 py-2 rounded-lg text-xs font-medium transition-colors border"
+                      className="flex-1 py-2 rounded-lg text-xs font-medium transition-colors border flex items-center justify-center gap-1.5"
                       style={{
                         background:  form.type === t ? (t === 'income' ? 'var(--success-light)' : 'var(--danger-light)') : 'transparent',
                         color:       form.type === t ? (t === 'income' ? 'var(--success)' : 'var(--danger)') : 'var(--text-muted)',
                         borderColor: form.type === t ? 'transparent' : 'var(--border)',
                       }}>
-                      {t === 'income' ? '↑ Receita' : '↓ Despesa'}
+                      {t === 'income'
+                        ? <><ArrowUp weight="duotone" size={13} /> Receita</>
+                        : <><ArrowDown weight="duotone" size={13} /> Despesa</>
+                      }
                     </button>
                   ))}
                 </div>
@@ -550,7 +672,7 @@ export default function RecorrenciasPage() {
                 <div className="flex items-center justify-between rounded-lg px-3 py-2.5"
                   style={{ background: 'var(--primary-light)', border: '1px solid var(--border)' }}>
                   <div className="flex items-center gap-2">
-                    <span>💳</span>
+                    <CreditCardIcon weight="duotone" size={16} style={{ color: 'var(--primary)' }} />
                     <span className="text-sm font-medium" style={{ color: 'var(--primary)' }}>Pagar com cartão</span>
                   </div>
                   <button
@@ -568,7 +690,9 @@ export default function RecorrenciasPage() {
                   <select value={form.credit_card_id} onChange={e => setForm({ ...form, credit_card_id: e.target.value })}
                     className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none">
                     <option value="">Selecione...</option>
-                    {creditCards.map(c => <option key={c.id} value={c.id}>💳 {c.name}</option>)}
+                    {creditCards.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
                   </select>
                 </div>
               ) : (
@@ -609,7 +733,8 @@ export default function RecorrenciasPage() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </PageContainer>
@@ -633,15 +758,25 @@ function RecorrenciaCard({
   const isDueSoon = daysUntil <= 3 && daysUntil >= 0
 
   return (
-    <div className="rounded-xl px-4 py-3 flex items-center gap-4 group transition-colors"
-      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+    <div
+      className="rounded-xl px-4 py-3 flex items-center gap-4 group transition-all duration-200"
+      style={{
+        background: 'var(--glass-bg)',
+        backdropFilter: 'blur(var(--glass-blur))',
+        WebkitBackdropFilter: 'blur(var(--glass-blur))',
+        border: '1px solid var(--glass-border)',
+      }}
+      onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--glass-hover-border)')}
+      onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--glass-border)')}
+    >
       <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
         style={{ background: r.type === 'income' ? 'var(--success-light)' : 'var(--danger-light)' }}>
         {r.category_icon
-  ? <span>{r.category_icon}</span>
-  : <ArrowsClockwise weight="duotone" size={18} style={{ color: 'var(--primary)' }} />
-}
+          ? <span>{r.category_icon}</span>
+          : <ArrowsClockwise weight="duotone" size={18} style={{ color: 'var(--primary)' }} />
+        }
       </div>
+
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>
@@ -652,9 +787,10 @@ function RecorrenciaCard({
             {FREQ_LABELS[r.frequency]}
           </span>
           {r.credit_card_id && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0"
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 flex items-center gap-1"
               style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>
-              💳 Cartão
+              <CreditCardIcon weight="duotone" size={10} />
+              Cartão
             </span>
           )}
           {isOverdue && (
@@ -671,35 +807,47 @@ function RecorrenciaCard({
           )}
         </div>
         <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
-          {r.credit_card_name ? `💳 ${r.credit_card_name}` : (r.account_name ?? '—')}
+          {r.credit_card_name ? `${r.credit_card_name}` : (r.account_name ?? '—')}
           {r.category_name ? ` · ${r.category_name}` : ''}
           {' · Próxima: '}{fmtDate(r.next_due_date)}
         </p>
       </div>
+
       <div className="text-right shrink-0">
         <p className="text-sm font-semibold"
           style={{ color: r.type === 'income' ? 'var(--success)' : 'var(--danger)' }}>
           {r.type === 'income' ? '+' : '−'} {fmt(r.amount)}
         </p>
       </div>
-      <div className="opacity-0 group-hover:opacity-100 transition-all flex gap-1 shrink-0">
-        <button onClick={() => onGenerate(r)} disabled={generatingId === r.id}
+
+      <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex gap-1 shrink-0">
+        <button onClick={() => onGenerate(r)} disabled={!!generatingId}
           title="Gerar transação agora"
-          className="text-xs px-2 py-1 rounded-lg transition-colors disabled:opacity-30"
+          className="px-2 py-1 rounded-lg transition-colors disabled:opacity-30 flex items-center justify-center"
           style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>
-          {generatingId === r.id ? '...' : '▶'}
+          {generatingId === r.id
+            ? <ArrowsClockwise weight="duotone" size={13} className="animate-spin" />
+            : <Play weight="duotone" size={13} />
+          }
         </button>
         <button onClick={() => onToggle(r)} title={r.is_active ? 'Pausar' : 'Ativar'}
-          className="text-xs px-2 py-1 rounded-lg transition-colors"
+          className="px-2 py-1 rounded-lg transition-colors flex items-center justify-center"
           style={{ background: 'var(--bg)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
-          {r.is_active ? '⏸' : '▶'}
+          {r.is_active
+            ? <Pause weight="duotone" size={13} />
+            : <Play weight="duotone" size={13} />
+          }
         </button>
         <button onClick={() => onEdit(r)} title="Editar"
-          className="text-sm px-1.5 py-1 rounded transition-colors"
-          style={{ color: 'var(--text-muted)' }}>✏️</button>
+          className="px-1.5 py-1 rounded transition-colors flex items-center justify-center"
+          style={{ color: 'var(--text-muted)' }}>
+          <PencilSimple weight="duotone" size={14} />
+        </button>
         <button onClick={() => onDelete(r)} title="Excluir"
-          className="text-sm px-1.5 py-1 rounded transition-colors"
-          style={{ color: 'var(--text-muted)' }}>🗑️</button>
+          className="px-1.5 py-1 rounded transition-colors flex items-center justify-center"
+          style={{ color: 'var(--text-muted)' }}>
+          <Trash weight="duotone" size={14} />
+        </button>
       </div>
     </div>
   )
