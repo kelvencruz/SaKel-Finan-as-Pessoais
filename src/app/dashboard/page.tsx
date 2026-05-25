@@ -530,18 +530,21 @@ export default function DashboardPage() {
       </div>
 
       {/* ── KPI Cards — glass-card + AnimatedValue + accent bar ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-7">
         {kpis.map((kpi, idx) => (
           <div
             key={kpi.label}
-            className="glass-card rounded-xl p-4 flex flex-col gap-3 cursor-default"
+            className="glass-card rounded-2xl p-6 flex flex-col gap-4 cursor-default"
             style={{ '--accent-color': kpi.accentColor } as React.CSSProperties}
           >
-            <div className="flex items-center justify-between">
-              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{kpi.label}</p>
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+            <div className="flex items-start justify-between">
+              <p className="text-xs font-semibold uppercase tracking-widest"
+                style={{ color: 'var(--text-secondary)' }}>
+                {kpi.label}
+              </p>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
                 style={{ background: kpi.iconBg }}>
-                <kpi.icon size={16} weight="duotone" style={{ color: kpi.color }} />
+                <kpi.icon size={20} weight="duotone" style={{ color: kpi.color }} />
               </div>
             </div>
 
@@ -553,7 +556,7 @@ export default function DashboardPage() {
                 group="investments"
                 delay={idx * 80}
                 colorize={false}
-                className="text-xl font-bold"
+                className="text-2xl font-bold tracking-tight"
                 style={{ color: kpi.color } as React.CSSProperties}
               />
             ) : (
@@ -563,12 +566,15 @@ export default function DashboardPage() {
                 group="financial"
                 delay={idx * 80}
                 colorize={false}
-                className="text-xl font-bold"
+                className="text-2xl font-bold tracking-tight"
                 style={{ color: kpi.color } as React.CSSProperties}
               />
             )}
 
-            <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>{kpi.sub}</p>
+            <p className="text-xs uppercase tracking-wider"
+              style={{ color: 'var(--text-muted)' }}>
+              {kpi.sub}
+            </p>
           </div>
         ))}
       </div>
