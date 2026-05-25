@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AppModal } from '@/components/AppModal'
+import { AnimatedValue } from '@/components/ui/AnimatedValue'
 import { CreditCard, Plus } from '@phosphor-icons/react'
 
 interface CreditCard {
@@ -127,6 +128,7 @@ export default function CartoesPage() {
 
   const activeCards   = cards.filter(c => c.is_active)
   const inactiveCards = cards.filter(c => !c.is_active)
+  const totalLimit    = activeCards.reduce((s, c) => s + Number(c.limit_amount), 0)
 
   return (
     <PageContainer>
@@ -143,30 +145,93 @@ export default function CartoesPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
-        <div className="bg-surface border border-border rounded-xl p-4">
-          <p className="text-xs text-text-secondary mb-1">Total de cartões</p>
-          <p className="text-2xl font-bold text-text">{activeCards.length}</p>
-        </div>
-        <div className="bg-surface border border-border rounded-xl p-4">
-          <p className="text-xs text-text-secondary mb-1">Limite total</p>
-          <p className="text-2xl font-bold text-primary">
-            {fmt(activeCards.reduce((s, c) => s + Number(c.limit_amount), 0))}
+
+        {/* Total de cartões */}
+        <div
+          className="relative rounded-xl p-4 border overflow-hidden"
+          style={{
+            background:           'var(--glass-bg)',
+            backdropFilter:       'blur(var(--glass-blur))',
+            WebkitBackdropFilter: 'blur(var(--glass-blur))',
+            borderColor:          'var(--glass-border)',
+          }}
+        >
+          <div
+            className="absolute bottom-0 left-0 h-0.5 w-full rounded-b-xl"
+            style={{ background: 'var(--primary)' }}
+          />
+          <p className="text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>
+            Total de cartões
+          </p>
+          <p className="text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
+            {activeCards.length}
           </p>
         </div>
-        <div className="bg-surface border border-border rounded-xl p-4 sm:block hidden">
-          <p className="text-xs text-text-secondary mb-1">Inativos</p>
-          <p className="text-2xl font-bold text-text-secondary">{inactiveCards.length}</p>
+
+        {/* Limite total */}
+        <div
+          className="relative rounded-xl p-4 border overflow-hidden"
+          style={{
+            background:           'var(--glass-bg)',
+            backdropFilter:       'blur(var(--glass-blur))',
+            WebkitBackdropFilter: 'blur(var(--glass-blur))',
+            borderColor:          'var(--glass-border)',
+          }}
+        >
+          <div
+            className="absolute bottom-0 left-0 h-0.5 w-full rounded-b-xl"
+            style={{ background: 'var(--chart-line-start)' }}
+          />
+          <p className="text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>
+            Limite total
+          </p>
+          <AnimatedValue
+            value={totalLimit}
+            group="financial"
+            className="text-2xl font-bold"
+            style={{ color: 'var(--primary)' }}
+          />
         </div>
+
+        {/* Inativos */}
+        <div
+          className="relative rounded-xl p-4 border overflow-hidden sm:block hidden"
+          style={{
+            background:           'var(--glass-bg)',
+            backdropFilter:       'blur(var(--glass-blur))',
+            WebkitBackdropFilter: 'blur(var(--glass-blur))',
+            borderColor:          'var(--glass-border)',
+          }}
+        >
+          <div
+            className="absolute bottom-0 left-0 h-0.5 w-full rounded-b-xl"
+            style={{ background: 'var(--color-text-muted)' }}
+          />
+          <p className="text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>
+            Inativos
+          </p>
+          <p className="text-2xl font-bold" style={{ color: 'var(--color-text-muted)' }}>
+            {inactiveCards.length}
+          </p>
+        </div>
+
       </div>
 
       {/* Lista */}
       {loading ? (
-        <p className="text-text-secondary text-sm">Carregando...</p>
+        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Carregando...</p>
       ) : cards.length === 0 ? (
-        <div className="bg-surface border border-dashed border-border-md rounded-xl p-10 text-center">
-          <CreditCard weight="duotone" size={40} className="mx-auto mb-3 text-text-secondary" />
-          <p className="text-text-secondary text-sm">Nenhum cartão cadastrado ainda.</p>
-          <button onClick={openCreate} className="mt-3 text-primary text-sm hover:underline">
+        <div
+          className="rounded-xl p-10 text-center border border-dashed"
+          style={{ borderColor: 'var(--color-border)', background: 'var(--glass-bg)' }}
+        >
+          <CreditCard weight="duotone" size={40} className="mx-auto mb-3" style={{ color: 'var(--color-text-muted)' }} />
+          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Nenhum cartão cadastrado ainda.</p>
+          <button
+            onClick={openCreate}
+            className="mt-3 text-sm hover:underline"
+            style={{ color: 'var(--primary)' }}
+          >
             Adicionar primeiro cartão
           </button>
         </div>
@@ -175,9 +240,14 @@ export default function CartoesPage() {
           {cards.map(card => (
             <div
               key={card.id}
-              className={`bg-surface border border-border rounded-xl p-5 flex items-center gap-4 transition-opacity ${
-                !card.is_active ? 'opacity-50' : ''
-              }`}
+              className="rounded-xl p-5 flex items-center gap-4 border transition-opacity"
+              style={{
+                background:           'var(--glass-bg)',
+                backdropFilter:       'blur(var(--glass-blur))',
+                WebkitBackdropFilter: 'blur(var(--glass-blur))',
+                borderColor:          'var(--glass-border)',
+                opacity:              card.is_active ? 1 : 0.5,
+              }}
             >
               <div
                 className="w-14 h-10 rounded-lg flex items-center justify-center text-white flex-shrink-0 shadow-sm"
@@ -188,26 +258,46 @@ export default function CartoesPage() {
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="font-semibold text-text">{card.name}</p>
+                  <p className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                    {card.name}
+                  </p>
                   {!card.is_active && (
-                    <span className="text-xs bg-surface-hover text-text-secondary px-2 py-0.5 rounded-full">
+                    <span
+                      className="text-xs px-2 py-0.5 rounded-full"
+                      style={{
+                        background: 'var(--color-surface-hover)',
+                        color:      'var(--color-text-muted)',
+                      }}
+                    >
                       Inativo
                     </span>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-3 mt-1">
-                  <span className="text-xs text-text-secondary">
-                    Limite: <span className="text-text font-medium">{fmt(Number(card.limit_amount))}</span>
+                  <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    Limite:{' '}
+                    <span style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>
+                      {fmt(Number(card.limit_amount))}
+                    </span>
                   </span>
-                  <span className="text-xs text-text-secondary">
-                    Fecha dia <span className="text-text font-medium">{card.closing_day}</span>
+                  <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    Fecha dia{' '}
+                    <span style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>
+                      {card.closing_day}
+                    </span>
                   </span>
-                  <span className="text-xs text-text-secondary">
-                    Vence dia <span className="text-text font-medium">{card.due_day}</span>
+                  <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    Vence dia{' '}
+                    <span style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>
+                      {card.due_day}
+                    </span>
                   </span>
                   {card.account && (
-                    <span className="text-xs text-text-secondary">
-                      Conta: <span className="text-text font-medium">{card.account.name}</span>
+                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      Conta:{' '}
+                      <span style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>
+                        {card.account.name}
+                      </span>
                     </span>
                   )}
                 </div>
@@ -216,20 +306,47 @@ export default function CartoesPage() {
               <div className="flex gap-1 flex-shrink-0">
                 <button
                   onClick={() => openEdit(card)}
-                  className="text-xs text-text-secondary hover:text-primary px-2 py-1 rounded hover:bg-surface-hover transition-colors"
+                  className="text-xs px-2 py-1 rounded transition-colors"
+                  style={{ color: 'var(--color-text-muted)' }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.color = 'var(--primary)'
+                    e.currentTarget.style.background = 'var(--color-surface-hover)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.color = 'var(--color-text-muted)'
+                    e.currentTarget.style.background = 'transparent'
+                  }}
                 >
                   Editar
                 </button>
                 <button
                   onClick={() => handleToggleActive(card)}
-                  className="text-xs text-text-secondary hover:text-warning px-2 py-1 rounded hover:bg-surface-hover transition-colors"
+                  className="text-xs px-2 py-1 rounded transition-colors"
+                  style={{ color: 'var(--color-text-muted)' }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.color = 'var(--color-warning)'
+                    e.currentTarget.style.background = 'var(--color-surface-hover)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.color = 'var(--color-text-muted)'
+                    e.currentTarget.style.background = 'transparent'
+                  }}
                 >
                   {card.is_active ? 'Desativar' : 'Ativar'}
                 </button>
                 <button
                   onClick={() => handleDelete(card.id)}
                   disabled={deletingId === card.id}
-                  className="text-xs text-text-secondary hover:text-danger px-2 py-1 rounded hover:bg-surface-hover transition-colors disabled:opacity-50"
+                  className="text-xs px-2 py-1 rounded transition-colors disabled:opacity-50"
+                  style={{ color: 'var(--color-text-muted)' }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.color = 'var(--color-danger)'
+                    e.currentTarget.style.background = 'var(--color-surface-hover)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.color = 'var(--color-text-muted)'
+                    e.currentTarget.style.background = 'transparent'
+                  }}
                 >
                   {deletingId === card.id ? '...' : 'Excluir'}
                 </button>
@@ -239,7 +356,7 @@ export default function CartoesPage() {
         </div>
       )}
 
-      {/* ── Modal criar/editar cartão ── */}
+      {/* Modal criar/editar */}
       <AppModal
         open={showModal}
         onClose={() => setShowModal(false)}

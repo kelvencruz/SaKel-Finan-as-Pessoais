@@ -1,4 +1,3 @@
-// src/components/ui/ModalShell.tsx
 'use client'
 
 import { useEffect } from 'react'
@@ -14,7 +13,6 @@ interface Props {
 
 export function ModalShell({ open, onClose, title, children, maxWidth = 'max-w-md' }: Props) {
 
-  // ESC → fecha
   useEffect(() => {
     if (!open) return
     function onKey(e: KeyboardEvent) {
@@ -27,19 +25,20 @@ export function ModalShell({ open, onClose, title, children, maxWidth = 'max-w-m
   if (!open) return null
 
   return (
-    // Backdrop — clique fora fecha
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'var(--overlay, rgba(0,0,0,0.5))' }}
+      style={{
+        background:           'var(--glass-bg)',
+        backdropFilter:       'blur(var(--glass-blur))',
+        WebkitBackdropFilter: 'blur(var(--glass-blur))',
+      }}
       onClick={onClose}
     >
-      {/* Painel — stopPropagation impede fechamento ao clicar dentro */}
       <div
         className={`relative w-full ${maxWidth} rounded-2xl shadow-xl max-h-[90vh] flex flex-col`}
         style={{ background: 'var(--color-surface)' }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
         <div
           className="flex items-center justify-between px-6 py-4 shrink-0"
           style={{ borderBottom: '1px solid var(--color-border)' }}
@@ -62,7 +61,6 @@ export function ModalShell({ open, onClose, title, children, maxWidth = 'max-w-m
           </button>
         </div>
 
-        {/* Conteúdo — scroll interno */}
         <div className="overflow-y-auto flex-1 px-6 py-5">
           {children}
         </div>
