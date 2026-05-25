@@ -100,8 +100,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="flex flex-col flex-1 min-w-0">
 
         <header
-          className="sticky top-0 z-30 flex items-center justify-between shrink-0"
+          className="sticky top-0 flex items-center justify-between shrink-0"
           style={{
+            zIndex:       10,
             height:       '56px',
             padding:      '0 24px',
             background:   'var(--color-surface)',
@@ -138,7 +139,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="flex items-center gap-3">
-            {/* ActionHub — visível só no desktop, substitui FAB */}
             <ActionHub />
             <UserMenu />
           </div>
@@ -150,12 +150,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       </div>
 
-      {/* FAB — visível só no mobile (md:hidden dentro do componente) */}
       <FloatingActionButton />
-
-      {/* Controlador global de modais — escuta useActionHubStore */}
       <ActionHubController />
-
       <ToastManagerProvider />
     </div>
   )
