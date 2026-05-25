@@ -2,6 +2,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from '@phosphor-icons/react'
 
 interface Props {
@@ -25,11 +26,10 @@ export function ModalShell({ open, onClose, title, children, maxWidth = 'max-w-m
 
   if (!open) return null
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{
-        // BUG-02 fix: rgba direto evita o token --glass-bg opaco em dark/arcade
         background:           'rgba(0, 0, 0, 0.55)',
         backdropFilter:       'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
@@ -67,6 +67,7 @@ export function ModalShell({ open, onClose, title, children, maxWidth = 'max-w-m
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

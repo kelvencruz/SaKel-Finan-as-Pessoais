@@ -2,6 +2,7 @@
 'use client'
 
 import { useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from '@phosphor-icons/react'
 
 export type ModalSize = 'sm' | 'md' | 'lg'
@@ -112,14 +113,13 @@ export function AppModal({
 
   if (!open) return null
 
-  return (
+  return createPortal(
     <div
       className={[
         'fixed inset-0 flex items-center justify-center z-50 p-4',
         'motion-safe:animate-[fadeIn_200ms_ease-out]',
       ].join(' ')}
       style={{
-        // BUG-02 fix: rgba direto evita o token --glass-bg opaco em dark/arcade
         background:           'rgba(0, 0, 0, 0.55)',
         backdropFilter:       'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
@@ -176,7 +176,8 @@ export function AppModal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
