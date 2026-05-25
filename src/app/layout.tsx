@@ -1,3 +1,4 @@
+// src/app/layout.tsx
 import type { Metadata } from 'next'
 import './globals.css'
 
@@ -19,12 +20,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="alternate icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
-        {/* Aplica dark mode antes do render para evitar flash
-            Enquanto o Supabase não responde, assume dark (padrão do produto) */}
+        {/* Aplica tema antes do render — zero flash branco ao navegar entre rotas.
+            Lê localStorage primeiro; fallback 'dark' para primeira visita. */}
         <script dangerouslySetInnerHTML={{ __html: `
           (function() {
             try {
-              document.documentElement.setAttribute('data-theme', 'dark');
+              var theme  = localStorage.getItem('sakel-theme')   || 'dark';
+              var uiMode = localStorage.getItem('sakel-ui-mode') || 'standard';
+              document.documentElement.setAttribute('data-theme',   theme);
+              document.documentElement.setAttribute('data-ui-mode', uiMode);
             } catch(e) {}
           })();
         `}} />

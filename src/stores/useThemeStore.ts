@@ -36,15 +36,22 @@ export const useThemeStore = create<ThemeState>((set) => ({
       .single()
 
     const themeMode = (data?.theme_mode ?? 'dark') as ThemeMode
-    const uiMode = (data?.ui_mode ?? 'standard') as UIMode
+    const uiMode    = (data?.ui_mode    ?? 'standard') as UIMode
+
+    // Atualiza localStorage após carregar do Supabase (mantém em sincronia)
+    localStorage.setItem('sakel-theme',   themeMode)
+    localStorage.setItem('sakel-ui-mode', uiMode)
 
     set({ themeMode, uiMode, isLoading: false })
     applyToDOM(themeMode, uiMode)
   },
 
   setThemeMode: async (mode, userId) => {
+    // localStorage PRIMEIRO — garante bootstrap instantâneo na próxima navegação
+    localStorage.setItem('sakel-theme', mode)
     set({ themeMode: mode })
     applyToDOM(mode)
+
     const supabase = createClient()
     await supabase
       .from('profiles')
@@ -53,8 +60,11 @@ export const useThemeStore = create<ThemeState>((set) => ({
   },
 
   setUIMode: async (mode, userId) => {
+    // localStorage PRIMEIRO — garante bootstrap instantâneo na próxima navegação
+    localStorage.setItem('sakel-ui-mode', mode)
     set({ uiMode: mode })
     applyToDOM(undefined, mode)
+
     const supabase = createClient()
     await supabase
       .from('profiles')
