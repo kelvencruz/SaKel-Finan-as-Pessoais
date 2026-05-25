@@ -2,17 +2,19 @@
 
 import { type CSSProperties } from 'react'
 import { useCountUp } from '@/hooks/useCountUp'
+import { usePrivacyStore } from '@/stores/usePrivacyStore'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type Group = 'financial' | 'investment'
+// Alinhado com PrivateValue.tsx — 'investments' (com s)
+type Group = 'financial' | 'investments'
 
 interface AnimatedValueProps {
   /** Valor numérico a animar (em reais, não centavos) */
   value: number
   /** Se true, inicia a animação (conectar ao !loading da página) */
   trigger?: boolean
-  /** Grupo de privacidade: 'financial' | 'investment' (default: 'financial') */
+  /** Grupo de privacidade: 'financial' | 'investments' (default: 'financial') */
   group?: Group
   /** Duração da animação em ms (default: 2000) */
   duration?: number
@@ -28,7 +30,6 @@ interface AnimatedValueProps {
 
 // ─── Helpers de formatação ────────────────────────────────────────────────────
 
-/** Formata número como BRL sem precisar de Intl cada render */
 const BRL = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
@@ -39,38 +40,16 @@ function fmt(value: number): string {
   return BRL.format(value)
 }
 
-// ─── Hook de privacidade ──────────────────────────────────────────────────────
-// Lê o estado de privacidade do grupo via atributo data- no <html>.
-// Isso evita acoplamento com qualquer store específico e funciona com SSR.
-// O store de privacidade (Zustand) deve manter data-private-financial e
-// data-private-investment no elemento <html>.
-
-function useIsPrivate(group: Group): boolean {
-  if (typeof document === 'undefined') return false
-  const attr = group === 'investment'
-    ? 'data-private-investment'
-    : 'data-private-financial'
-  return document.documentElement.hasAttribute(attr)
-}
-
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 /**
  * Drop-in replacement para `fmt(valor)`.
  * Anima o número de 0 até `value` usando easeOutCubic.
- * Respeita o estado de privacidade do grupo via data-attributes no <html>.
+ * Usa usePrivacyStore (Zustand) — mesma fonte de verdade que PrivateValue.tsx.
  *
  * @example
- * // Antes:
- * <span>{fmt(saldoContas)}</span>
- *
- * // Depois:
  * <AnimatedValue value={saldoContas} trigger={!loading} />
- *
- * // Com grupo de investimentos:
- * <AnimatedValue value={patrimonio} group="investment" trigger={!loading} />
- *
- * // Com delay escalonado (stagger):
+ * <AnimatedValue value={patrimonio} group="investments" trigger={!loading} />
  * <AnimatedValue value={saldo} trigger={!loading} delay={200} />
  */
 export function AnimatedValue({
@@ -83,10 +62,14 @@ export function AnimatedValue({
   style,
   colorize = true,
 }: AnimatedValueProps) {
-  const isPrivate = useIsPrivate(group)
+  // Mesmo store e mesma lógica do PrivateValue.tsx
+  const financialVisible   = usePrivacyStore(s => s.financialVisible)
+  const investmentsVisible = usePrivacyStore(s => s.investmentsVisible)
+  const visible = group === 'financial' ? financialVisible : investmentsVisible
+
   const animated = useCountUp({ target: value, duration, delay, trigger })
 
-  if (isPrivate) {
+  if (!visible) {
     return (
       <span
         className={`text-glow-value ${className}`}

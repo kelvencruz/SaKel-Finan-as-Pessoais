@@ -492,7 +492,7 @@ export default function DashboardPage() {
       color:       '#a78bfa',
       iconBg:      'rgba(167,139,250,0.12)',
       accentColor: 'rgba(56,189,248,0.4)',
-      group:       'investment' as const,
+      group:       'investments' as const,
     },
   ]
 
@@ -546,11 +546,11 @@ export default function DashboardPage() {
             </div>
 
             {/* AnimatedValue — substitui PrivateValue + fmt() */}
-            {kpi.group === 'investment' ? (
+            {kpi.group === 'investments' ? (
               <AnimatedValue
                 value={kpi.value}
                 trigger={!loading}
-                group="investment"
+                group="investments"
                 delay={idx * 80}
                 colorize={false}
                 className="text-xl font-bold"
@@ -892,7 +892,7 @@ export default function DashboardPage() {
               <AnimatedValue
                 value={patrimonioInvestido}
                 trigger={!loading}
-                group="investment"
+                group="investments"
                 colorize={false}
                 className="text-xl font-bold mb-2"
                 style={{ color: '#a78bfa' } as React.CSSProperties}
