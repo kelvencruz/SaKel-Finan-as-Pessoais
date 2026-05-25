@@ -76,21 +76,19 @@ export default function Sidebar() {
         onClick={() => setOpen(false)}
         className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium relative transition-colors"
         style={{
-          color:      active ? 'var(--color-brand)'       : 'var(--color-text-secondary)',
-          background: active ? 'var(--color-brand-light)' : 'transparent',
+          color:      active ? 'var(--primary)'        : 'var(--text-secondary)',
+          background: active ? 'var(--primary-glow)'   : 'transparent',
           fontWeight: active ? '600' : '500',
+          // Etapa 8 — nav-item indicator: border-left no item ativo
+          // Apenas border-color e opacity no hover — sem transform scale
+          borderLeft: active ? '2px solid var(--primary)' : '2px solid transparent',
+          paddingLeft: '10px', // compensa o border-left de 2px (px-3 = 12px → 12-2 = 10px)
         }}
       >
-        {active && (
-          <span
-            className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
-            style={{ background: 'var(--color-brand)' }}
-          />
-        )}
         <item.Icon
           size={18}
           weight={active ? 'duotone' : 'regular'}
-          style={{ color: active ? 'var(--color-brand)' : 'var(--color-text-secondary)', flexShrink: 0 }}
+          style={{ color: active ? 'var(--primary)' : 'var(--text-secondary)', flexShrink: 0 }}
         />
         <span style={{ letterSpacing: '-.01em' }}>{item.label}</span>
       </a>
@@ -103,14 +101,20 @@ export default function Sidebar() {
     <aside
       className="flex flex-col w-56 h-full"
       style={{
-        background:  'var(--color-surface)',
-        borderRight: '1px solid var(--color-border)',
-        fontFamily:  'var(--font-main)',
-        overflow:    'hidden',
+        // Etapa 8 — glassmorphism Luminous
+        background:    'var(--glass-bg)',
+        backdropFilter:'blur(var(--glass-blur))',
+        WebkitBackdropFilter: 'blur(var(--glass-blur))',
+        borderRight:   '1px solid var(--glass-border)',
+        fontFamily:    'var(--font-main)',
+        overflow:      'hidden',
       }}
     >
       {/* Logo */}
-      <div className="px-5 py-3 mb-1 shrink-0" style={{ borderBottom: '1px solid var(--color-border)' }}>
+      <div
+        className="px-5 py-3 mb-1 shrink-0"
+        style={{ borderBottom: '1px solid var(--glass-border)' }}
+      >
         <img
           src={isDark ? '/sakel-logo-dark.png' : '/sakel-logo-ligth.png'}
           alt="SaKel Finanças"
@@ -129,8 +133,8 @@ export default function Sidebar() {
             style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}
           >S</div>
           <div>
-            <p className="text-sm font-bold" style={{ color: 'var(--color-text-primary)' }}>SaKel</p>
-            <p className="text-[10px]"       style={{ color: 'var(--color-text-muted)' }}>Finanças Pessoais</p>
+            <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>SaKel</p>
+            <p className="text-[10px]"       style={{ color: 'var(--text-muted)' }}>Finanças Pessoais</p>
           </div>
         </div>
       </div>
@@ -140,8 +144,14 @@ export default function Sidebar() {
         <a
           href="/dashboard/conquistas"
           onClick={() => setOpen(false)}
-          className="mx-3 mb-2 px-3 py-1.5 rounded-xl block hover:opacity-90 transition-opacity shrink-0"
-          style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}
+          className="mx-3 mb-2 px-3 py-1.5 rounded-xl block shrink-0"
+          style={{
+            background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+            // Hover apenas opacity — sem transform scale (regra inviolável)
+            transition: 'opacity 200ms',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '0.88' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
         >
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-semibold text-white/80 uppercase tracking-wider">
@@ -164,7 +174,7 @@ export default function Sidebar() {
       {/* Nav label */}
       <p
         className="px-5 mb-1 text-[10px] font-semibold tracking-widest uppercase shrink-0"
-        style={{ color: 'var(--color-text-muted)' }}
+        style={{ color: 'var(--text-muted)' }}
       >
         Menu
       </p>
@@ -175,31 +185,41 @@ export default function Sidebar() {
       </nav>
 
       {/* Rodapé */}
-      <div className="shrink-0 px-2 pb-3 pt-1" style={{ borderTop: '1px solid var(--color-border)' }}>
+      <div
+        className="shrink-0 px-2 pb-3 pt-1"
+        style={{ borderTop: '1px solid var(--glass-border)' }}
+      >
+        {/* Settings */}
         <a
           href="/dashboard/settings"
           onClick={() => setOpen(false)}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
           style={{
-            color:      isActive('/dashboard/settings') ? 'var(--color-brand)'       : 'var(--color-text-secondary)',
-            background: isActive('/dashboard/settings') ? 'var(--color-brand-light)' : 'transparent',
+            color:      isActive('/dashboard/settings') ? 'var(--primary)'      : 'var(--text-secondary)',
+            background: isActive('/dashboard/settings') ? 'var(--primary-glow)' : 'transparent',
             fontWeight: isActive('/dashboard/settings') ? '600' : '500',
+            borderLeft: isActive('/dashboard/settings') ? '2px solid var(--primary)' : '2px solid transparent',
+            paddingLeft: '10px',
           }}
         >
           <Gear
             size={18}
             weight={isActive('/dashboard/settings') ? 'duotone' : 'regular'}
-            style={{ flexShrink: 0 }}
+            style={{ color: isActive('/dashboard/settings') ? 'var(--primary)' : 'var(--text-secondary)', flexShrink: 0 }}
           />
           <span style={{ letterSpacing: '-.01em' }}>Configurações</span>
         </a>
 
         <ThemeToggle />
 
+        {/* Logout — hover apenas background e color, sem transform */}
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-          style={{ color: 'var(--color-text-muted)' }}
+          className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium"
+          style={{
+            color:      'var(--text-muted)',
+            transition: 'background 200ms, color 200ms',
+          }}
           onMouseEnter={e => {
             const el = e.currentTarget as HTMLElement
             el.style.background = isDark ? '#3f1010' : '#fff1f0'
@@ -208,7 +228,7 @@ export default function Sidebar() {
           onMouseLeave={e => {
             const el = e.currentTarget as HTMLElement
             el.style.background = 'transparent'
-            el.style.color = 'var(--color-text-muted)'
+            el.style.color = 'var(--text-muted)'
           }}
         >
           <SignOut size={18} weight="regular" style={{ flexShrink: 0 }} />
@@ -229,13 +249,18 @@ export default function Sidebar() {
       <button
         onClick={() => setOpen(true)}
         className="md:hidden fixed top-4 left-4 z-50 w-9 h-9 flex items-center justify-center rounded-lg shadow border"
-        style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+        style={{
+          background:    'var(--glass-bg)',
+          backdropFilter:'blur(var(--glass-blur))',
+          WebkitBackdropFilter: 'blur(var(--glass-blur))',
+          borderColor:   'var(--glass-border)',
+        }}
         aria-label="Abrir menu"
       >
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-          <rect y="2"  width="18" height="2" rx="1" fill="#475467"/>
-          <rect y="8"  width="18" height="2" rx="1" fill="#475467"/>
-          <rect y="14" width="18" height="2" rx="1" fill="#475467"/>
+          <rect y="2"  width="18" height="2" rx="1" fill="currentColor" style={{ color: 'var(--text-secondary)' }}/>
+          <rect y="8"  width="18" height="2" rx="1" fill="currentColor" style={{ color: 'var(--text-secondary)' }}/>
+          <rect y="14" width="18" height="2" rx="1" fill="currentColor" style={{ color: 'var(--text-secondary)' }}/>
         </svg>
       </button>
 
