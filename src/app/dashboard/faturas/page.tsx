@@ -68,15 +68,54 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: 'Cancelada',
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  open:      'bg-blue-100 text-blue-700',
-  closed:    'bg-yellow-100 text-yellow-700',
-  paid:      'bg-green-100 text-green-700',
-  cancelled: 'bg-gray-100 text-gray-500',
+// FIX: STATUS_STYLE com rgba + CSS vars — substitui STATUS_COLORS Tailwind hardcoded
+// Motivo: classes como bg-blue-100 text-blue-700 não funcionam em dark/arcade
+const STATUS_STYLE: Record<string, { background: string; color: string }> = {
+  open:      { background: 'rgba(59,130,246,0.12)',  color: 'var(--info,    #3b82f6)' },
+  closed:    { background: 'rgba(234,179,8,0.12)',   color: 'var(--warning, #ca8a04)' },
+  paid:      { background: 'rgba(34,197,94,0.12)',   color: 'var(--success, #16a34a)' },
+  cancelled: { background: 'rgba(107,114,128,0.12)', color: 'var(--text-secondary, #6b7280)' },
 }
 
 const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-components
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-xs uppercase tracking-wide mb-3" style={{ color: 'var(--text-secondary)' }}>
+      {children}
+    </p>
+  )
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const style = STATUS_STYLE[status] ?? STATUS_STYLE.cancelled
+  return (
+    <span
+      className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+      style={style}
+    >
+      {STATUS_LABELS[status] ?? status}
+    </span>
+  )
+}
+
+function Divider() {
+  return <div style={{ borderBottom: '1px solid var(--glass-border)' }} />
+}
+
+function SkeletonPulse({ className }: { className: string }) {
+  return (
+    <div
+      className={`animate-pulse rounded-lg ${className}`}
+      style={{ background: 'rgba(var(--primary-rgb, 124,58,237), 0.08)' }}
+    />
+  )
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Loading skeleton
@@ -85,15 +124,15 @@ function FaturasSkeleton() {
   return (
     <PageContainer>
       <div className="space-y-4">
-        <div className="h-8 w-24 bg-bg-surface rounded-lg animate-pulse" />
+        <SkeletonPulse className="h-8 w-24" />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="space-y-4">
-            <div className="h-40 bg-bg-surface rounded-xl animate-pulse" />
-            <div className="h-24 bg-bg-surface rounded-xl animate-pulse" />
+            <SkeletonPulse className="h-40" />
+            <SkeletonPulse className="h-24" />
           </div>
           <div className="lg:col-span-2 space-y-4">
-            <div className="h-36 bg-bg-surface rounded-xl animate-pulse" />
-            <div className="h-48 bg-bg-surface rounded-xl animate-pulse" />
+            <SkeletonPulse className="h-36" />
+            <SkeletonPulse className="h-48" />
           </div>
         </div>
       </div>
@@ -108,13 +147,28 @@ function FaturasError({ message, onRetry }: { message?: string; onRetry: () => v
   return (
     <PageContainer>
       <PageHeader title="Faturas" />
-      <div className="bg-bg-surface border border-dashed border-danger/30 rounded-xl p-10 text-center">
-        <Warning size={32} weight="duotone" className="text-danger mx-auto mb-2" />
-        <p className="text-sm font-medium text-text-primary mb-1">Erro ao carregar faturas</p>
-        <p className="text-xs text-text-secondary mb-5">
+      <div
+        className="rounded-xl p-10 text-center"
+        style={{
+          background:    'var(--glass-bg)',
+          backdropFilter: 'blur(var(--glass-blur))',
+          WebkitBackdropFilter: 'blur(var(--glass-blur))',
+          border:        '1px solid rgba(var(--danger-rgb, 239,68,68), 0.3)',
+          borderStyle:   'dashed',
+        }}
+      >
+        <Warning size={32} weight="duotone" style={{ color: 'var(--danger)' }} className="mx-auto mb-2" />
+        <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
+          Erro ao carregar faturas
+        </p>
+        <p className="text-xs mb-5" style={{ color: 'var(--text-secondary)' }}>
           {message ?? 'Não foi possível buscar os dados. Verifique sua conexão.'}
         </p>
-        <button onClick={onRetry} className="text-sm font-medium text-accent-primary hover:underline">
+        <button
+          onClick={onRetry}
+          className="text-sm font-medium hover:underline"
+          style={{ color: 'var(--primary)' }}
+        >
           Tentar novamente
         </button>
       </div>
@@ -142,10 +196,19 @@ export default function FaturasPage() {
   const [paying,       setPaying]       = useState(false)
   const [payError,     setPayError]     = useState<string | null>(null)
 
+  // Hover state para itens de cartão e histórico
+  const [hoveredCard,    setHoveredCard]    = useState<string | null>(null)
+  const [hoveredHistory, setHoveredHistory] = useState<string | null>(null)
+
+  // FIX FIN-003: loadSeq agora cobre tanto loadInvoicePeriod quanto loadHistory
   const loadSeq = useRef(0)
 
-  const loadInvoicePeriod = useCallback(async (cardId: string, month: number, year: number) => {
-    const seq = ++loadSeq.current
+  const loadInvoicePeriod = useCallback(async (
+    cardId: string,
+    month: number,
+    year: number,
+    seq: number,   // recebe seq externamente para participar do mesmo controle
+  ) => {
     setInvoiceState(prev => ({ ...prev, status: 'loading' }))
 
     const { data: invData } = await supabase
@@ -165,10 +228,13 @@ export default function FaturasPage() {
       return
     }
 
+    // FIX FIN-001: .is('deleted_at', null) obrigatório — sem esse filtro transações
+    // soft-deleted inflam computedTotal e o valor errado vai para o pagamento (irreversível)
     const { data: txData } = await supabase
       .from('transactions')
       .select('id, description, amount, date, status, category:categories(name, icon)')
       .eq('invoice_id', invData.id)
+      .is('deleted_at', null)            // ← FIN-001
       .order('date', { ascending: false })
 
     if (seq !== loadSeq.current) return
@@ -187,7 +253,8 @@ export default function FaturasPage() {
     })
   }, [])
 
-  const loadHistory = useCallback(async (cardId: string) => {
+  // FIX FIN-003: loadHistory recebe seq e abandona resposta obsoleta
+  const loadHistory = useCallback(async (cardId: string, seq: number) => {
     const { data } = await supabase
       .from('credit_card_invoices')
       .select('*')
@@ -196,6 +263,8 @@ export default function FaturasPage() {
       .order('year',  { ascending: false })
       .order('month', { ascending: false })
       .limit(12)
+
+    if (seq !== loadSeq.current) return   // ← FIN-003: descarta resposta se cartão mudou
     setHistory(data ?? [])
   }, [])
 
@@ -222,14 +291,18 @@ export default function FaturasPage() {
 
   useEffect(() => { boot() }, [])
 
+  // FIX FIN-003: incrementa seq uma única vez e passa para ambas as funções
   useEffect(() => {
     if (!selectedCard) return
     setInvoiceState(INVOICE_IDLE)
-    loadHistory(selectedCard.id)
-    loadInvoicePeriod(selectedCard.id, viewMonth, viewYear)
+    const seq = ++loadSeq.current
+    loadHistory(selectedCard.id, seq)
+    loadInvoicePeriod(selectedCard.id, viewMonth, viewYear, seq)
   }, [selectedCard?.id, viewMonth, viewYear])
 
+  // FIX FIN-006: guard — só navega se a fatura pertence ao cartão selecionado
   function selectFromHistory(inv: Invoice) {
+    if (inv.credit_card_id !== selectedCard?.id) return  // ← FIN-006
     setViewMonth(inv.month)
     setViewYear(inv.year)
   }
@@ -262,6 +335,7 @@ export default function FaturasPage() {
         user_id:     user.id,
         account_id:  payAccountId,
         type:        'expense',
+        // computedTotal agora é confiável pois FIN-001 garante que deleted são excluídos
         amount:      invoiceState.computedTotal,
         description: `Pagamento fatura ${selectedCard?.name} ${MONTHS[invoice.month - 1]}/${invoice.year}`,
         date:        new Date().toISOString().split('T')[0],
@@ -290,80 +364,163 @@ export default function FaturasPage() {
       <PageHeader
         title="Faturas"
         action={
-          <a href="/dashboard/cartoes" className="text-sm text-accent-primary hover:underline">
+          <a
+            href="/dashboard/cartoes"
+            className="text-sm hover:underline"
+            style={{ color: 'var(--primary)' }}
+          >
             Gerenciar cartões →
           </a>
         }
       />
 
       {cards.length === 0 ? (
-        <div className="bg-bg-surface border border-dashed border-text-secondary/20 rounded-xl p-10 text-center">
-          <CreditCard size={40} weight="duotone" className="text-text-secondary mx-auto mb-3" />
-          <p className="text-text-secondary text-sm">Nenhum cartão ativo.</p>
-          <a href="/dashboard/cartoes" className="mt-3 text-accent-primary text-sm hover:underline block">
+        <div
+          className="rounded-xl p-10 text-center"
+          style={{
+            background:          'var(--glass-bg)',
+            backdropFilter:      'blur(var(--glass-blur))',
+            WebkitBackdropFilter: 'blur(var(--glass-blur))',
+            border:              '1px dashed var(--glass-border)',
+            borderRadius:        '0.75rem',
+          }}
+        >
+          <CreditCard size={40} weight="duotone" className="mx-auto mb-3" style={{ color: 'var(--text-secondary)' }} />
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhum cartão ativo.</p>
+          <a
+            href="/dashboard/cartoes"
+            className="mt-3 text-sm hover:underline block"
+            style={{ color: 'var(--primary)' }}
+          >
             Cadastrar cartão
           </a>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-          {/* Coluna esquerda */}
+          {/* ── Coluna esquerda ── */}
           <div className="space-y-4">
-            <div className="bg-bg-surface rounded-xl p-4">
-              <p className="text-xs text-text-secondary mb-3 uppercase tracking-wide">Cartão</p>
+
+            {/* Seletor de cartão */}
+            <div
+              className="rounded-xl p-4"
+              style={{
+                background:          'var(--glass-bg)',
+                backdropFilter:      'blur(var(--glass-blur))',
+                WebkitBackdropFilter: 'blur(var(--glass-blur))',
+                border:              '1px solid var(--glass-border)',
+                borderRadius:        '0.75rem',
+              }}
+            >
+              <SectionLabel>Cartão</SectionLabel>
               <div className="space-y-2">
                 {cards.map(card => (
-                  <button key={card.id} onClick={() => setSelectedCard(card)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${
-                      selectedCard?.id === card.id
-                        ? 'bg-accent-primary/10 border border-accent-primary/30'
-                        : 'hover:bg-white/5 border border-transparent'
-                    }`}>
-                    <div className="w-8 h-6 rounded flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: card.color }}>
+                  <button
+                    key={card.id}
+                    onClick={() => setSelectedCard(card)}
+                    onMouseEnter={() => setHoveredCard(card.id)}
+                    onMouseLeave={() => setHoveredCard(null)}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors"
+                    style={{
+                      border: selectedCard?.id === card.id
+                        ? '1px solid var(--glass-hover-border)'
+                        : `1px solid ${hoveredCard === card.id ? 'var(--glass-hover-border)' : 'transparent'}`,
+                      background: selectedCard?.id === card.id
+                        ? 'rgba(var(--primary-rgb, 124,58,237), 0.08)'
+                        : 'transparent',
+                    }}
+                  >
+                    <div
+                      className="w-8 h-6 rounded flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: card.color }}
+                    >
                       <CreditCard size={14} weight="duotone" className="text-white" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-text-primary">{card.name}</p>
-                      <p className="text-xs text-text-secondary">Limite {fmt(Number(card.limit_amount))}</p>
+                      <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{card.name}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                        Limite {fmt(Number(card.limit_amount))}
+                      </p>
                     </div>
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="bg-bg-surface rounded-xl p-4">
-              <p className="text-xs text-text-secondary mb-3 uppercase tracking-wide">Período</p>
+            {/* Seletor de período */}
+            <div
+              className="rounded-xl p-4"
+              style={{
+                background:          'var(--glass-bg)',
+                backdropFilter:      'blur(var(--glass-blur))',
+                WebkitBackdropFilter: 'blur(var(--glass-blur))',
+                border:              '1px solid var(--glass-border)',
+                borderRadius:        '0.75rem',
+              }}
+            >
+              <SectionLabel>Período</SectionLabel>
               <div className="flex items-center justify-between">
-                <button onClick={prevMonth}
-                  className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-text-secondary transition-colors">
+                <button
+                  onClick={prevMonth}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                  style={{ color: 'var(--text-secondary)' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(var(--primary-rgb, 124,58,237), 0.08)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
                   <CaretLeft size={16} weight="bold" />
                 </button>
-                <span className="text-sm font-semibold text-text-primary">
+                <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                   {MONTHS[viewMonth - 1]} {viewYear}
                 </span>
-                <button onClick={nextMonth}
-                  className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-text-secondary transition-colors">
+                <button
+                  onClick={nextMonth}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                  style={{ color: 'var(--text-secondary)' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(var(--primary-rgb, 124,58,237), 0.08)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
                   <CaretRight size={16} weight="bold" />
                 </button>
               </div>
             </div>
 
+            {/* Histórico */}
             {history.length > 0 && (
-              <div className="bg-bg-surface rounded-xl p-4">
-                <p className="text-xs text-text-secondary mb-3 uppercase tracking-wide">Histórico</p>
+              <div
+                className="rounded-xl p-4"
+                style={{
+                  background:          'var(--glass-bg)',
+                  backdropFilter:      'blur(var(--glass-blur))',
+                  WebkitBackdropFilter: 'blur(var(--glass-blur))',
+                  border:              '1px solid var(--glass-border)',
+                  borderRadius:        '0.75rem',
+                }}
+              >
+                <SectionLabel>Histórico</SectionLabel>
                 <div className="space-y-1">
                   {history.slice(0, 6).map(inv => (
-                    <button key={inv.id} onClick={() => selectFromHistory(inv)}
-                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg transition-colors text-left ${
-                        invoice?.id === inv.id ? 'bg-accent-primary/10' : 'hover:bg-white/5'
-                      }`}>
-                      <span className="text-xs text-text-secondary">{MONTHS[inv.month - 1]}/{inv.year}</span>
+                    <button
+                      key={inv.id}
+                      onClick={() => selectFromHistory(inv)}
+                      onMouseEnter={() => setHoveredHistory(inv.id)}
+                      onMouseLeave={() => setHoveredHistory(null)}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg transition-colors text-left"
+                      style={{
+                        background: invoice?.id === inv.id
+                          ? 'rgba(var(--primary-rgb, 124,58,237), 0.08)'
+                          : hoveredHistory === inv.id
+                            ? 'rgba(var(--primary-rgb, 124,58,237), 0.05)'
+                            : 'transparent',
+                      }}
+                    >
+                      <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                        {MONTHS[inv.month - 1]}/{inv.year}
+                      </span>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-text-primary">{fmt(Number(inv.total_amount))}</span>
-                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${STATUS_COLORS[inv.status]}`}>
-                          {STATUS_LABELS[inv.status]}
+                        <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                          {fmt(Number(inv.total_amount))}
                         </span>
+                        <StatusBadge status={inv.status} />
                       </div>
                     </button>
                   ))}
@@ -372,12 +529,14 @@ export default function FaturasPage() {
             )}
           </div>
 
-          {/* Coluna direita */}
+          {/* ── Coluna direita ── */}
           <div className="lg:col-span-2 space-y-4">
 
-            <div className="rounded-xl p-5 text-white relative overflow-hidden"
-              style={{ backgroundColor: selectedCard?.color ?? '#7C3AED' }}>
-
+            {/* Hero card do cartão */}
+            <div
+              className="rounded-xl p-5 text-white relative overflow-hidden"
+              style={{ backgroundColor: selectedCard?.color ?? '#7C3AED' }}
+            >
               {isLoading && (
                 <div className="absolute inset-0 bg-black/10 flex items-center justify-center rounded-xl">
                   <ArrowsClockwise size={24} weight="duotone" className="text-white/70 animate-spin" />
@@ -393,11 +552,17 @@ export default function FaturasPage() {
                   <p className="text-xl font-bold mt-1">{MONTHS[viewMonth - 1]} {viewYear}</p>
                 </div>
                 {invoice && (
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                    invoice.status === 'paid'   ? 'bg-green-400/30 text-green-100' :
-                    invoice.status === 'closed' ? 'bg-yellow-400/30 text-yellow-100' :
-                    'bg-white/20 text-white'
-                  }`}>
+                  <span
+                    className="text-xs px-2 py-1 rounded-full font-medium"
+                    style={{
+                      background: invoice.status === 'paid'   ? 'rgba(52,211,153,0.25)' :
+                                  invoice.status === 'closed' ? 'rgba(251,191,36,0.25)' :
+                                  'rgba(255,255,255,0.15)',
+                      color: invoice.status === 'paid'   ? '#d1fae5' :
+                             invoice.status === 'closed' ? '#fef3c7' :
+                             'white',
+                    }}
+                  >
                     {STATUS_LABELS[invoice.status]}
                   </span>
                 )}
@@ -422,21 +587,34 @@ export default function FaturasPage() {
               </div>
             </div>
 
+            {/* Botões de ação */}
             <div className="flex gap-3">
               {isLoading ? (
-                <div className="h-10 flex-1 bg-bg-surface rounded-lg animate-pulse" />
+                <SkeletonPulse className="h-10 flex-1" />
               ) : isEmpty ? (
-                <p className="text-sm text-text-secondary py-2">Nenhuma despesa registrada neste mês.</p>
+                <p className="text-sm py-2" style={{ color: 'var(--text-secondary)' }}>
+                  Nenhuma despesa registrada neste mês.
+                </p>
               ) : (
                 <>
                   {invoice && invoice.status !== 'paid' && invoice.status !== 'cancelled' && computedTotal > 0 && (
-                    <button onClick={() => { setShowPayModal(true); setPayAccountId(''); setPayError(null) }}
-                      className="flex-1 bg-success text-white rounded-lg py-2.5 text-sm font-medium hover:opacity-90 transition-opacity">
+                    <button
+                      onClick={() => { setShowPayModal(true); setPayAccountId(''); setPayError(null) }}
+                      className="flex-1 rounded-lg py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                      style={{ background: 'var(--success, #16a34a)' }}
+                    >
                       Pagar fatura
                     </button>
                   )}
                   {invoice?.status === 'paid' && (
-                    <div className="flex-1 flex items-center gap-2 justify-center border border-success/30 bg-success/10 rounded-lg py-2.5 text-sm font-medium text-success">
+                    <div
+                      className="flex-1 flex items-center gap-2 justify-center rounded-lg py-2.5 text-sm font-medium"
+                      style={{
+                        border:     '1px solid rgba(34,197,94,0.3)',
+                        background: 'rgba(34,197,94,0.08)',
+                        color:      'var(--success, #16a34a)',
+                      }}
+                    >
                       <CheckCircle size={16} weight="duotone" />
                       Fatura paga
                     </div>
@@ -445,58 +623,97 @@ export default function FaturasPage() {
               )}
             </div>
 
+            {/* Lista de lançamentos */}
             {invStatus === 'loaded' && invoice && (
-              <div className="bg-bg-surface rounded-xl overflow-hidden">
-                <div className="px-5 py-3 border-b border-white/5 flex items-center justify-between">
-                  <p className="text-sm font-medium text-text-primary">
+              <div
+                className="rounded-xl overflow-hidden"
+                style={{
+                  background:          'var(--glass-bg)',
+                  backdropFilter:      'blur(var(--glass-blur))',
+                  WebkitBackdropFilter: 'blur(var(--glass-blur))',
+                  border:              '1px solid var(--glass-border)',
+                }}
+              >
+                <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                     Lançamentos — {MONTHS[invoice.month - 1]}/{invoice.year}
                   </p>
-                  <span className="text-xs text-text-secondary">{transactions.length} item(ns)</span>
+                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    {transactions.length} item(ns)
+                  </span>
                 </div>
+
                 {transactions.length === 0 ? (
                   <div className="p-8 text-center">
-                    <p className="text-text-secondary text-sm">Nenhum lançamento nesta fatura.</p>
+                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                      Nenhum lançamento nesta fatura.
+                    </p>
                   </div>
                 ) : (
                   <div>
                     {transactions.map((tx, i) => (
-                      <div key={tx.id}
-                        className={`flex items-center gap-4 px-5 py-3 ${i < transactions.length - 1 ? 'border-b border-white/5' : ''}`}>
-                        <div className="w-8 h-8 rounded-full bg-danger/10 flex items-center justify-center text-sm flex-shrink-0">
-                          {tx.category?.icon ?? ''}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-text-primary truncate">{tx.description}</p>
-                          <p className="text-xs text-text-secondary">
-                            {new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR')}
-                            {tx.category?.name ? ` · ${tx.category.name}` : ''}
+                      <div key={tx.id}>
+                        <div className="flex items-center gap-4 px-5 py-3">
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0"
+                            style={{ background: 'rgba(var(--danger-rgb, 239,68,68), 0.1)' }}
+                          >
+                            {tx.category?.icon ?? ''}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                              {tx.description}
+                            </p>
+                            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                              {new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                              {tx.category?.name ? ` · ${tx.category.name}` : ''}
+                            </p>
+                          </div>
+                          <p className="text-sm font-semibold flex-shrink-0" style={{ color: 'var(--danger)' }}>
+                            -{fmt(Number(tx.amount))}
                           </p>
                         </div>
-                        <p className="text-sm font-semibold text-danger flex-shrink-0">-{fmt(Number(tx.amount))}</p>
+                        {i < transactions.length - 1 && <Divider />}
                       </div>
                     ))}
-                    <div className="px-5 py-3 bg-white/5 flex justify-between items-center">
-                      <p className="text-sm text-text-secondary">Total</p>
-                      <p className="text-sm font-bold text-text-primary">{fmt(computedTotal)}</p>
+
+                    <div
+                      className="px-5 py-3 flex justify-between items-center"
+                      style={{ background: 'rgba(var(--primary-rgb, 124,58,237), 0.05)', borderTop: '1px solid var(--glass-border)' }}
+                    >
+                      <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Total</p>
+                      <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{fmt(computedTotal)}</p>
                     </div>
                   </div>
                 )}
               </div>
             )}
 
+            {/* Skeleton da lista */}
             {isLoading && (
-              <div className="bg-bg-surface rounded-xl overflow-hidden">
-                <div className="px-5 py-3 border-b border-white/5">
-                  <div className="h-4 w-40 bg-white/10 rounded animate-pulse" />
+              <div
+                className="rounded-xl overflow-hidden"
+                style={{
+                  background:          'var(--glass-bg)',
+                  backdropFilter:      'blur(var(--glass-blur))',
+                  WebkitBackdropFilter: 'blur(var(--glass-blur))',
+                  border:              '1px solid var(--glass-border)',
+                }}
+              >
+                <div className="px-5 py-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                  <SkeletonPulse className="h-4 w-40" />
                 </div>
-                {[1,2,3].map(i => (
-                  <div key={i} className="flex items-center gap-4 px-5 py-3 border-b border-white/5">
-                    <div className="w-8 h-8 rounded-full bg-white/10 animate-pulse flex-shrink-0" />
-                    <div className="flex-1 space-y-1.5">
-                      <div className="h-3 w-3/4 bg-white/10 rounded animate-pulse" />
-                      <div className="h-3 w-1/3 bg-white/10 rounded animate-pulse" />
+                {[1, 2, 3].map(i => (
+                  <div key={i}>
+                    <div className="flex items-center gap-4 px-5 py-3">
+                      <SkeletonPulse className="w-8 h-8 rounded-full flex-shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <SkeletonPulse className="h-3 w-3/4" />
+                        <SkeletonPulse className="h-3 w-1/3" />
+                      </div>
+                      <SkeletonPulse className="h-3 w-16" />
                     </div>
-                    <div className="h-3 w-16 bg-white/10 rounded animate-pulse" />
+                    {i < 3 && <Divider />}
                   </div>
                 ))}
               </div>
@@ -517,8 +734,8 @@ export default function FaturasPage() {
               onClick={() => setShowPayModal(false)}
               className="flex-1 rounded-lg py-2 text-sm transition-colors hover:opacity-80"
               style={{
-                border:     '1px solid var(--color-border)',
-                color:      'var(--color-text-muted)',
+                border:     '1px solid var(--glass-border)',
+                color:      'var(--text-secondary)',
                 background: 'transparent',
               }}
             >
@@ -528,33 +745,35 @@ export default function FaturasPage() {
               onClick={handlePayInvoice}
               disabled={paying}
               className="flex-1 rounded-lg py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-              style={{ background: 'var(--color-success, var(--success))' }}
+              style={{ background: 'var(--success, #16a34a)' }}
             >
               {paying ? 'Processando...' : 'Confirmar pagamento'}
             </button>
           </AppModal.Footer>
         }
       >
-        <p className="text-sm mb-5" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)' }}>
           {selectedCard?.name} · {invoice ? `${MONTHS[invoice.month - 1]}/${invoice.year}` : ''} ·{' '}
-          <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+          <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
             {fmt(computedTotal)}
           </span>
         </p>
 
         <div>
-          <label className="block text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>
+          <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>
             Débitar da conta
           </label>
           <select
             value={payAccountId}
             onChange={e => setPayAccountId(e.target.value)}
-            className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
             style={{
-              background:  'var(--color-surface)',
-              color:       'var(--color-text-primary)',
-              border:      '1px solid var(--color-border)',
+              background: 'var(--glass-bg)',
+              color:      'var(--text-primary)',
+              border:     '1px solid var(--glass-border)',
             }}
+            onFocus={e  => (e.target.style.borderColor = 'var(--primary)')}
+            onBlur={e   => (e.target.style.borderColor = 'var(--glass-border)')}
           >
             <option value="">Selecione a conta</option>
             {accounts.map(a => (
@@ -564,7 +783,7 @@ export default function FaturasPage() {
         </div>
 
         {payError && (
-          <p className="text-sm mt-3" style={{ color: 'var(--color-danger)' }}>
+          <p className="text-sm mt-3" style={{ color: 'var(--danger)' }}>
             {payError}
           </p>
         )}
