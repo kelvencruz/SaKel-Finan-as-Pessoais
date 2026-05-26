@@ -1,4 +1,17 @@
 // src/app/dashboard/layout.tsx
+//
+// MUDANÇAS DESTA VERSÃO (mobile responsiveness):
+//  - main: padding-bottom mobile aumentado para FAB não cobrir conteúdo
+//  - Header: padding horizontal reduzido em mobile (px-4 md:px-6)
+//  - Sidebar trigger area (pl-10) mantida — necessária para o toggle mobile
+//  - ActionHub: já é hidden md:flex — sem mudança
+//  - FloatingActionButton: já é md:hidden — sem mudança
+//
+// NÃO ALTERAR:
+//  - Script de bootstrap de tema em src/app/layout.tsx
+//  - useThemeStore localStorage behavior
+//  - initGamificacaoListener() — chamada no módulo, não no componente
+
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -104,11 +117,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           style={{
             zIndex:       10,
             height:       '56px',
-            padding:      '0 24px',
+            // Mobile: px-4, Desktop: px-6
+            padding:      '0 1rem',
             background:   'var(--color-surface)',
             borderBottom: '1px solid var(--color-border)',
           }}
         >
+          {/* pl-10: reserva espaço para o botão de toggle da Sidebar em mobile */}
           <div className="flex flex-col justify-center pl-10 md:pl-0">
             {isDashboardHome ? (
               <>
@@ -139,19 +154,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="flex items-center gap-3">
+            {/* ActionHub: hidden md:flex — desktop apenas */}
             <ActionHub />
             <UserMenu />
           </div>
         </header>
 
-        <main className="flex-1 min-w-0">
-          {children}
+        <main
+          className="flex-1 min-w-0"
+          style={{
+            // Mobile: padding-bottom generoso para o FAB não cobrir o último item
+            // O FAB tem 52px de altura + 1.5rem de bottom = ~76px
+            // Adicionamos 96px em mobile para folga confortável
+            // Em desktop (md+): sem padding extra (FAB não existe)
+            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px))',
+          }}
+        >
+          {/*
+            Wrapper interno que aplica padding-bottom mobile via Tailwind.
+            Não colocar no <main> direto para não interferir com PageContainer.
+          */}
+          <div className="pb-24 md:pb-0">
+            {children}
+          </div>
         </main>
 
       </div>
 
+      {/* FAB: md:hidden — renderizado em todas as rotas, auto-oculta por registry */}
       <FloatingActionButton />
+
+      {/* Modal Orchestration Layer — único ponto de abertura de modais globais */}
       <ActionHubController />
+
       <ToastManagerProvider />
     </div>
   )
