@@ -12,9 +12,19 @@ import {
   Warning,
   ArrowsClockwise,
   CheckCircle,
+  Clock,
 } from '@phosphor-icons/react'
+import {
+  projectForecast,
+  buildExistingRecurrenceSet,
+  getCurrentMonthKey,
+  type ForecastItem,
+  type RecurrenceForForecast,
+} from '@/lib/financialEngine'
 
-interface CreditCard {
+// ─── Tipos ────────────────────────────────────────────────────────────────────
+
+interface CreditCardType {
   id: string
   name: string
   color: string
@@ -44,6 +54,8 @@ interface InvoiceTransaction {
   amount: number
   date: string
   status: string
+  recurrence_id: string | null
+  competencia: string | null
   category?: { name: string; icon: string } | null
 }
 
@@ -51,6 +63,7 @@ interface InvoiceState {
   status: 'idle' | 'loading' | 'loaded' | 'empty'
   invoice: Invoice | null
   transactions: InvoiceTransaction[]
+  forecastItems: ForecastItem[]
   computedTotal: number
 }
 
@@ -58,6 +71,7 @@ const INVOICE_IDLE: InvoiceState = {
   status: 'idle',
   invoice: null,
   transactions: [],
+  forecastItems: [],
   computedTotal: 0,
 }
 
@@ -68,8 +82,6 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: 'Cancelada',
 }
 
-// FIX: STATUS_STYLE com rgba + CSS vars — substitui STATUS_COLORS Tailwind hardcoded
-// Motivo: classes como bg-blue-100 text-blue-700 não funcionam em dark/arcade
 const STATUS_STYLE: Record<string, { background: string; color: string }> = {
   open:      { background: 'rgba(59,130,246,0.12)',  color: 'var(--info,    #3b82f6)' },
   closed:    { background: 'rgba(234,179,8,0.12)',   color: 'var(--warning, #ca8a04)' },
@@ -80,9 +92,14 @@ const STATUS_STYLE: Record<string, { background: string; color: string }> = {
 const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-components
-// ─────────────────────────────────────────────────────────────────────────────
+// Retorna se uma competência YYYY-MM é futura em relação a hoje
+function isFutureCompetencia(year: number, month: number): boolean {
+  const current = getCurrentMonthKey()
+  const target  = `${year}-${String(month).padStart(2, '0')}`
+  return target > current
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -95,10 +112,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 function StatusBadge({ status }: { status: string }) {
   const style = STATUS_STYLE[status] ?? STATUS_STYLE.cancelled
   return (
-    <span
-      className="text-xs px-1.5 py-0.5 rounded-full font-medium"
-      style={style}
-    >
+    <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={style}>
       {STATUS_LABELS[status] ?? status}
     </span>
   )
@@ -117,9 +131,6 @@ function SkeletonPulse({ className }: { className: string }) {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Loading skeleton
-// ─────────────────────────────────────────────────────────────────────────────
 function FaturasSkeleton() {
   return (
     <PageContainer>
@@ -140,9 +151,6 @@ function FaturasSkeleton() {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Error state
-// ─────────────────────────────────────────────────────────────────────────────
 function FaturasError({ message, onRetry }: { message?: string; onRetry: () => void }) {
   return (
     <PageContainer>
@@ -150,11 +158,11 @@ function FaturasError({ message, onRetry }: { message?: string; onRetry: () => v
       <div
         className="rounded-xl p-10 text-center"
         style={{
-          background:    'var(--glass-bg)',
-          backdropFilter: 'blur(var(--glass-blur))',
+          background:           'var(--glass-bg)',
+          backdropFilter:       'blur(var(--glass-blur))',
           WebkitBackdropFilter: 'blur(var(--glass-blur))',
-          border:        '1px solid rgba(var(--danger-rgb, 239,68,68), 0.3)',
-          borderStyle:   'dashed',
+          border:               '1px solid rgba(var(--danger-rgb, 239,68,68), 0.3)',
+          borderStyle:          'dashed',
         }}
       >
         <Warning size={32} weight="duotone" style={{ color: 'var(--danger)' }} className="mx-auto mb-2" />
@@ -164,11 +172,7 @@ function FaturasError({ message, onRetry }: { message?: string; onRetry: () => v
         <p className="text-xs mb-5" style={{ color: 'var(--text-secondary)' }}>
           {message ?? 'Não foi possível buscar os dados. Verifique sua conexão.'}
         </p>
-        <button
-          onClick={onRetry}
-          className="text-sm font-medium hover:underline"
-          style={{ color: 'var(--primary)' }}
-        >
+        <button onClick={onRetry} className="text-sm font-medium hover:underline" style={{ color: 'var(--primary)' }}>
           Tentar novamente
         </button>
       </div>
@@ -176,18 +180,38 @@ function FaturasError({ message, onRetry }: { message?: string; onRetry: () => v
   )
 }
 
+// ─── Badge "Previsto" ─────────────────────────────────────────────────────────
+
+function PrevistoBadge() {
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0"
+      style={{
+        background: 'rgba(var(--primary-rgb, 124,58,237), 0.08)',
+        color:      'var(--primary)',
+        border:     '1px dashed rgba(var(--primary-rgb, 124,58,237), 0.3)',
+      }}
+    >
+      <Clock size={9} weight="duotone" />
+      Previsto
+    </span>
+  )
+}
+
+// ─── Página principal ─────────────────────────────────────────────────────────
+
 export default function FaturasPage() {
   const supabase = createClient()
 
-  const [cards,        setCards]        = useState<CreditCard[]>([])
+  const [cards,        setCards]        = useState<CreditCardType[]>([])
   const [accounts,     setAccounts]     = useState<Account[]>([])
-  const [selectedCard, setSelectedCard] = useState<CreditCard | null>(null)
+  const [selectedCard, setSelectedCard] = useState<CreditCardType | null>(null)
   const [history,      setHistory]      = useState<Invoice[]>([])
   const [viewMonth,    setViewMonth]    = useState(() => new Date().getMonth() + 1)
   const [viewYear,     setViewYear]     = useState(() => new Date().getFullYear())
 
-  const [pageLoading,  setPageLoading]  = useState(true)
-  const [loadError,    setLoadError]    = useState<string | null>(null)
+  const [pageLoading, setPageLoading] = useState(true)
+  const [loadError,   setLoadError]   = useState<string | null>(null)
 
   const [invoiceState, setInvoiceState] = useState<InvoiceState>(INVOICE_IDLE)
 
@@ -196,25 +220,28 @@ export default function FaturasPage() {
   const [paying,       setPaying]       = useState(false)
   const [payError,     setPayError]     = useState<string | null>(null)
 
-  // Hover state para itens de cartão e histórico
   const [hoveredCard,    setHoveredCard]    = useState<string | null>(null)
   const [hoveredHistory, setHoveredHistory] = useState<string | null>(null)
 
-  // FIX FIN-003: loadSeq agora cobre tanto loadInvoicePeriod quanto loadHistory
   const loadSeq = useRef(0)
 
+  // ─── Carrega fatura + forecast ────────────────────────────────────────────
+
   const loadInvoicePeriod = useCallback(async (
-    cardId: string,
+    card:  CreditCardType,
     month: number,
-    year: number,
-    seq: number,   // recebe seq externamente para participar do mesmo controle
+    year:  number,
+    seq:   number,
   ) => {
     setInvoiceState(prev => ({ ...prev, status: 'loading' }))
 
+    const isFuture = isFutureCompetencia(year, month)
+
+    // ── Busca fatura existente ────────────────────────────────────────────────
     const { data: invData } = await supabase
       .from('credit_card_invoices')
       .select('*')
-      .eq('credit_card_id', cardId)
+      .eq('credit_card_id', card.id)
       .eq('month', month)
       .eq('year', year)
       .gt('total_amount', 0)
@@ -223,37 +250,86 @@ export default function FaturasPage() {
 
     if (seq !== loadSeq.current) return
 
-    if (!invData) {
-      setInvoiceState({ status: 'empty', invoice: null, transactions: [], computedTotal: 0 })
-      return
+    // ── Transações reais da fatura ────────────────────────────────────────────
+    let transactions: InvoiceTransaction[] = []
+    if (invData) {
+      const { data: txData } = await supabase
+        .from('transactions')
+        .select('id, description, amount, date, status, recurrence_id, competencia, category:categories(name, icon)')
+        .eq('invoice_id', invData.id)
+        .is('deleted_at', null)
+        .order('date', { ascending: false })
+
+      if (seq !== loadSeq.current) return
+
+      transactions = (txData ?? []).map((tx: any) => ({
+        ...tx,
+        category: Array.isArray(tx.category) ? (tx.category[0] ?? null) : tx.category,
+      }))
     }
 
-    // FIX FIN-001: .is('deleted_at', null) obrigatório — sem esse filtro transações
-    // soft-deleted inflam computedTotal e o valor errado vai para o pagamento (irreversível)
-    const { data: txData } = await supabase
-      .from('transactions')
-      .select('id, description, amount, date, status, category:categories(name, icon)')
-      .eq('invoice_id', invData.id)
-      .is('deleted_at', null)            // ← FIN-001
-      .order('date', { ascending: false })
+    // ── Forecast layer — só para faturas futuras ──────────────────────────────
+    // Princípio: fatura fechada/paga = 100% factual, sem forecast
+    // Fatura futura = híbrida (transactions reais + itens previstos)
+    let forecastItems: ForecastItem[] = []
+
+    const invoiceStatus = invData?.status
+    const isClosed = invoiceStatus === 'closed' || invoiceStatus === 'paid' || invoiceStatus === 'cancelled'
+
+    if (isFuture && !isClosed) {
+      // Busca recorrências ativas do cartão
+      const { data: recData } = await supabase
+        .from('recurrences')
+        .select('id, description, amount, type, frequency, next_due_date, end_date, credit_card_id, category_id, is_active')
+        .eq('user_id', (await supabase.auth.getUser()).data.user?.id ?? '')
+        .eq('is_active', true)
+        .eq('credit_card_id', card.id)
+
+      if (seq !== loadSeq.current) return
+
+      const recurrences = (recData ?? []) as RecurrenceForForecast[]
+
+      // Monta set de transactions reais para excluir do forecast
+      const existing = buildExistingRecurrenceSet(transactions)
+
+      // Competência alvo
+      const competencia = `${year}-${String(month).padStart(2, '0')}`
+
+      forecastItems = projectForecast(recurrences, [competencia], existing)
+    }
 
     if (seq !== loadSeq.current) return
 
-    const transactions: InvoiceTransaction[] = (txData ?? []).map((tx: any) => ({
-      ...tx,
-      category: Array.isArray(tx.category) ? (tx.category[0] ?? null) : tx.category,
-    }))
+    // ── computedTotal — NUNCA inclui forecast ─────────────────────────────────
+    // Princípio contábil: previsão não entra em saldo real nem total de fatura
     const computedTotal = transactions.reduce((s, t) => s + Number(t.amount), 0)
 
+    if (!invData && forecastItems.length === 0) {
+      setInvoiceState({ status: 'empty', invoice: null, transactions: [], forecastItems: [], computedTotal: 0 })
+      return
+    }
+
+    if (!invData && forecastItems.length > 0) {
+      // Fatura futura sem transaction ainda — mostra só forecast
+      setInvoiceState({
+        status:        'loaded',
+        invoice:       null,
+        transactions:  [],
+        forecastItems,
+        computedTotal: 0,
+      })
+      return
+    }
+
     setInvoiceState({
-      status: 'loaded',
-      invoice: invData,
+      status:        'loaded',
+      invoice:       invData,
       transactions,
-      computedTotal: computedTotal > 0 ? computedTotal : Number(invData.total_amount),
+      forecastItems,
+      computedTotal: computedTotal > 0 ? computedTotal : Number(invData!.total_amount),
     })
   }, [])
 
-  // FIX FIN-003: loadHistory recebe seq e abandona resposta obsoleta
   const loadHistory = useCallback(async (cardId: string, seq: number) => {
     const { data } = await supabase
       .from('credit_card_invoices')
@@ -264,7 +340,7 @@ export default function FaturasPage() {
       .order('month', { ascending: false })
       .limit(12)
 
-    if (seq !== loadSeq.current) return   // ← FIN-003: descarta resposta se cartão mudou
+    if (seq !== loadSeq.current) return
     setHistory(data ?? [])
   }, [])
 
@@ -276,9 +352,7 @@ export default function FaturasPage() {
         supabase.from('credit_cards').select('*').eq('is_active', true).order('name'),
         supabase.from('accounts').select('id, name').order('name'),
       ])
-
       if (cardsErr) { setLoadError(cardsErr.message); return }
-
       setCards(cardsData ?? [])
       setAccounts(accData ?? [])
       if (cardsData && cardsData.length > 0) setSelectedCard(cardsData[0])
@@ -291,18 +365,16 @@ export default function FaturasPage() {
 
   useEffect(() => { boot() }, [])
 
-  // FIX FIN-003: incrementa seq uma única vez e passa para ambas as funções
   useEffect(() => {
     if (!selectedCard) return
     setInvoiceState(INVOICE_IDLE)
     const seq = ++loadSeq.current
     loadHistory(selectedCard.id, seq)
-    loadInvoicePeriod(selectedCard.id, viewMonth, viewYear, seq)
+    loadInvoicePeriod(selectedCard, viewMonth, viewYear, seq)
   }, [selectedCard?.id, viewMonth, viewYear])
 
-  // FIX FIN-006: guard — só navega se a fatura pertence ao cartão selecionado
   function selectFromHistory(inv: Invoice) {
-    if (inv.credit_card_id !== selectedCard?.id) return  // ← FIN-006
+    if (inv.credit_card_id !== selectedCard?.id) return
     setViewMonth(inv.month)
     setViewYear(inv.year)
   }
@@ -335,7 +407,7 @@ export default function FaturasPage() {
         user_id:     user.id,
         account_id:  payAccountId,
         type:        'expense',
-        // computedTotal agora é confiável pois FIN-001 garante que deleted são excluídos
+        // computedTotal é confiável — forecast nunca entra aqui
         amount:      invoiceState.computedTotal,
         description: `Pagamento fatura ${selectedCard?.name} ${MONTHS[invoice.month - 1]}/${invoice.year}`,
         date:        new Date().toISOString().split('T')[0],
@@ -345,16 +417,19 @@ export default function FaturasPage() {
 
     setInvoiceState(prev => ({
       ...prev,
-      invoice: prev.invoice ? { ...prev.invoice, status: 'paid', paid_account_id: payAccountId } : null,
+      invoice:      prev.invoice ? { ...prev.invoice, status: 'paid', paid_account_id: payAccountId } : null,
+      forecastItems: [], // fatura paga → remove forecast
     }))
     setHistory(prev => prev.map(h => h.id === invoice.id ? { ...h, status: 'paid' } : h))
     setShowPayModal(false)
     setPaying(false)
   }
 
-  const { invoice, transactions, computedTotal, status: invStatus } = invoiceState
-  const isLoading = invStatus === 'loading'
-  const isEmpty   = invStatus === 'empty' || invStatus === 'idle'
+  const { invoice, transactions, forecastItems, computedTotal, status: invStatus } = invoiceState
+  const isLoading  = invStatus === 'loading'
+  const isEmpty    = invStatus === 'empty' || invStatus === 'idle'
+  const hasForecast = forecastItems.length > 0
+  const isFuture   = isFutureCompetencia(viewYear, viewMonth)
 
   if (pageLoading) return <FaturasSkeleton />
   if (loadError)   return <FaturasError message={loadError} onRetry={boot} />
@@ -364,11 +439,7 @@ export default function FaturasPage() {
       <PageHeader
         title="Faturas"
         action={
-          <a
-            href="/dashboard/cartoes"
-            className="text-sm hover:underline"
-            style={{ color: 'var(--primary)' }}
-          >
+          <a href="/dashboard/cartoes" className="text-sm hover:underline" style={{ color: 'var(--primary)' }}>
             Gerenciar cartões →
           </a>
         }
@@ -378,20 +449,16 @@ export default function FaturasPage() {
         <div
           className="rounded-xl p-10 text-center"
           style={{
-            background:          'var(--glass-bg)',
-            backdropFilter:      'blur(var(--glass-blur))',
+            background:           'var(--glass-bg)',
+            backdropFilter:       'blur(var(--glass-blur))',
             WebkitBackdropFilter: 'blur(var(--glass-blur))',
-            border:              '1px dashed var(--glass-border)',
-            borderRadius:        '0.75rem',
+            border:               '1px dashed var(--glass-border)',
+            borderRadius:         '0.75rem',
           }}
         >
           <CreditCard size={40} weight="duotone" className="mx-auto mb-3" style={{ color: 'var(--text-secondary)' }} />
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhum cartão ativo.</p>
-          <a
-            href="/dashboard/cartoes"
-            className="mt-3 text-sm hover:underline block"
-            style={{ color: 'var(--primary)' }}
-          >
+          <a href="/dashboard/cartoes" className="mt-3 text-sm hover:underline block" style={{ color: 'var(--primary)' }}>
             Cadastrar cartão
           </a>
         </div>
@@ -405,11 +472,11 @@ export default function FaturasPage() {
             <div
               className="rounded-xl p-4"
               style={{
-                background:          'var(--glass-bg)',
-                backdropFilter:      'blur(var(--glass-blur))',
+                background:           'var(--glass-bg)',
+                backdropFilter:       'blur(var(--glass-blur))',
                 WebkitBackdropFilter: 'blur(var(--glass-blur))',
-                border:              '1px solid var(--glass-border)',
-                borderRadius:        '0.75rem',
+                border:               '1px solid var(--glass-border)',
+                borderRadius:         '0.75rem',
               }}
             >
               <SectionLabel>Cartão</SectionLabel>
@@ -451,11 +518,11 @@ export default function FaturasPage() {
             <div
               className="rounded-xl p-4"
               style={{
-                background:          'var(--glass-bg)',
-                backdropFilter:      'blur(var(--glass-blur))',
+                background:           'var(--glass-bg)',
+                backdropFilter:       'blur(var(--glass-blur))',
                 WebkitBackdropFilter: 'blur(var(--glass-blur))',
-                border:              '1px solid var(--glass-border)',
-                borderRadius:        '0.75rem',
+                border:               '1px solid var(--glass-border)',
+                borderRadius:         '0.75rem',
               }}
             >
               <SectionLabel>Período</SectionLabel>
@@ -469,9 +536,16 @@ export default function FaturasPage() {
                 >
                   <CaretLeft size={16} weight="bold" />
                 </button>
-                <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                  {MONTHS[viewMonth - 1]} {viewYear}
-                </span>
+                <div className="text-center">
+                  <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    {MONTHS[viewMonth - 1]} {viewYear}
+                  </span>
+                  {isFuture && (
+                    <p className="text-[10px] mt-0.5" style={{ color: 'var(--primary)' }}>
+                      Mês futuro
+                    </p>
+                  )}
+                </div>
                 <button
                   onClick={nextMonth}
                   className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
@@ -489,11 +563,11 @@ export default function FaturasPage() {
               <div
                 className="rounded-xl p-4"
                 style={{
-                  background:          'var(--glass-bg)',
-                  backdropFilter:      'blur(var(--glass-blur))',
+                  background:           'var(--glass-bg)',
+                  backdropFilter:       'blur(var(--glass-blur))',
                   WebkitBackdropFilter: 'blur(var(--glass-blur))',
-                  border:              '1px solid var(--glass-border)',
-                  borderRadius:        '0.75rem',
+                  border:               '1px solid var(--glass-border)',
+                  borderRadius:         '0.75rem',
                 }}
               >
                 <SectionLabel>Histórico</SectionLabel>
@@ -509,8 +583,8 @@ export default function FaturasPage() {
                         background: invoice?.id === inv.id
                           ? 'rgba(var(--primary-rgb, 124,58,237), 0.08)'
                           : hoveredHistory === inv.id
-                            ? 'rgba(var(--primary-rgb, 124,58,237), 0.05)'
-                            : 'transparent',
+                          ? 'rgba(var(--primary-rgb, 124,58,237), 0.05)'
+                          : 'transparent',
                       }}
                     >
                       <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
@@ -532,7 +606,7 @@ export default function FaturasPage() {
           {/* ── Coluna direita ── */}
           <div className="lg:col-span-2 space-y-4">
 
-            {/* Hero card do cartão */}
+            {/* Hero card */}
             <div
               className="rounded-xl p-5 text-white relative overflow-hidden"
               style={{ backgroundColor: selectedCard?.color ?? '#7C3AED' }}
@@ -551,32 +625,54 @@ export default function FaturasPage() {
                   </div>
                   <p className="text-xl font-bold mt-1">{MONTHS[viewMonth - 1]} {viewYear}</p>
                 </div>
-                {invoice && (
-                  <span
-                    className="text-xs px-2 py-1 rounded-full font-medium"
-                    style={{
-                      background: invoice.status === 'paid'   ? 'rgba(52,211,153,0.25)' :
-                                  invoice.status === 'closed' ? 'rgba(251,191,36,0.25)' :
-                                  'rgba(255,255,255,0.15)',
-                      color: invoice.status === 'paid'   ? '#d1fae5' :
-                             invoice.status === 'closed' ? '#fef3c7' :
-                             'white',
-                    }}
-                  >
-                    {STATUS_LABELS[invoice.status]}
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {isFuture && !invoice && (
+                    <span
+                      className="text-xs px-2 py-1 rounded-full font-medium"
+                      style={{ background: 'rgba(255,255,255,0.15)', color: 'white' }}
+                    >
+                      Projeção
+                    </span>
+                  )}
+                  {invoice && (
+                    <span
+                      className="text-xs px-2 py-1 rounded-full font-medium"
+                      style={{
+                        background: invoice.status === 'paid'   ? 'rgba(52,211,153,0.25)'  :
+                                    invoice.status === 'closed' ? 'rgba(251,191,36,0.25)'  :
+                                    'rgba(255,255,255,0.15)',
+                        color:      invoice.status === 'paid'   ? '#d1fae5' :
+                                    invoice.status === 'closed' ? '#fef3c7' :
+                                    'white',
+                      }}
+                    >
+                      {STATUS_LABELS[invoice.status]}
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="flex items-end justify-between">
                 <div>
-                  <p className="text-white/70 text-xs">Total da fatura</p>
+                  <p className="text-white/70 text-xs">
+                    {isFuture && !invoice ? 'Total previsto (recorrências)' : 'Total da fatura'}
+                  </p>
                   {isLoading ? (
                     <div className="h-9 w-36 bg-white/20 rounded-lg animate-pulse mt-1" />
                   ) : isEmpty ? (
                     <p className="text-2xl font-bold opacity-50">—</p>
                   ) : (
-                    <p className="text-3xl font-bold">{fmt(computedTotal)}</p>
+                    <div>
+                      <p className="text-3xl font-bold">
+                        {computedTotal > 0 ? fmt(computedTotal) : '—'}
+                      </p>
+                      {/* Total previsto do forecast — separado do real */}
+                      {hasForecast && (
+                        <p className="text-white/60 text-xs mt-0.5">
+                          + {fmt(forecastItems.reduce((s, f) => s + f.amount, 0))} previsto
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
                 {invoice?.due_date && !isLoading && (
@@ -624,68 +720,149 @@ export default function FaturasPage() {
             </div>
 
             {/* Lista de lançamentos */}
-            {invStatus === 'loaded' && invoice && (
+            {invStatus === 'loaded' && (transactions.length > 0 || hasForecast) && (
               <div
                 className="rounded-xl overflow-hidden"
                 style={{
-                  background:          'var(--glass-bg)',
-                  backdropFilter:      'blur(var(--glass-blur))',
+                  background:           'var(--glass-bg)',
+                  backdropFilter:       'blur(var(--glass-blur))',
                   WebkitBackdropFilter: 'blur(var(--glass-blur))',
-                  border:              '1px solid var(--glass-border)',
+                  border:               '1px solid var(--glass-border)',
                 }}
               >
-                <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                <div
+                  className="px-5 py-3 flex items-center justify-between"
+                  style={{ borderBottom: '1px solid var(--glass-border)' }}
+                >
                   <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                    Lançamentos — {MONTHS[invoice.month - 1]}/{invoice.year}
+                    Lançamentos — {MONTHS[viewMonth - 1]}/{viewYear}
                   </p>
-                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    {transactions.length} item(ns)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {hasForecast && (
+                      <span className="text-xs" style={{ color: 'var(--primary)' }}>
+                        {forecastItems.length} previsto{forecastItems.length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                      {transactions.length} real{transactions.length !== 1 ? 'is' : ''}
+                    </span>
+                  </div>
                 </div>
 
-                {transactions.length === 0 ? (
-                  <div className="p-8 text-center">
-                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                      Nenhum lançamento nesta fatura.
-                    </p>
-                  </div>
-                ) : (
-                  <div>
-                    {transactions.map((tx, i) => (
-                      <div key={tx.id}>
-                        <div className="flex items-center gap-4 px-5 py-3">
-                          <div
-                            className="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0"
-                            style={{ background: 'rgba(var(--danger-rgb, 239,68,68), 0.1)' }}
-                          >
-                            {tx.category?.icon ?? ''}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-                              {tx.description}
-                            </p>
-                            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                              {new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR')}
-                              {tx.category?.name ? ` · ${tx.category.name}` : ''}
-                            </p>
-                          </div>
-                          <p className="text-sm font-semibold flex-shrink-0" style={{ color: 'var(--danger)' }}>
-                            -{fmt(Number(tx.amount))}
+                <div>
+                  {/* ── Transações reais ── */}
+                  {transactions.map((tx, i) => (
+                    <div key={tx.id}>
+                      <div className="flex items-center gap-4 px-5 py-3">
+                        <div
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0"
+                          style={{ background: 'rgba(var(--danger-rgb, 239,68,68), 0.1)' }}
+                        >
+                          {tx.category?.icon ?? ''}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                            {tx.description}
+                          </p>
+                          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                            {new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                            {tx.category?.name ? ` · ${tx.category.name}` : ''}
                           </p>
                         </div>
-                        {i < transactions.length - 1 && <Divider />}
+                        <p className="text-sm font-semibold flex-shrink-0" style={{ color: 'var(--danger)' }}>
+                          -{fmt(Number(tx.amount))}
+                        </p>
                       </div>
-                    ))}
+                      {(i < transactions.length - 1 || hasForecast) && <Divider />}
+                    </div>
+                  ))}
 
+                  {/* ── Itens previstos (forecast layer) ── */}
+                  {/* Princípio: visual diferenciado — opacity + badge "Previsto" + borda dashed */}
+                  {hasForecast && (
+                    <>
+                      {transactions.length > 0 && (
+                        <div
+                          className="px-5 py-2 flex items-center gap-2"
+                          style={{
+                            background:  'rgba(var(--primary-rgb, 124,58,237), 0.03)',
+                            borderBottom: '1px solid var(--glass-border)',
+                          }}
+                        >
+                          <Clock size={11} weight="duotone" style={{ color: 'var(--primary)' }} />
+                          <p className="text-[11px] font-medium" style={{ color: 'var(--primary)' }}>
+                            Recorrências previstas
+                          </p>
+                        </div>
+                      )}
+
+                      {forecastItems.map((item, i) => (
+                        <div key={`forecast-${item.recurrenceId}`} style={{ opacity: 0.65 }}>
+                          <div className="flex items-center gap-4 px-5 py-3">
+                            <div
+                              className="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0"
+                              style={{
+                                background: 'rgba(var(--primary-rgb, 124,58,237), 0.08)',
+                                border:     '1px dashed rgba(var(--primary-rgb, 124,58,237), 0.3)',
+                              }}
+                            >
+                              <Clock size={14} weight="duotone" style={{ color: 'var(--primary)' }} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                                  {item.description}
+                                </p>
+                                <Previstobadge />
+                              </div>
+                              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                Previsto para {new Date(item.expectedDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                {' · recorrência'}
+                              </p>
+                            </div>
+                            <p className="text-sm font-semibold flex-shrink-0" style={{ color: 'var(--danger)', opacity: 0.7 }}>
+                              -{fmt(item.amount)}
+                            </p>
+                          </div>
+                          {i < forecastItems.length - 1 && <Divider />}
+                        </div>
+                      ))}
+                    </>
+                  )}
+
+                  {/* ── Rodapé com totais ── */}
+                  {transactions.length > 0 && (
                     <div
                       className="px-5 py-3 flex justify-between items-center"
-                      style={{ background: 'rgba(var(--primary-rgb, 124,58,237), 0.05)', borderTop: '1px solid var(--glass-border)' }}
+                      style={{
+                        background:  'rgba(var(--primary-rgb, 124,58,237), 0.05)',
+                        borderTop:   '1px solid var(--glass-border)',
+                      }}
                     >
-                      <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Total</p>
-                      <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{fmt(computedTotal)}</p>
+                      <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Total confirmado</p>
+                      <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                        {fmt(computedTotal)}
+                      </p>
                     </div>
-                  </div>
-                )}
+                  )}
+
+                  {hasForecast && (
+                    <div
+                      className="px-5 py-2.5 flex justify-between items-center"
+                      style={{
+                        background: 'rgba(var(--primary-rgb, 124,58,237), 0.03)',
+                        borderTop:  '1px dashed rgba(var(--primary-rgb, 124,58,237), 0.15)',
+                      }}
+                    >
+                      <p className="text-xs" style={{ color: 'var(--primary)', opacity: 0.7 }}>
+                        Total previsto (não confirmado)
+                      </p>
+                      <p className="text-xs font-semibold" style={{ color: 'var(--primary)', opacity: 0.7 }}>
+                        {fmt(forecastItems.reduce((s, f) => s + f.amount, 0))}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -694,10 +871,10 @@ export default function FaturasPage() {
               <div
                 className="rounded-xl overflow-hidden"
                 style={{
-                  background:          'var(--glass-bg)',
-                  backdropFilter:      'blur(var(--glass-blur))',
+                  background:           'var(--glass-bg)',
+                  backdropFilter:       'blur(var(--glass-blur))',
                   WebkitBackdropFilter: 'blur(var(--glass-blur))',
-                  border:              '1px solid var(--glass-border)',
+                  border:               '1px solid var(--glass-border)',
                 }}
               >
                 <div className="px-5 py-3" style={{ borderBottom: '1px solid var(--glass-border)' }}>
@@ -733,11 +910,7 @@ export default function FaturasPage() {
             <button
               onClick={() => setShowPayModal(false)}
               className="flex-1 rounded-lg py-2 text-sm transition-colors hover:opacity-80"
-              style={{
-                border:     '1px solid var(--glass-border)',
-                color:      'var(--text-secondary)',
-                background: 'transparent',
-              }}
+              style={{ border: '1px solid var(--glass-border)', color: 'var(--text-secondary)', background: 'transparent' }}
             >
               Cancelar
             </button>
@@ -758,7 +931,6 @@ export default function FaturasPage() {
             {fmt(computedTotal)}
           </span>
         </p>
-
         <div>
           <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>
             Débitar da conta
@@ -767,27 +939,19 @@ export default function FaturasPage() {
             value={payAccountId}
             onChange={e => setPayAccountId(e.target.value)}
             className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
-            style={{
-              background: 'var(--glass-bg)',
-              color:      'var(--text-primary)',
-              border:     '1px solid var(--glass-border)',
-            }}
-            onFocus={e  => (e.target.style.borderColor = 'var(--primary)')}
-            onBlur={e   => (e.target.style.borderColor = 'var(--glass-border)')}
+            style={{ background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }}
+            onFocus={e => (e.target.style.borderColor = 'var(--primary)')}
+            onBlur={e  => (e.target.style.borderColor = 'var(--glass-border)')}
           >
             <option value="">Selecione a conta</option>
-            {accounts.map(a => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
+            {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </div>
-
-        {payError && (
-          <p className="text-sm mt-3" style={{ color: 'var(--danger)' }}>
-            {payError}
-          </p>
-        )}
+        {payError && <p className="text-sm mt-3" style={{ color: 'var(--danger)' }}>{payError}</p>}
       </AppModal>
     </PageContainer>
   )
 }
+
+// Alias para evitar conflito de nome com o componente interno
+function Previstobadge() { return <PrevistoBadge /> }

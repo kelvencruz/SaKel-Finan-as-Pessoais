@@ -21,6 +21,7 @@ import {
   getCurrentMonthKey,
   getLedgerStatuses,
   UNCATEGORIZED_LABEL,
+  occurrencesInWindow,
   type CatSlice,
 } from '@/lib/financialEngine'
 
@@ -52,24 +53,7 @@ function daysUntil(dateStr: string) {
   return Math.round((new Date(dateStr + 'T12:00:00').getTime() - today.getTime()) / 86400000)
 }
 
-function occurrencesInWindow(nextDueDate: string, frequency: string, horizonDate: Date): number {
-  const start = new Date(nextDueDate + 'T12:00:00')
-  const today = new Date(); today.setHours(0, 0, 0, 0)
-  if (start > horizonDate) return 0
-  let count = 0; let current = new Date(start)
-  while (current <= horizonDate && count < 60) {
-    if (current >= today) count++
-    switch (frequency) {
-      case 'daily':   current.setDate(current.getDate() + 1); break
-      case 'weekly':  current.setDate(current.getDate() + 7); break
-      case 'monthly': current.setMonth(current.getMonth() + 1); break
-      case 'yearly':  current.setFullYear(current.getFullYear() + 1); break
-      default:        return count
-    }
-    if (frequency === 'monthly' || frequency === 'yearly') break
-  }
-  return count
-}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tooltip customizado — fix dark mode (BUG-DARK-MODE-TEXT)
