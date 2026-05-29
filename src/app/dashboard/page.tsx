@@ -214,7 +214,11 @@ export default function DashboardPage() {
     investmentsVisible,
     toggleInvestments,
   } = usePrivacyStore()
-
+const [syncStatus, setSyncStatus] = useState<{
+  ran_at: string
+  processed: number
+  failed: number
+} | null>(null)
   const [saldoContas,         setSaldoContas]         = useState(0)
   const [totalFaturas,        setTotalFaturas]        = useState(0)
   const [patrimonioInvestido, setPatrimonioInvestido] = useState(0)
@@ -434,7 +438,15 @@ export default function DashboardPage() {
         { label: 'Parcelas pendentes (30d)',   value: totalParcelas, color: 'var(--warning, #D97706)',       sign: '−' },
         { label: 'Faturas em aberto',          value: faturas,       color: 'var(--danger, #DC2626)',        sign: '−' },
       ])
+// ── Última sincronização do engine ──────────────────────
+const { data: syncLog } = await supabase
+  .from('lifecycle_engine_logs')
+  .select('ran_at, processed, failed')
+  .order('ran_at', { ascending: false })
+  .limit(1)
+  .maybeSingle()
 
+if (syncLog) setSyncStatus(syncLog)
     } catch (err: unknown) {
       setLoadError(err instanceof Error ? err.message : 'Falha ao carregar dados financeiros.')
     } finally {
@@ -503,30 +515,52 @@ export default function DashboardPage() {
   return (
     <PageContainer>
 
-      {/* ── Toggles de privacidade ── */}
-      <div className="flex items-center justify-end gap-4 mb-3">
-  <button
-    onClick={toggleFinancial}
-    className="flex items-center gap-1.5 text-xs min-h-[44px] px-2 transition-opacity hover:opacity-70"
-    style={{ color: 'var(--text-secondary)' }}
-    aria-label={financialVisible ? 'Ocultar valores financeiros' : 'Mostrar valores financeiros'}
-  >
-    {financialVisible
-      ? <Eye weight="duotone" size={14} />
-      : <EyeSlash weight="duotone" size={14} />}
-    Financeiro
-  </button>
-  <button
-    onClick={toggleInvestments}
-    className="flex items-center gap-1.5 text-xs min-h-[44px] px-2 transition-opacity hover:opacity-70"
-    style={{ color: 'var(--text-secondary)' }}
-    aria-label={investmentsVisible ? 'Ocultar investimentos' : 'Mostrar investimentos'}
-  >
-    {investmentsVisible
-      ? <Eye weight="duotone" size={14} />
-      : <EyeSlash weight="duotone" size={14} />}
-    Investimentos
-  </button>
+      {/* ── Toggles de privacidade + status de sincronização ── */}
+<div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+
+  {/* Status engine — esquerda */}
+  {syncStatus && (
+    <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+      <ArrowClockwise weight="duotone" size={12} style={{ color: syncStatus.failed > 0 ? 'var(--danger)' : 'var(--success)' }} />
+      <span>
+        Sincronizado{' '}
+        {new Date(syncStatus.ran_at).toLocaleDateString('pt-BR', {
+          day: '2-digit', month: 'short', timeZone: 'America/Sao_Paulo'
+        })}{' às '}
+        {new Date(syncStatus.ran_at).toLocaleTimeString('pt-BR', {
+          hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo'
+        })}
+        {syncStatus.processed > 0 && (
+          <span style={{ color: 'var(--success)' }}> · {syncStatus.processed} processada{syncStatus.processed !== 1 ? 's' : ''}</span>
+        )}
+        {syncStatus.failed > 0 && (
+          <span style={{ color: 'var(--danger)' }}> · {syncStatus.failed} falha{syncStatus.failed !== 1 ? 's' : ''}</span>
+        )}
+      </span>
+    </div>
+  )}
+
+  {/* Toggles — direita */}
+  <div className="flex items-center gap-4 ml-auto">
+    <button
+      onClick={toggleFinancial}
+      className="flex items-center gap-1.5 text-xs min-h-[44px] px-2 transition-opacity hover:opacity-70"
+      style={{ color: 'var(--text-secondary)' }}
+      aria-label={financialVisible ? 'Ocultar valores financeiros' : 'Mostrar valores financeiros'}
+    >
+      {financialVisible ? <Eye weight="duotone" size={14} /> : <EyeSlash weight="duotone" size={14} />}
+      Financeiro
+    </button>
+    <button
+      onClick={toggleInvestments}
+      className="flex items-center gap-1.5 text-xs min-h-[44px] px-2 transition-opacity hover:opacity-70"
+      style={{ color: 'var(--text-secondary)' }}
+      aria-label={investmentsVisible ? 'Ocultar investimentos' : 'Mostrar investimentos'}
+    >
+      {investmentsVisible ? <Eye weight="duotone" size={14} /> : <EyeSlash weight="duotone" size={14} />}
+      Investimentos
+    </button>
+  </div>
 </div>
 
       {/* ── KPI Cards — glass-card + AnimatedValue + accent bar ── */}
