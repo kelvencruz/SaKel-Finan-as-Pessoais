@@ -707,7 +707,7 @@ useEffect(() => {
       {editingId ? 'Editar Recorrência' : 'Nova Recorrência'}
     </h2>
     <button onClick={() => setShowModal(false)}
-         className="text-3xl leading-none"
+         className="text-4xl leading-none"
   style={{ color: 'var(--text-muted)' }}
   aria-label="Fechar">
   ×
