@@ -1,13 +1,14 @@
+// src/app/contas/page.tsx
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { awardXP } from '@/lib/gamification'
 import { Account, AccountType } from '@/types'
 import { PageContainer } from '@/components/layout/PageContainer'
-import { PageHeader } from '@/components/layout/PageHeader'
-import { AppModal } from '@/components/AppModal'
+import { PageHeader }    from '@/components/layout/PageHeader'
+import { AppModal }      from '@/components/AppModal'
 import { AnimatedValue } from '@/components/ui/AnimatedValue'
+import { useActionHubStore } from '@/stores/useActionHubStore'
 import {
   Bank, PiggyBank, Wallet, TrendUp, Folder,
   Plus, CheckCircle, XCircle, Warning,
@@ -21,42 +22,22 @@ const ACCOUNT_TYPES: { value: AccountType; label: string; Icon: React.ElementTyp
   { value: 'other',      label: 'Outro',            Icon: Folder },
 ]
 
-const COLORS = [
-  '#6366f1','#3b82f6','#22c55e','#f97316',
-  '#ef4444','#ec4899','#14b8a6','#f59e0b',
-  '#8b5cf6','#6b7280',
-]
-
-const emptyForm = {
-  name:            '',
-  type:            'checking' as AccountType,
-  initial_balance: '',
-  color:           '#6366f1',
-  icon:            '',
-  is_active:       true,
-}
-
 type Toast        = { message: string; type: 'success' | 'error' }
 type ConfirmState = { open: boolean; title: string; body: string; onConfirm: () => void }
-
 const CONFIRM_CLOSED: ConfirmState = { open: false, title: '', body: '', onConfirm: () => {} }
 
 export default function ContasPage() {
   const supabase = createClient()
+  const dispatch = useActionHubStore(s => s.dispatch)
 
-  const [accounts,    setAccounts]    = useState<Account[]>([])
-  const [loading,     setLoading]     = useState(true)
-  const [showModal,   setShowModal]   = useState(false)
-  const [editingId,   setEditingId]   = useState<string | null>(null)
-  const [form,        setForm]        = useState(emptyForm)
-  const [saving,      setSaving]      = useState(false)
-  const [error,       setError]       = useState<string | null>(null)
-  const [deletingId,  setDeletingId]  = useState<string | null>(null)
-  const [toast,       setToast]       = useState<Toast | null>(null)
-  const [confirm,     setConfirm]     = useState<ConfirmState>(CONFIRM_CLOSED)
-  const [hoveredId,   setHoveredId]   = useState<string | null>(null)
+  const [accounts,   setAccounts]   = useState<Account[]>([])
+  const [loading,    setLoading]    = useState(true)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [toast,      setToast]      = useState<Toast | null>(null)
+  const [confirm,    setConfirm]    = useState<ConfirmState>(CONFIRM_CLOSED)
+  const [hoveredId,  setHoveredId]  = useState<string | null>(null)
 
-  // ── helpers ──────────────────────────────────────────────────────────────
+  // ── helpers ───────────────────────────────────────────────────────────────
 
   function showToast(message: string, type: Toast['type'] = 'success') {
     setToast({ message, type })
@@ -69,92 +50,39 @@ export default function ContasPage() {
 
   // ── data ──────────────────────────────────────────────────────────────────
 
-  async function loadAccounts() {
+  const loadAccounts = useCallback(async () => {
     const { data } = await supabase
       .from('accounts')
       .select('*')
       .neq('type', 'credit')
-      .is('deleted_at', null)          // regra inviolável: nunca omitir
+      .is('deleted_at', null)
       .order('created_at')
     setAccounts(data ?? [])
     setLoading(false)
-  }
+  }, [supabase])
 
-  useEffect(() => { loadAccounts() }, [])
+  useEffect(() => { loadAccounts() }, [loadAccounts])
 
-  // ── modal criar/editar ────────────────────────────────────────────────────
+  // Escuta o evento canônico emitido pelo ActionHubController após save
+  useEffect(() => {
+    const handler = () => loadAccounts()
+    window.addEventListener('sakel:conta-criada', handler)
+    return () => window.removeEventListener('sakel:conta-criada', handler)
+  }, [loadAccounts])
+
+  // ── dispatch via controller ───────────────────────────────────────────────
 
   function openCreate() {
-    setForm(emptyForm); setEditingId(null); setError(null); setShowModal(true)
+    dispatch('nova-conta')
   }
 
   function openEdit(account: Account) {
-    setForm({
-      name:            account.name,
-      type:            account.type === 'credit' ? 'checking' : account.type,
-      initial_balance: String(account.initial_balance),
-      color:           account.color,
-      icon:            account.icon ?? '',
-      is_active:       account.is_active,
-    })
-    setEditingId(account.id); setError(null); setShowModal(true)
-  }
-
-  async function handleSave() {
-    setError(null)
-    if (!form.name.trim()) { setError('Nome é obrigatório.'); return }
-    const initialBalance = parseFloat(String(form.initial_balance).replace(',', '.') || '0')
-    if (isNaN(initialBalance))            { setError('Saldo inicial inválido.'); return }
-    if (!editingId && initialBalance < 0) { setError('Saldo inicial não pode ser negativo.'); return }
-
-    setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setError('Não autenticado.'); setSaving(false); return }
-
-    if (editingId) {
-      const { error: err } = await supabase
-        .from('accounts')
-        .update({
-          name:      form.name.trim(),
-          type:      form.type,
-          color:     form.color,
-          icon:      form.icon || null,
-          is_active: form.is_active,
-        })
-        .eq('id', editingId)
-      if (err) { setError(err.message); setSaving(false); return }
-      showToast('Conta atualizada!')
-    } else {
-      const { error: err } = await supabase.from('accounts').insert({
-        user_id:         user.id,
-        name:            form.name.trim(),
-        type:            form.type,
-        initial_balance: initialBalance,
-        current_balance: initialBalance,
-        color:           form.color,
-        icon:            form.icon || null,
-        is_active:       true,
-      })
-      if (err) { setError(err.message); setSaving(false); return }
-
-      const isFirstAccount = accounts.filter(a => a.type !== 'credit').length === 0
-      await awardXP(user.id, 'account_created', isFirstAccount ? 'first_account' : undefined)
-        .catch(() => {})
-
-      // dispatch canônico — controller / FAB listener escuta este evento
-      window.dispatchEvent(new CustomEvent('sakel:conta-criada'))
-      showToast('Conta criada!')
-    }
-
-    await loadAccounts()
-    setShowModal(false)
-    setSaving(false)
+    dispatch('nova-conta', account)
   }
 
   // ── soft delete ───────────────────────────────────────────────────────────
 
   async function handleDelete(account: Account) {
-    // verifica vínculos antes de abrir o confirm
     const { count } = await supabase
       .from('transactions')
       .select('id', { count: 'exact', head: true })
@@ -176,13 +104,12 @@ export default function ContasPage() {
       async () => {
         setConfirm(CONFIRM_CLOSED)
         setDeletingId(account.id)
-        // soft delete — NUNCA .delete()
         const { error: err } = await supabase
           .from('accounts')
           .update({ deleted_at: new Date().toISOString() })
           .eq('id', account.id)
         if (err) showToast('Erro ao excluir conta.', 'error')
-        else showToast('Conta excluída.')
+        else     showToast('Conta excluída.')
         await loadAccounts()
         setDeletingId(null)
       },
@@ -244,16 +171,13 @@ export default function ContasPage() {
       {/* ── Banner cartões ── */}
       <div
         className="rounded-xl px-4 py-3 mb-6 flex items-center justify-between"
-        style={{
-          background:   'var(--glass-bg)',
-          border:       '1px solid var(--glass-border)',
-        }}
+        style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}
       >
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
           Cartões de crédito são gerenciados separadamente.
         </p>
-        <a
-          href="/dashboard/cartoes"
+        
+         <a href="/dashboard/cartoes"
           className="text-xs font-medium hover:underline"
           style={{ color: 'var(--primary)' }}
         >
@@ -263,8 +187,6 @@ export default function ContasPage() {
 
       {/* ── KPIs ── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-
-        {/* Saldo total */}
         <div
           className="glass-card rounded-xl p-5 sm:col-span-2"
           style={{ border: '1px solid var(--glass-border)' }}
@@ -282,7 +204,6 @@ export default function ContasPage() {
           </div>
         </div>
 
-        {/* Contas ativas */}
         <div
           className="glass-card rounded-xl p-5"
           style={{ border: '1px solid var(--glass-border)' }}
@@ -322,7 +243,7 @@ export default function ContasPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {accounts.map(account => {
-            const info     = typeInfo(account.type)
+            const info      = typeInfo(account.type)
             const isHovered = hoveredId === account.id
             return (
               <div
@@ -352,19 +273,13 @@ export default function ContasPage() {
                       {!account.is_active && (
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded-full"
-                          style={{
-                            background: 'var(--glass-bg)',
-                            color:      'var(--text-secondary)',
-                          }}
+                          style={{ background: 'var(--glass-bg)', color: 'var(--text-secondary)' }}
                         >
                           inativa
                         </span>
                       )}
                     </div>
-                    <p
-                      className="text-xs flex items-center gap-1"
-                      style={{ color: 'var(--text-secondary)' }}
-                    >
+                    <p className="text-xs flex items-center gap-1" style={{ color: 'var(--text-secondary)' }}>
                       <info.Icon weight="duotone" size={12} />
                       {info.label}
                     </p>
@@ -390,11 +305,11 @@ export default function ContasPage() {
                     className="text-xs px-2 py-1 rounded transition-colors"
                     style={{ color: 'var(--text-secondary)' }}
                     onMouseEnter={e => {
-                      ;(e.currentTarget as HTMLElement).style.color  = 'var(--primary)'
+                      ;(e.currentTarget as HTMLElement).style.color      = 'var(--primary)'
                       ;(e.currentTarget as HTMLElement).style.background = 'var(--glass-bg)'
                     }}
                     onMouseLeave={e => {
-                      ;(e.currentTarget as HTMLElement).style.color  = 'var(--text-secondary)'
+                      ;(e.currentTarget as HTMLElement).style.color      = 'var(--text-secondary)'
                       ;(e.currentTarget as HTMLElement).style.background = 'transparent'
                     }}
                   >
@@ -405,11 +320,11 @@ export default function ContasPage() {
                     className="text-xs px-2 py-1 rounded transition-colors"
                     style={{ color: 'var(--text-secondary)' }}
                     onMouseEnter={e => {
-                      ;(e.currentTarget as HTMLElement).style.color  = 'var(--warning)'
+                      ;(e.currentTarget as HTMLElement).style.color      = 'var(--warning)'
                       ;(e.currentTarget as HTMLElement).style.background = 'var(--glass-bg)'
                     }}
                     onMouseLeave={e => {
-                      ;(e.currentTarget as HTMLElement).style.color  = 'var(--text-secondary)'
+                      ;(e.currentTarget as HTMLElement).style.color      = 'var(--text-secondary)'
                       ;(e.currentTarget as HTMLElement).style.background = 'transparent'
                     }}
                   >
@@ -421,11 +336,11 @@ export default function ContasPage() {
                     className="text-xs px-2 py-1 rounded transition-colors disabled:opacity-50"
                     style={{ color: 'var(--text-secondary)' }}
                     onMouseEnter={e => {
-                      ;(e.currentTarget as HTMLElement).style.color  = 'var(--danger)'
+                      ;(e.currentTarget as HTMLElement).style.color      = 'var(--danger)'
                       ;(e.currentTarget as HTMLElement).style.background = 'var(--glass-bg)'
                     }}
                     onMouseLeave={e => {
-                      ;(e.currentTarget as HTMLElement).style.color  = 'var(--text-secondary)'
+                      ;(e.currentTarget as HTMLElement).style.color      = 'var(--text-secondary)'
                       ;(e.currentTarget as HTMLElement).style.background = 'transparent'
                     }}
                   >
@@ -438,174 +353,8 @@ export default function ContasPage() {
         </div>
       )}
 
-      {/* ── Modal criar/editar conta ── */}
-      <AppModal
-        open={showModal}
-        onClose={() => setShowModal(false)}
-        title={editingId ? 'Editar Conta' : 'Nova Conta'}
-        size="md"
-        footer={
-          <AppModal.Footer align="between">
-            <button
-              onClick={() => setShowModal(false)}
-              className="flex-1 rounded-lg py-2 text-sm transition-colors hover:opacity-80"
-              style={{
-                border:     '1px solid var(--glass-border)',
-                color:      'var(--text-secondary)',
-                background: 'transparent',
-              }}
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex-1 rounded-lg py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50 btn-primary"
-            >
-              {saving ? 'Salvando...' : editingId ? 'Salvar alterações' : 'Criar conta'}
-            </button>
-          </AppModal.Footer>
-        }
-      >
-        <div className="space-y-4">
-          {/* Nome */}
-          <div>
-            <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>
-              Nome da conta
-            </label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={e => setForm({ ...form, name: e.target.value })}
-              placeholder="Ex: Nubank, Bradesco..."
-              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-              style={{
-                background:  'var(--glass-bg)',
-                color:       'var(--text-primary)',
-                border:      '1px solid var(--glass-border)',
-                outlineColor: 'var(--primary)',
-              }}
-            />
-          </div>
-
-          {/* Tipo */}
-          <div>
-            <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Tipo</label>
-            <select
-              value={form.type}
-              onChange={e => setForm({ ...form, type: e.target.value as AccountType })}
-              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-              style={{
-                background:  'var(--glass-bg)',
-                color:       'var(--text-primary)',
-                border:      '1px solid var(--glass-border)',
-                outlineColor: 'var(--primary)',
-              }}
-            >
-              {ACCOUNT_TYPES.map(t => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </select>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-              Para cartões de crédito, use{' '}
-              <a href="/dashboard/cartoes" style={{ color: 'var(--primary)' }} className="hover:underline">
-                Cartões
-              </a>.
-            </p>
-          </div>
-
-          {/* Ícone */}
-          <div>
-            <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>
-              Ícone <span style={{ opacity: 0.6 }}>(emoji opcional)</span>
-            </label>
-            <input
-              type="text"
-              value={form.icon}
-              onChange={e => setForm({ ...form, icon: e.target.value })}
-              placeholder="Ex: 💜 🏦 💰"
-              maxLength={4}
-              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-              style={{
-                background:  'var(--glass-bg)',
-                color:       'var(--text-primary)',
-                border:      '1px solid var(--glass-border)',
-                outlineColor: 'var(--primary)',
-              }}
-            />
-          </div>
-
-          {/* Saldo inicial (só no create) */}
-          {!editingId && (
-            <div>
-              <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>
-                Saldo inicial (R$)
-              </label>
-              <input
-                type="number"
-                value={form.initial_balance}
-                onChange={e => setForm({ ...form, initial_balance: e.target.value })}
-                placeholder="0,00"
-                min="0"
-                step="0.01"
-                className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                style={{
-                  background:  'var(--glass-bg)',
-                  color:       'var(--text-primary)',
-                  border:      '1px solid var(--glass-border)',
-                  outlineColor: 'var(--primary)',
-                }}
-              />
-              <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-                Saldo atual da conta no momento do cadastro.
-              </p>
-            </div>
-          )}
-
-          {/* Cor */}
-          <div>
-            <label className="block text-sm mb-2" style={{ color: 'var(--text-secondary)' }}>Cor</label>
-            <div className="flex gap-2 flex-wrap">
-              {COLORS.map(color => (
-                <button
-                  key={color}
-                  onClick={() => setForm({ ...form, color })}
-                  className="w-7 h-7 rounded-full transition-transform hover:scale-110"
-                  style={{
-                    backgroundColor: color,
-                    outline:         form.color === color ? `3px solid ${color}` : 'none',
-                    outlineOffset:   '2px',
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* is_active (só no edit) */}
-          {editingId && (
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="is_active"
-                checked={form.is_active}
-                onChange={e => setForm({ ...form, is_active: e.target.checked })}
-                className="w-4 h-4"
-                style={{ accentColor: 'var(--primary)' }}
-              />
-              <label htmlFor="is_active" className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                Conta ativa
-              </label>
-            </div>
-          )}
-
-          {/* erro inline */}
-          {error && (
-            <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>
-          )}
-        </div>
-      </AppModal>
-
-      {/* ── Modal de confirmação canônico ── */}
+      {/* ── Modal de confirmação (excluir/desativar) ── */}
+      {/* Mantido inline pois é utilitário da página, não domínio canônico */}
       <AppModal
         open={confirm.open}
         onClose={() => setConfirm(CONFIRM_CLOSED)}
