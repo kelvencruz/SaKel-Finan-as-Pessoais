@@ -519,7 +519,7 @@ export default function FaturasPage() {
     setLoadError(null)
     try {
       const [{ data: cardsData, error: cardsErr }, { data: accData }] = await Promise.all([
-        supabase.from('credit_cards').select('*').eq('is_active', true).order('name'),
+        supabase.from('credit_cards').select('*').eq('is_active', true).is('deleted_at', null).order('name'),
         supabase.from('accounts').select('id, name').order('name'),
       ])
       if (cardsErr) { setLoadError(cardsErr.message); return }
