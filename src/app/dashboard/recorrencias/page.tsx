@@ -615,7 +615,7 @@ useEffect(() => {
 
       {/* Modal exclusão */}
       {deleteModal.open && deleteModal.recorrencia && createPortal(
-        <div style={OVERLAY_STYLE}>
+        <div style={OVERLAY_STYLE} onClick={() => setShowModal(false)}>
           <div className="rounded-2xl w-full max-w-sm p-6 shadow-xl" style={{ background: 'var(--surface)' }}>
             <div className="flex items-start gap-3 mb-4">
               <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
@@ -700,10 +700,18 @@ useEffect(() => {
       {showModal && createPortal(
         <div style={OVERLAY_STYLE}>
           <div className="rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto pb-safe"
-            style={{ background: 'var(--surface)' }}>
-            <h2 className="text-lg font-semibold mb-5" style={{ color: 'var(--text)' }}>
-              {editingId ? 'Editar Recorrência' : 'Nova Recorrência'}
-            </h2>
+  style={{ background: 'var(--surface)' }}
+  onClick={e => e.stopPropagation()}>
+  <div className="flex items-center justify-between mb-5">
+    <h2 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
+      {editingId ? 'Editar Recorrência' : 'Nova Recorrência'}
+    </h2>
+    <button onClick={() => setShowModal(false)}
+      style={{ color: 'var(--text-muted)' }}
+      aria-label="Fechar">
+      <XCircle weight="duotone" size={22} />
+    </button>
+  </div>
 
             <div className="space-y-4">
               <div>
