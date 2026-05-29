@@ -1,5 +1,5 @@
 'use client'
-
+import { useActionHubStore } from '@/stores/useActionHubStore'
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { awardXP } from '@/lib/gamification'
@@ -173,6 +173,15 @@ export default function InvestimentosPage() {
 
   // Toast
   const [toast, setToast] = useState<Toast | null>(null)
+  // ─── FAB → abre modal inline enquanto NovoInvestimentoModal canônico não existe ───
+const { pendingAction, clear } = useActionHubStore()
+
+useEffect(() => {
+  if (pendingAction === 'novo-investimento') {
+    openCreate()
+    clear()
+  }
+}, [pendingAction])
 
   // ─── Toast helper ─────────────────────────────────────────────────────────
 
