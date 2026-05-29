@@ -31,6 +31,7 @@ export type ActionKey =
   | 'nova-conta'
   | 'nova-recorrencia'
   | 'nova-categoria'
+  | 'novo-objetivo'
 
 export interface FabConfig {
   /** Chave despachada para o ActionHubController */

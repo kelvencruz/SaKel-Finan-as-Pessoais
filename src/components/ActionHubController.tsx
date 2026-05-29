@@ -34,24 +34,25 @@ import type { ActionKey } from '@/lib/fabRegistry'
 
 // ─── Modais canônicos ────────────────────────────────────────────────────────
 // Cada modal tem UMA implementação. Nunca fork, nunca clone local.
-import NovaTransacaoModal from './NovaTransacaoModal'
+import NovaTransacaoModal  from './NovaTransacaoModal'
+import NovaContaModal      from './NovaContaModal'
+import NovaCategoriaModal  from './NovaCategoriaModal'
 
 // TODO: descomentar quando os modais forem implementados
 // import NovoInvestimentoModal from './NovoInvestimentoModal'
 // import NovoCartaoModal       from './NovoCartaoModal'
-// import NovaContaModal        from './NovaContaModal'
 // import NovaRecorrenciaModal  from './NovaRecorrenciaModal'
-// import NovaCategoriaModal    from './NovaCategoriaModal'
 
 // ─── Mapa de evento por ActionKey ────────────────────────────────────────────
 // Páginas escutam o evento correspondente para recarregar dados.
 const SAVE_EVENTS: Record<ActionKey, string> = {
-  'nova-transacao':   'sakel:transacao-criada',
-  'novo-investimento':'sakel:investimento-criado',
-  'novo-cartao':      'sakel:cartao-criado',
-  'nova-conta':       'sakel:conta-criada',
-  'nova-recorrencia': 'sakel:recorrencia-criada',
-  'nova-categoria':   'sakel:categoria-criada',
+  'nova-transacao':    'sakel:transacao-criada',
+  'novo-investimento': 'sakel:investimento-criado',
+  'novo-cartao':       'sakel:cartao-criado',
+  'nova-conta':        'sakel:conta-criada',
+  'nova-recorrencia':  'sakel:recorrencia-criada',
+  'nova-categoria':    'sakel:categoria-criada',
+  'novo-objetivo':     'sakel:objetivo-criado',
 }
 
 function emitSaveEvent(actionKey: ActionKey) {
@@ -89,6 +90,29 @@ export default function ActionHubController() {
         onSaved={() => handleSaved('nova-transacao')}
       />
 
+      {/* ── Nova Conta ── */}
+      <NovaContaModal
+        open={modal === 'nova-conta'}
+        onClose={handleClose}
+        onSaved={() => handleSaved('nova-conta')}
+      />
+
+      {/* ── Nova Categoria ── */}
+      <NovaCategoriaModal
+        open={modal === 'nova-categoria'}
+        onClose={handleClose}
+        onSaved={() => handleSaved('nova-categoria')}
+        mode="categoria"
+      />
+
+      {/* ── Novo Objetivo ── */}
+      <NovaCategoriaModal
+        open={modal === 'novo-objetivo'}
+        onClose={handleClose}
+        onSaved={() => handleSaved('novo-objetivo')}
+        mode="objetivo"
+      />
+
       {/* ── Novo Investimento ──────────────────────────────────────────────
           TODO: substituir pelo modal canônico quando implementado.
           A página de investimentos tem modal próprio (AppModal inline).
@@ -114,30 +138,12 @@ export default function ActionHubController() {
       />
       */}
 
-      {/* ── Nova Conta ── */}
-      {/*
-      <NovaContaModal
-        open={modal === 'nova-conta'}
-        onClose={handleClose}
-        onSaved={() => handleSaved('nova-conta')}
-      />
-      */}
-
       {/* ── Nova Recorrência ── */}
       {/*
       <NovaRecorrenciaModal
         open={modal === 'nova-recorrencia'}
         onClose={handleClose}
         onSaved={() => handleSaved('nova-recorrencia')}
-      />
-      */}
-
-      {/* ── Nova Categoria ── */}
-      {/*
-      <NovaCategoriaModal
-        open={modal === 'nova-categoria'}
-        onClose={handleClose}
-        onSaved={() => handleSaved('nova-categoria')}
       />
       */}
     </>
