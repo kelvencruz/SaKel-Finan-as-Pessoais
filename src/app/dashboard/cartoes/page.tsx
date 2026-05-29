@@ -8,12 +8,11 @@
 //    var(--text-secondary), var(--danger), var(--warning) — zero tokens legados --color-*
 //  • Hover: onMouseEnter/onMouseLeave com var(--glass-hover-border) — nunca hover:bg-white/5
 //  • hidden md:flex no CTA primário do PageHeader
-//  • Controller importa modais — esta página NÃO importa nem renderiza modais de domínio
+//  • Controller importa modais — esta página NÃO importa nem renderiza modais
 //  • NUNCA .delete() — soft delete obrigatório (deleted_at = now())
 //  • NUNCA omitir .is('deleted_at', null) em queries de leitura
 //  • Phosphor Icons weight=duotone exclusivamente
 //  • Abertura de modal via dispatch → store → ActionHubController
-//  • AppModal de confirmação (excluir/desativar) inline — utilitário da página, não domínio canônico
 
 import { useEffect, useState, useCallback } from 'react'
 import { createClient }         from '@/lib/supabase/client'
@@ -21,15 +20,7 @@ import { useActionHubStore }    from '@/stores/useActionHubStore'
 import { PageContainer }        from '@/components/layout/PageContainer'
 import { PageHeader }           from '@/components/layout/PageHeader'
 import { AnimatedValue }        from '@/components/ui/AnimatedValue'
-import { AppModal }             from '@/components/ui/AppModal'
-import {
-  CreditCard,
-  Plus,
-  PencilSimple,
-  Power,
-  Trash,
-  Warning,
-} from '@phosphor-icons/react'
+import { CreditCard, Plus, PencilSimple, Power, Trash } from '@phosphor-icons/react'
 
 // ── tipos ─────────────────────────────────────────────────────────────────────
 
@@ -48,18 +39,15 @@ interface Card {
   account?:     { name: string } | null
 }
 
-type ConfirmAction = { type: 'delete' | 'toggle'; card: Card } | null
-
 // ── página ────────────────────────────────────────────────────────────────────
 
 export default function CartoesPage() {
   const supabase = createClient()
   const dispatch = useActionHubStore(s => s.dispatch)
 
-  const [cards,        setCards]        = useState<Card[]>([])
-  const [loading,      setLoading]      = useState(true)
-  const [saving,       setSaving]       = useState(false)
-  const [confirmModal, setConfirmModal] = useState<ConfirmAction>(null)
+  const [cards,      setCards]      = useState<Card[]>([])
+  const [loading,    setLoading]    = useState(true)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // ── queries ────────────────────────────────────────────────────────────────
 
@@ -100,26 +88,22 @@ export default function CartoesPage() {
     })
   }
 
-  async function handleConfirm() {
-    if (!confirmModal) return
-    setSaving(true)
-    const { card, type } = confirmModal
-
-    if (type === 'toggle') {
-      await supabase
-        .from('credit_cards')
-        .update({ is_active: !card.is_active })
-        .eq('id', card.id)
-    } else {
-      await supabase
-        .from('credit_cards')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', card.id)
-    }
-
+  async function handleToggleActive(card: Card) {
+    await supabase
+      .from('credit_cards')
+      .update({ is_active: !card.is_active })
+      .eq('id', card.id)
     await loadCards()
-    setSaving(false)
-    setConfirmModal(null)
+  }
+
+  async function handleDelete(id: string) {
+    setDeletingId(id)
+    await supabase
+      .from('credit_cards')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+    await loadCards()
+    setDeletingId(null)
   }
 
   // ── derivados ──────────────────────────────────────────────────────────────
@@ -127,38 +111,6 @@ export default function CartoesPage() {
   const activeCards   = cards.filter(c => c.is_active)
   const inactiveCards = cards.filter(c => !c.is_active)
   const totalLimit    = activeCards.reduce((s, c) => s + Number(c.limit_amount), 0)
-
-  // ── confirmModal helpers ───────────────────────────────────────────────────
-
-  const confirmTitle = confirmModal
-    ? confirmModal.type === 'delete'
-      ? 'Excluir cartão'
-      : confirmModal.card.is_active
-        ? 'Desativar cartão'
-        : 'Ativar cartão'
-    : ''
-
-  const confirmMessage = confirmModal
-    ? confirmModal.type === 'delete'
-      ? `"${confirmModal.card.name}" será removido permanentemente. Esta ação não pode ser desfeita.`
-      : confirmModal.card.is_active
-        ? `"${confirmModal.card.name}" ficará oculto nas faturas e na seleção de lançamentos.`
-        : `"${confirmModal.card.name}" voltará a aparecer e poderá receber lançamentos.`
-    : ''
-
-  const confirmColor = confirmModal?.type === 'delete'
-    ? 'var(--danger)'
-    : 'var(--warning)'
-
-  const confirmLabel = confirmModal
-    ? saving
-      ? '...'
-      : confirmModal.type === 'delete'
-        ? 'Excluir'
-        : confirmModal.card.is_active
-          ? 'Desativar'
-          : 'Ativar'
-    : ''
 
   // ── render ─────────────────────────────────────────────────────────────────
 
@@ -377,7 +329,7 @@ export default function CartoesPage() {
                 </button>
 
                 <button
-                  onClick={() => setConfirmModal({ type: 'toggle', card })}
+                  onClick={() => handleToggleActive(card)}
                   className="flex-1 md:flex-none flex items-center justify-center gap-1.5 py-2 md:py-1 px-3 md:px-2 rounded-lg text-xs transition-colors"
                   style={{ color: 'var(--text-secondary)', background: 'transparent', border: '1px solid transparent' }}
                   onMouseEnter={e => {
@@ -394,8 +346,9 @@ export default function CartoesPage() {
                 </button>
 
                 <button
-                  onClick={() => setConfirmModal({ type: 'delete', card })}
-                  className="flex-1 md:flex-none flex items-center justify-center gap-1.5 py-2 md:py-1 px-3 md:px-2 rounded-lg text-xs transition-colors"
+                  onClick={() => handleDelete(card.id)}
+                  disabled={deletingId === card.id}
+                  className="flex-1 md:flex-none flex items-center justify-center gap-1.5 py-2 md:py-1 px-3 md:px-2 rounded-lg text-xs transition-colors disabled:opacity-50"
                   style={{ color: 'var(--text-secondary)', background: 'transparent', border: '1px solid transparent' }}
                   onMouseEnter={e => {
                     e.currentTarget.style.color       = 'var(--danger)'
@@ -407,7 +360,7 @@ export default function CartoesPage() {
                   }}
                 >
                   <Trash weight="duotone" size={14} />
-                  Excluir
+                  {deletingId === card.id ? '...' : 'Excluir'}
                 </button>
               </div>
 
@@ -416,65 +369,7 @@ export default function CartoesPage() {
         </div>
       )}
 
-      {/* ── Modal de confirmação (inline — utilitário da página, não domínio canônico) ── */}
-      {confirmModal && (
-        <AppModal
-          open
-          onClose={() => !saving && setConfirmModal(null)}
-          title={confirmTitle}
-        >
-          <div className="flex flex-col gap-4">
-            <div
-              className="flex items-start gap-3 rounded-xl p-4"
-              style={{
-                background:  'var(--glass-bg)',
-                border:      '1px solid var(--glass-border)',
-              }}
-            >
-              <Warning
-                weight="duotone"
-                size={20}
-                className="mt-0.5 shrink-0"
-                style={{ color: confirmColor }}
-              />
-              <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                {confirmMessage}
-              </p>
-            </div>
-
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setConfirmModal(null)}
-                disabled={saving}
-                className="px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
-                style={{
-                  color:       'var(--text-secondary)',
-                  background:  'transparent',
-                  border:      '1px solid var(--glass-border)',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--glass-hover-border)' }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--glass-border)' }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleConfirm}
-                disabled={saving}
-                className="px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                style={{
-                  background: confirmColor,
-                  color:      '#fff',
-                  border:     'none',
-                }}
-              >
-                {confirmLabel}
-              </button>
-            </div>
-          </div>
-        </AppModal>
-      )}
-
-      {/* ── sem modal de domínio inline — NovoCartaoModal vive no ActionHubController ── */}
+      {/* ── sem modal inline — NovoCartaoModal vive no ActionHubController ── */}
     </PageContainer>
   )
 }
