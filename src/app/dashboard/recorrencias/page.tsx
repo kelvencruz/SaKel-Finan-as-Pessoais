@@ -613,26 +613,26 @@ useEffect(() => {
         document.body
       )}
 
-      {/* Modal exclusão */}
-      {deleteModal.open && deleteModal.recorrencia && createPortal(
-        <div style={OVERLAY_STYLE} onClick={() => setShowModal(false)}>
-          <div className="rounded-2xl w-full max-w-sm p-6 shadow-xl" style={{ background: 'var(--surface)' }}>
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-                style={{ background: 'var(--danger-light)' }}>
-                <Warning weight="duotone" size={20} style={{ color: 'var(--danger)' }} />
-              </div>
-              <div>
-                <h3 className="font-semibold" style={{ color: 'var(--text)' }}>Excluir recorrência</h3>
-                <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                  <span className="font-medium" style={{ color: 'var(--text)' }}>
-                    "{deleteModal.recorrencia.description}"
-                  </span>
-                  {' · '}{fmt(deleteModal.recorrencia.amount)}{' · '}{FREQ_LABELS[deleteModal.recorrencia.frequency]}
-                </p>
-              </div>
-            </div>
-
+     {/* Modal exclusão */}
+{deleteModal.open && deleteModal.recorrencia && createPortal(
+  <div style={OVERLAY_STYLE} onClick={() => setDeleteModal({ open: false, recorrencia: null, txCount: 0, futureTxCount: 0 })}>
+    <div className="rounded-2xl w-full max-w-sm p-6 shadow-xl" style={{ background: 'var(--surface)' }}
+      onClick={e => e.stopPropagation()}>
+      <div className="flex items-start gap-3 mb-4">
+        <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+          style={{ background: 'var(--danger-light)' }}>
+          <Warning weight="duotone" size={20} style={{ color: 'var(--danger)' }} />
+        </div>
+        <div>
+          <h3 className="font-semibold" style={{ color: 'var(--text)' }}>Excluir recorrência</h3>
+          <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
+            <span className="font-medium" style={{ color: 'var(--text)' }}>
+              "{deleteModal.recorrencia.description}"
+            </span>
+            {' · '}{fmt(deleteModal.recorrencia.amount)}{' · '}{FREQ_LABELS[deleteModal.recorrencia.frequency]}
+          </p>
+        </div>
+      </div>
             {deleteModal.txCount > 0 && (
               <div className="rounded-xl px-4 py-3 mb-4 text-xs space-y-1"
                 style={{ background: 'var(--warning-light)', border: '1px solid var(--warning)', color: 'var(--text)' }}>
@@ -707,10 +707,11 @@ useEffect(() => {
       {editingId ? 'Editar Recorrência' : 'Nova Recorrência'}
     </h2>
     <button onClick={() => setShowModal(false)}
-      style={{ color: 'var(--text-muted)' }}
-      aria-label="Fechar">
-      <XCircle weight="duotone" size={22} />
-    </button>
+          className="text-xl leading-none"
+        style={{ color: 'var(--text-muted)' }}
+        aria-label="Fechar">
+        ×
+      </button>
   </div>
 
             <div className="space-y-4">
