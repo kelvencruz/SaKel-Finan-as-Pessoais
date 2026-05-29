@@ -370,6 +370,7 @@ export default function DashboardPage() {
         .from('transactions')
         .select('id, type, description, amount, date, category_id')
         .eq('user_id', user.id)
+        .is('deleted_at', null)  
         .in('lifecycle_status', getLedgerStatuses())
         .order('date', { ascending: false })
         .limit(5)
@@ -407,6 +408,7 @@ export default function DashboardPage() {
       const { data: instData } = await supabase
         .from('transactions').select('type, amount')
         .eq('user_id', user.id)
+        .is('deleted_at', null) 
         .not('installment_total', 'is', null)
         .in('lifecycle_status', getLedgerStatuses())
         .gte('date', hoje).lte('date', horizon30)
