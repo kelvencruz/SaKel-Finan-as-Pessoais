@@ -6,63 +6,50 @@ import { usePrivacyStore } from '@/stores/usePrivacyStore'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-// Alinhado com PrivateValue.tsx — 'investments' (com s)
-type Group = 'financial' | 'investments'
+type Group  = 'financial' | 'investments'
+type Format = 'currency' | 'percent' | 'number'
 
 interface AnimatedValueProps {
-  /** Valor numérico a animar (em reais, não centavos) */
-  value: number
-  /** Se true, inicia a animação (conectar ao !loading da página) */
-  trigger?: boolean
-  /** Grupo de privacidade: 'financial' | 'investments' (default: 'financial') */
-  group?: Group
-  /** Duração da animação em ms (default: 2000) */
-  duration?: number
-  /** Atraso em ms antes de iniciar (default: 0) */
-  delay?: number
-  /** Classes CSS adicionais no span externo */
+  value:      number
+  trigger?:   boolean
+  group?:     Group
+  format?:    Format   // ← novo (default: 'currency')
+  duration?:  number
+  delay?:     number
   className?: string
-  /** Estilos inline no span externo (ex: cor via kpi.color) */
-  style?: CSSProperties
-  /** Se true, valores negativos ficam em vermelho (default: true) */
-  colorize?: boolean
+  style?:     CSSProperties
+  colorize?:  boolean
 }
 
 // ─── Helpers de formatação ────────────────────────────────────────────────────
 
 const BRL = new Intl.NumberFormat('pt-BR', {
-  style: 'currency',
-  currency: 'BRL',
+  style:                 'currency',
+  currency:              'BRL',
   minimumFractionDigits: 2,
 })
 
-function fmt(value: number): string {
+const NUM = new Intl.NumberFormat('pt-BR')
+
+function fmt(value: number, format: Format = 'currency'): string {
+  if (format === 'percent') return `${value.toFixed(1)}%`
+  if (format === 'number')  return NUM.format(value)
   return BRL.format(value)
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
-/**
- * Drop-in replacement para `fmt(valor)`.
- * Anima o número de 0 até `value` usando easeOutCubic.
- * Usa usePrivacyStore (Zustand) — mesma fonte de verdade que PrivateValue.tsx.
- *
- * @example
- * <AnimatedValue value={saldoContas} trigger={!loading} />
- * <AnimatedValue value={patrimonio} group="investments" trigger={!loading} />
- * <AnimatedValue value={saldo} trigger={!loading} delay={200} />
- */
 export function AnimatedValue({
   value,
-  trigger = true,
-  group = 'financial',
-  duration = 2000,
-  delay = 0,
+  trigger   = true,
+  group     = 'financial',
+  format    = 'currency',
+  duration  = 2000,
+  delay     = 0,
   className = '',
   style,
-  colorize = true,
+  colorize  = true,
 }: AnimatedValueProps) {
-  // Mesmo store e mesma lógica do PrivateValue.tsx
   const financialVisible   = usePrivacyStore(s => s.financialVisible)
   const investmentsVisible = usePrivacyStore(s => s.investmentsVisible)
   const visible = group === 'financial' ? financialVisible : investmentsVisible
@@ -83,11 +70,9 @@ export function AnimatedValue({
   }
 
   const colorClass =
-    colorize && value < 0
-      ? 'text-danger'
-      : colorize && value > 0
-      ? 'text-success'
-      : ''
+    colorize && value < 0 ? 'text-danger'
+    : colorize && value > 0 ? 'text-success'
+    : ''
 
   return (
     <span
@@ -96,7 +81,7 @@ export function AnimatedValue({
       aria-live="polite"
       aria-atomic="true"
     >
-      {fmt(animated)}
+      {fmt(animated, format)}
     </span>
   )
 }

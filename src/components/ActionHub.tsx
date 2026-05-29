@@ -1,37 +1,41 @@
 // src/components/ActionHub.tsx
 //
-// ActionHub desktop — botão de ação contextual no header.
+// ActionHub desktop — launcher discreto único no header.
+//
+// REDESIGN (sessão 8):
+//  - Removido o botão primário grande roxo — era visualmente dominante demais
+//  - Um único trigger minimalista: ícone Plus + "Nova" (sem cor de fundo dominante)
+//  - Ao clicar: dropdown contextual com ação da página em destaque no topo
+//  - Ação da página aparece com accent visual sutil no dropdown — não no header
+//  - Produto premium: o dado domina, não a ação
 //
 // COMPORTAMENTO:
 //  - Visível apenas em desktop (hidden md:flex via className no layout)
-//  - Botão primário reflete a ação da página atual (via FAB_REGISTRY)
-//  - Dropdown "▾ Mais" com ações globais secundárias (QUICK_ACTIONS)
-//  - Em rotas sem FAB (settings, perfil), exibe apenas dropdown secundário
+//  - Ação primária da página aparece primeiro no dropdown, separada visualmente
+//  - QUICK_ACTIONS secundárias abaixo com divisor
+//  - Enter (fora de input) → dispara ação primária da página
+//  - Escape → fecha dropdown
 //
 // DESIGN (Luminous):
-//  - Botão primário: var(--primary) sólido
-//  - Dropdown: glass-card com var(--glass-bg) e var(--glass-border)
+//  - Trigger: glass sutil, sem var(--primary) dominante no header
+//  - Dropdown: glass-card com backdrop-filter
 //  - Hover em items: onMouseEnter/onMouseLeave — NUNCA hover:bg-white/5
 //  - Sem framer-motion, sem transform
-//
-// KEYBOARD:
-//  - Enter (fora de input/textarea) → dispara ação primária da página
-//  - Escape → fecha dropdown
 
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePathname } from 'next/navigation'
-import { Plus, CaretDown, DotsThree } from '@phosphor-icons/react'
+import { Plus, CaretDown } from '@phosphor-icons/react'
 import { QUICK_ACTIONS } from '@/lib/quickActions'
 import { useActionHubStore } from '@/stores/useActionHubStore'
 import { resolveFabConfig } from '@/lib/fabRegistry'
 
 export default function ActionHub() {
   const pathname = usePathname()
-  const [open,  setOpen]  = useState(false)
-  const ref               = useRef<HTMLDivElement>(null)
-  const dispatch          = useActionHubStore(s => s.dispatch)
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const dispatch = useActionHubStore(s => s.dispatch)
 
   const pageConfig = resolveFabConfig(pathname)
 
@@ -51,7 +55,6 @@ export default function ActionHub() {
     const tag = (e.target as HTMLElement).tagName
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
 
-    // Enter → ação primária da página (se existir)
     if (e.key === 'Enter' && !open && pageConfig) {
       e.preventDefault()
       dispatch(pageConfig.actionKey)
@@ -69,76 +72,115 @@ export default function ActionHub() {
     dispatch(key as any)
   }
 
-  // ─── Filtra QUICK_ACTIONS removendo a ação já exposta no botão primário ──
-  // Evita duplicação visual: se a página é /investimentos, o botão já diz
-  // "Novo Investimento" — o dropdown não precisa repetir.
+  // ─── Ações secundárias — exclui a ação primária da página (já está no topo do dropdown) ──
   const secondaryActions = QUICK_ACTIONS.filter(a =>
     !pageConfig || a.key !== pageConfig.actionKey
   )
 
   return (
     // hidden md:flex — ActionHub é exclusivamente desktop
-    <div ref={ref} className="relative hidden md:flex items-center gap-2">
+    <div ref={ref} className="relative hidden md:flex items-center">
 
-      {/* ── Botão primário contextual ── */}
-      {pageConfig && (
-        <button
-          onClick={() => dispatch(pageConfig.actionKey)}
-          title={`${pageConfig.label} (Enter)`}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
-          style={{ background: 'var(--primary)' }}
-        >
-          <pageConfig.Icon size={14} weight="duotone" />
-          {pageConfig.label}
-        </button>
-      )}
-
-      {/* ── Botão dropdown secundário ("Mais ▾") ── */}
-      {secondaryActions.length > 0 && (
-        <button
-          onClick={() => setOpen(prev => !prev)}
-          title="Mais ações"
-          className="flex items-center gap-1 px-2.5 py-2 rounded-lg text-sm font-medium transition-colors"
+      {/* ── Trigger único e discreto ── */}
+      <button
+        onClick={() => setOpen(prev => !prev)}
+        title={pageConfig ? `${pageConfig.label} (Enter) ou ver mais ações` : 'Nova ação'}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+        style={{
+          background:  open ? 'var(--glass-bg)' : 'transparent',
+          border:      '1px solid',
+          borderColor: open ? 'var(--glass-hover-border)' : 'var(--glass-border)',
+          color:       'var(--color-text-secondary)',
+        }}
+        onMouseEnter={e => {
+          if (!open) {
+            e.currentTarget.style.borderColor = 'var(--glass-hover-border)'
+            e.currentTarget.style.background = 'var(--glass-bg)'
+          }
+        }}
+        onMouseLeave={e => {
+          if (!open) {
+            e.currentTarget.style.borderColor = 'var(--glass-border)'
+            e.currentTarget.style.background = 'transparent'
+          }
+        }}
+      >
+        <Plus size={13} weight="bold" style={{ color: 'var(--primary)' }} />
+        <span>Nova</span>
+        <CaretDown
+          size={10}
+          weight="bold"
           style={{
-            background:  'var(--glass-bg)',
-            border:      '1px solid var(--glass-border)',
-            color:       'var(--color-text-secondary)',
+            transition: 'transform 150ms',
+            transform:  open ? 'rotate(180deg)' : 'rotate(0deg)',
+            opacity: 0.5,
           }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--glass-hover-border)' }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--glass-border)' }}
-        >
-          {/* Quando não tem botão primário, o secundário ganha ícone + label */}
-          {!pageConfig ? (
-            <>
-              <Plus size={14} weight="bold" />
-              <span>Novo</span>
-            </>
-          ) : (
-            <DotsThree size={16} weight="bold" />
-          )}
-          <CaretDown
-            size={11}
-            weight="bold"
-            style={{
-              transition: 'transform 150ms',
-              transform:  open ? 'rotate(180deg)' : 'rotate(0deg)',
-            }}
-          />
-        </button>
-      )}
+        />
+      </button>
 
       {/* ── Dropdown ── */}
       {open && (
         <div
-          className="absolute right-0 top-full mt-2 w-52 rounded-xl py-1.5 z-50"
+          className="absolute right-0 top-full mt-2 w-56 rounded-xl py-1.5 z-50"
           style={{
-            background:         'var(--glass-bg)',
-            backdropFilter:     'blur(var(--glass-blur))',
+            background:           'var(--glass-bg)',
+            backdropFilter:       'blur(var(--glass-blur))',
             WebkitBackdropFilter: 'blur(var(--glass-blur))',
-            border:             '1px solid var(--glass-border)',
-            boxShadow:          '0 8px 32px rgba(0,0,0,0.12)',
+            border:               '1px solid var(--glass-border)',
+            boxShadow:            '0 8px 32px rgba(0,0,0,0.12)',
           }}
         >
+
+          {/* ── Ação primária da página — destaque sutil no topo ── */}
+          {pageConfig && (
+            <>
+              <div className="px-3 pt-1 pb-0.5">
+                <span
+                  className="text-[10px] font-semibold uppercase tracking-wider"
+                  style={{ color: 'var(--color-text-muted)', opacity: 0.6 }}
+                >
+                  Esta página
+                </span>
+              </div>
+              <button
+                onClick={() => handleAction(pageConfig.actionKey)}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left transition-colors"
+                style={{ color: 'var(--color-text-primary)', background: 'transparent' }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(var(--primary-rgb, 124,58,237),0.08)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'transparent'
+                }}
+              >
+                <pageConfig.Icon
+                  size={15}
+                  weight="duotone"
+                  style={{ color: 'var(--primary)', flexShrink: 0 }}
+                />
+                <span className="font-medium">{pageConfig.label}</span>
+                <span
+                  className="ml-auto text-[10px] px-1.5 py-0.5 rounded font-mono"
+                  style={{
+                    background: 'var(--glass-border)',
+                    color:      'var(--color-text-muted)',
+                  }}
+                >
+                  Enter
+                </span>
+              </button>
+
+              {/* Divisor entre ação da página e ações globais */}
+              {secondaryActions.length > 0 && (
+                <div
+                  className="my-1.5 mx-3"
+                  style={{ borderTop: '1px solid var(--glass-border)' }}
+                />
+              )}
+            </>
+          )}
+
+          {/* ── Ações secundárias globais ── */}
           {secondaryActions.map(action => (
             <div key={action.key}>
               {action.dividerBefore && (
@@ -149,7 +191,7 @@ export default function ActionHub() {
               )}
               <button
                 onClick={() => handleAction(action.key)}
-                className="w-full flex items-center justify-between px-4 py-2.5 text-sm text-left transition-colors"
+                className="w-full flex items-center justify-between px-3.5 py-2.5 text-sm text-left transition-colors"
                 style={{ color: 'var(--color-text-primary)', background: 'transparent' }}
                 onMouseEnter={e => {
                   e.currentTarget.style.background = 'rgba(var(--primary-rgb, 124,58,237),0.08)'
@@ -180,6 +222,16 @@ export default function ActionHub() {
               </button>
             </div>
           ))}
+
+          {/* Estado vazio — rota sem config (settings, perfil, etc.) */}
+          {!pageConfig && secondaryActions.length === 0 && (
+            <p
+              className="px-4 py-3 text-sm"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              Nenhuma ação disponível.
+            </p>
+          )}
         </div>
       )}
     </div>
