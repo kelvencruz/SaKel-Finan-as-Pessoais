@@ -13,7 +13,7 @@ import {
   ArrowsClockwise,
   CheckCircle,
   Clock,
-  Scales,
+  ListChecks,
 } from '@phosphor-icons/react'
 import {
   projectForecast,
@@ -195,22 +195,23 @@ function RecorrenteBadge() {
   )
 }
 
-// ─── Bloco de Reconciliação ───────────────────────────────────────────────────
+// ─── Bloco Conferir Total ─────────────────────────────────────────────────────
 // Princípios:
 //   - computedTotal = ledger factual (LEDGER_STATUSES) — forecast não entra
 //   - valorInformado = estado local/localStorage — não é dado financeiro canônico
 //   - divergência = valorInformado - computedTotal — derivado em runtime, nunca persistido
 //   - fatura cancelled → bloco não renderiza
-//   - fatura futura → bloco não renderiza (reconciliar previsão é conceitualmente errado)
+//   - fatura futura → bloco não renderiza (conferir previsão é conceitualmente errado)
 //   - fatura open → modo "parcial" com aviso discreto
+//   - storageKey mantém prefixo "reconciliacao:" por retrocompatibilidade — não alterar
 
-interface ReconciliacaoBlockProps {
+interface ConferirTotalBlockProps {
   invoice:       Invoice
   computedTotal: number
   storageKey:    string
 }
 
-function ReconciliacaoBlock({ invoice, computedTotal, storageKey }: ReconciliacaoBlockProps) {
+function ConferirTotalBlock({ invoice, computedTotal, storageKey }: ConferirTotalBlockProps) {
   const [rawValue,  setRawValue]  = useState('')
   const [isFocused, setIsFocused] = useState(false)
 
@@ -245,16 +246,16 @@ function ReconciliacaoBlock({ invoice, computedTotal, storageKey }: Reconciliaca
   type BadgeVariant = 'conciliado' | 'divergencia' | 'parcial_ok' | 'parcial_dif' | 'aguardando'
   let badge: BadgeVariant = 'aguardando'
   if (temValor) {
-    if (isOpen)      badge = conciliado ? 'parcial_ok'  : 'parcial_dif'
-    else             badge = conciliado ? 'conciliado'  : 'divergencia'
+    if (isOpen) badge = conciliado ? 'parcial_ok'  : 'parcial_dif'
+    else        badge = conciliado ? 'conciliado'  : 'divergencia'
   }
 
   const BADGE_CONFIG: Record<BadgeVariant, { label: string; background: string; color: string; border: string }> = {
-    conciliado:  { label: '✓ Conciliada',         background: 'rgba(34,197,94,0.08)',   color: 'var(--success, #16a34a)', border: '1px solid rgba(34,197,94,0.2)'   },
-    divergencia: { label: '⚠ Divergência',         background: 'rgba(239,68,68,0.08)',   color: 'var(--danger, #dc2626)',  border: '1px solid rgba(239,68,68,0.2)'   },
-    parcial_ok:  { label: '✓ Parcial conciliada',  background: 'rgba(59,130,246,0.08)',  color: 'var(--info, #3b82f6)',    border: '1px solid rgba(59,130,246,0.2)'  },
-    parcial_dif: { label: '⚠ Diferença parcial',   background: 'rgba(234,179,8,0.08)',   color: 'var(--warning, #ca8a04)', border: '1px solid rgba(234,179,8,0.2)'   },
-    aguardando:  { label: '— Aguardando valor',    background: 'rgba(107,114,128,0.08)', color: 'var(--text-secondary)',   border: '1px solid rgba(107,114,128,0.15)' },
+    conciliado:  { label: '✓ Conciliada',        background: 'rgba(34,197,94,0.08)',   color: 'var(--success, #16a34a)', border: '1px solid rgba(34,197,94,0.2)'   },
+    divergencia: { label: '⚠ Divergência',        background: 'rgba(239,68,68,0.08)',   color: 'var(--danger, #dc2626)',  border: '1px solid rgba(239,68,68,0.2)'   },
+    parcial_ok:  { label: '✓ Parcial conciliada', background: 'rgba(59,130,246,0.08)',  color: 'var(--info, #3b82f6)',    border: '1px solid rgba(59,130,246,0.2)'  },
+    parcial_dif: { label: '⚠ Diferença parcial',  background: 'rgba(234,179,8,0.08)',   color: 'var(--warning, #ca8a04)', border: '1px solid rgba(234,179,8,0.2)'   },
+    aguardando:  { label: '— Aguardando valor',   background: 'rgba(107,114,128,0.08)', color: 'var(--text-secondary)',   border: '1px solid rgba(107,114,128,0.15)' },
   }
   const badgeCfg = BADGE_CONFIG[badge]
 
@@ -273,14 +274,19 @@ function ReconciliacaoBlock({ invoice, computedTotal, storageKey }: Reconciliaca
         className="px-5 py-3 flex items-center justify-between"
         style={{ borderBottom: '1px solid var(--glass-border)' }}
       >
-        <div className="flex items-center gap-2">
-          <Scales size={14} weight="duotone" style={{ color: 'var(--text-secondary)' }} />
-          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-            Reconciliação
-          </p>
+        <div className="flex items-start gap-2">
+          <ListChecks size={14} weight="duotone" style={{ color: 'var(--text-secondary)', marginTop: 2, flexShrink: 0 }} />
+          <div>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+              Conferir total
+            </p>
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-secondary)', opacity: 0.7 }}>
+              Compare o total do Sakel com o valor da sua fatura no banco.
+            </p>
+          </div>
         </div>
         <span
-          className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+          className="text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ml-3"
           style={{ background: badgeCfg.background, color: badgeCfg.color, border: badgeCfg.border }}
         >
           {badgeCfg.label}
@@ -335,11 +341,11 @@ function ReconciliacaoBlock({ invoice, computedTotal, storageKey }: Reconciliaca
               placeholder="0,00"
               className="w-36 pl-9 pr-3 py-1.5 rounded-lg text-sm text-right focus:outline-none"
               style={{
-                background:   'var(--glass-bg)',
-                color:        'var(--text-primary)',
-                border:       `1px solid ${isFocused ? 'var(--primary)' : 'var(--glass-border)'}`,
-                boxShadow:    isFocused ? '0 0 0 2px rgba(var(--primary-rgb, 124,58,237), 0.12)' : 'none',
-                transition:   'border-color 0.15s, box-shadow 0.15s',
+                background: 'var(--glass-bg)',
+                color:      'var(--text-primary)',
+                border:     `1px solid ${isFocused ? 'var(--primary)' : 'var(--glass-border)'}`,
+                boxShadow:  isFocused ? '0 0 0 2px rgba(var(--primary-rgb, 124,58,237), 0.12)' : 'none',
+                transition: 'border-color 0.15s, box-shadow 0.15s',
               }}
             />
           </div>
@@ -604,16 +610,17 @@ export default function FaturasPage() {
   const forecastTotal = forecastItems.reduce((s, f) => s + f.amount, 0)
   const expectedTotal = computedTotal + forecastTotal
 
-  // Chave de reconciliação — por cartão + competência (não por invoice id, para persistir entre reloads)
+  // Chave de armazenamento — prefixo "reconciliacao:" mantido por retrocompatibilidade
+  // NÃO alterar esse prefixo: usuários com dados salvos perderiam os valores informados
   const reconStorageKey = selectedCard
     ? `reconciliacao:${selectedCard.id}:${viewYear}-${String(viewMonth).padStart(2, '0')}`
     : ''
 
-  // Condição para mostrar bloco de reconciliação:
+  // Condição para mostrar bloco Conferir Total:
   //   - invoice existe (fatura real)
-  //   - não é futura (reconciliar previsão é conceitualmente errado)
+  //   - não é futura (conferir previsão é conceitualmente errado)
   //   - não está cancelada
-  const showReconciliacao = !!(
+  const showConferirTotal = !!(
     invoice &&
     !isFuture &&
     invoice.status !== 'cancelled' &&
@@ -915,10 +922,10 @@ export default function FaturasPage() {
               )}
             </div>
 
-            {/* ── Bloco de Reconciliação ── */}
+            {/* ── Bloco Conferir Total ── */}
             {/* Renderiza apenas para faturas reais não-futuras não-canceladas */}
-            {showReconciliacao && (
-              <ReconciliacaoBlock
+            {showConferirTotal && (
+              <ConferirTotalBlock
                 invoice={invoice!}
                 computedTotal={computedTotal}
                 storageKey={reconStorageKey}
