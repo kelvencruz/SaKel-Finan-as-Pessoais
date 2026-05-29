@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { awardXP } from '@/lib/gamification'
+import { useActionHubStore } from '@/stores/useActionHubStore'
 import type { Account, Category, CreditCard, Recorrencia, Frequency } from '@/types'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -30,6 +31,12 @@ interface DeleteModalState {
   recorrencia: Recorrencia | null
   txCount: number
   futureTxCount: number
+}
+
+// FIX: Corrigido — não há menu de ações em mobile, card precisa de tap area próprio
+interface CardActionsModalState {
+  open: boolean
+  recorrencia: Recorrencia | null
 }
 
 const fmt     = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -133,6 +140,10 @@ export default function RecorrenciasPage() {
     open: false, recorrencia: null, txCount: 0, futureTxCount: 0,
   })
   const [deleting, setDeleting] = useState(false)
+  // FIX: modal de ações mobile (substitui group-hover inacessível em touch)
+  const [cardActionsModal, setCardActionsModal] = useState<CardActionsModalState>({
+    open: false, recorrencia: null,
+  })
 
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -148,6 +159,22 @@ export default function RecorrenciasPage() {
     }
   }, [])
 
+  function openCreate() {
+    setForm({ ...emptyForm, account_id: accounts[0]?.id ?? '' })
+    setEditingId(null)
+    setFormError(null)
+    setShowModal(true)
+  }
+
+  // FIX: FAB registrado para /recorrencias
+  const { pendingAction, clear } = useActionHubStore()
+useEffect(() => {
+  if (pendingAction === 'nova-recorrencia') {
+    openCreate()
+    clear()
+  }
+}, [pendingAction, clear])
+
   const loadAll = useCallback(async () => {
     setLoading(true)
     setLoadError(null)
@@ -162,12 +189,14 @@ export default function RecorrenciasPage() {
         { data: cards },
       ] = await Promise.all([
         supabase.from('recurrences').select('*').eq('user_id', user.id).order('next_due_date'),
-        supabase.from('accounts').select('id, name, current_balance').eq('user_id', user.id).order('name'),
-        supabase.from('categories').select('id, name, type, icon').eq('user_id', user.id).order('name'),
+        // FIX: .is('deleted_at', null) em todas as queries de lookup
+        supabase.from('accounts').select('id, name, current_balance').eq('user_id', user.id).is('deleted_at', null).order('name'),
+        supabase.from('categories').select('id, name, type, icon').eq('user_id', user.id).is('deleted_at', null).order('name'),
         supabase.from('credit_cards')
           .select('id, name, closing_day, due_day')
           .eq('user_id', user.id)
           .eq('is_active', true)
+          .is('deleted_at', null)
           .order('name'),
       ])
 
@@ -200,13 +229,6 @@ export default function RecorrenciasPage() {
   }, [supabase])
 
   useEffect(() => { loadAll() }, [loadAll])
-
-  function openCreate() {
-    setForm({ ...emptyForm, account_id: accounts[0]?.id ?? '' })
-    setEditingId(null)
-    setFormError(null)
-    setShowModal(true)
-  }
 
   function openEdit(r: Recorrencia) {
     setForm({
@@ -291,6 +313,7 @@ export default function RecorrenciasPage() {
       supabase.from('transactions').select('*', { count: 'exact', head: true }).eq('recurrence_id', r.id),
       supabase.from('transactions').select('*', { count: 'exact', head: true }).eq('recurrence_id', r.id).gte('date', today),
     ])
+    setCardActionsModal({ open: false, recorrencia: null })
     setDeleteModal({ open: true, recorrencia: r, txCount: total ?? 0, futureTxCount: future ?? 0 })
   }
 
@@ -325,6 +348,7 @@ export default function RecorrenciasPage() {
   async function generateNow(r: Recorrencia) {
     if (generatingId) return
     setGeneratingId(r.id)
+    setCardActionsModal({ open: false, recorrencia: null })
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -436,11 +460,12 @@ export default function RecorrenciasPage() {
         </div>
       )}
 
+      {/* FIX: hidden md:flex no CTA do PageHeader — obrigatório por regra */}
       <PageHeader
         title="Recorrências"
         description="Gerencie salário, aluguel, assinaturas e contas fixas."
         action={
-          <button onClick={openCreate} className="btn-primary">
+          <button onClick={openCreate} className="btn-primary hidden md:flex">
             + Nova Recorrência
           </button>
         }
@@ -473,6 +498,7 @@ export default function RecorrenciasPage() {
           <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
             Cadastre salário, aluguel, assinaturas e o sistema gera as transações automaticamente.
           </p>
+          {/* Empty state CTA — visível em mobile também (não é PageHeader) */}
           <button onClick={openCreate} className="btn-primary">
             Criar primeira recorrência
           </button>
@@ -489,7 +515,9 @@ export default function RecorrenciasPage() {
                   <RecorrenciaCard key={r.id} r={r}
                     onEdit={openEdit} onToggle={toggleActive}
                     onDelete={handleDeleteClick} onGenerate={generateNow}
-                    generatingId={generatingId} />
+                    generatingId={generatingId}
+                    onMobileTap={() => setCardActionsModal({ open: true, recorrencia: r })}
+                  />
                 ))}
               </div>
             </div>
@@ -504,12 +532,85 @@ export default function RecorrenciasPage() {
                   <RecorrenciaCard key={r.id} r={r}
                     onEdit={openEdit} onToggle={toggleActive}
                     onDelete={handleDeleteClick} onGenerate={generateNow}
-                    generatingId={generatingId} />
+                    generatingId={generatingId}
+                    onMobileTap={() => setCardActionsModal({ open: true, recorrencia: r })}
+                  />
                 ))}
               </div>
             </div>
           )}
         </div>
+      )}
+
+      {/* FIX: Modal de ações mobile — substitui group-hover inacessível em touch */}
+      {cardActionsModal.open && cardActionsModal.recorrencia && createPortal(
+        <div style={OVERLAY_STYLE} onClick={() => setCardActionsModal({ open: false, recorrencia: null })}>
+          <div
+            className="rounded-2xl w-full max-w-sm p-5 shadow-xl"
+            style={{ background: 'var(--surface)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)' }}>
+              {cardActionsModal.recorrencia.description}
+            </p>
+            <div className="space-y-2">
+              <button
+                onClick={() => {
+                  generateNow(cardActionsModal.recorrencia!)
+                }}
+                disabled={!!generatingId}
+                className="w-full text-left rounded-xl px-4 py-3 flex items-center gap-3 disabled:opacity-40"
+                style={{ background: 'var(--primary-light)', color: 'var(--primary)', border: '1px solid transparent' }}
+              >
+                {generatingId === cardActionsModal.recorrencia.id
+                  ? <ArrowsClockwise weight="duotone" size={16} className="animate-spin" />
+                  : <Play weight="duotone" size={16} />
+                }
+                <span className="text-sm font-medium">Gerar transação agora</span>
+              </button>
+              <button
+                onClick={() => {
+                  openEdit(cardActionsModal.recorrencia!)
+                  setCardActionsModal({ open: false, recorrencia: null })
+                }}
+                className="w-full text-left rounded-xl px-4 py-3 flex items-center gap-3"
+                style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }}
+              >
+                <PencilSimple weight="duotone" size={16} />
+                <span className="text-sm font-medium">Editar</span>
+              </button>
+              <button
+                onClick={() => {
+                  toggleActive(cardActionsModal.recorrencia!)
+                  setCardActionsModal({ open: false, recorrencia: null })
+                }}
+                className="w-full text-left rounded-xl px-4 py-3 flex items-center gap-3"
+                style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }}
+              >
+                {cardActionsModal.recorrencia.is_active
+                  ? <><Pause weight="duotone" size={16} /><span className="text-sm font-medium">Pausar</span></>
+                  : <><Play weight="duotone" size={16} /><span className="text-sm font-medium">Ativar</span></>
+                }
+              </button>
+              <button
+                onClick={() => handleDeleteClick(cardActionsModal.recorrencia!)}
+                className="w-full text-left rounded-xl px-4 py-3 flex items-center gap-3"
+                style={{ background: 'var(--danger-light)', color: 'var(--danger)', border: '1px solid var(--danger)' }}
+              >
+                <Trash weight="duotone" size={16} />
+                <span className="text-sm font-medium">Excluir</span>
+              </button>
+            </div>
+            <button
+              onClick={() => setCardActionsModal({ open: false, recorrencia: null })}
+              className="w-full rounded-lg py-2 mt-4 text-sm"
+              style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal exclusão */}
@@ -595,9 +696,10 @@ export default function RecorrenciasPage() {
       )}
 
       {/* Modal criar/editar */}
+      {/* FIX: pb-safe garante footer acessível com teclado mobile aberto */}
       {showModal && createPortal(
         <div style={OVERLAY_STYLE}>
-          <div className="rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto"
+          <div className="rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto pb-safe"
             style={{ background: 'var(--surface)' }}>
             <h2 className="text-lg font-semibold mb-5" style={{ color: 'var(--text)' }}>
               {editingId ? 'Editar Recorrência' : 'Nova Recorrência'}
@@ -634,6 +736,7 @@ export default function RecorrenciasPage() {
 
               <div>
                 <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Valor (R$)</label>
+                {/* inputMode="decimal" já presente — correto para iOS */}
                 <input type="text" inputMode="decimal" value={form.amount}
                   onChange={e => setForm({ ...form, amount: e.target.value })}
                   placeholder="0,00"
@@ -742,7 +845,7 @@ export default function RecorrenciasPage() {
 }
 
 function RecorrenciaCard({
-  r, onEdit, onToggle, onDelete, onGenerate, generatingId,
+  r, onEdit, onToggle, onDelete, onGenerate, generatingId, onMobileTap,
 }: {
   r: Recorrencia
   onEdit: (r: Recorrencia) => void
@@ -750,6 +853,8 @@ function RecorrenciaCard({
   onDelete: (r: Recorrencia) => void
   onGenerate: (r: Recorrencia) => void
   generatingId: string | null
+  // FIX: callback para abrir modal de ações em mobile (touch devices)
+  onMobileTap: () => void
 }) {
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const nextDate  = new Date(r.next_due_date + 'T12:00:00')
@@ -820,7 +925,8 @@ function RecorrenciaCard({
         </p>
       </div>
 
-      <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex gap-1 shrink-0">
+      {/* FIX: ações desktop (hover) + botão "…" mobile (md:hidden) */}
+      <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden md:flex gap-1 shrink-0">
         <button onClick={() => onGenerate(r)} disabled={!!generatingId}
           title="Gerar transação agora"
           className="px-2 py-1 rounded-lg transition-colors disabled:opacity-30 flex items-center justify-center"
@@ -849,6 +955,16 @@ function RecorrenciaCard({
           <Trash weight="duotone" size={14} />
         </button>
       </div>
+
+      {/* Botão "…" exclusivo mobile — abre modal de ações */}
+      <button
+        onClick={onMobileTap}
+        className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg shrink-0"
+        style={{ color: 'var(--text-muted)', background: 'var(--bg)', border: '1px solid var(--border)' }}
+        aria-label="Ações"
+      >
+        <span className="text-base leading-none tracking-widest" style={{ letterSpacing: '0.05em' }}>···</span>
+      </button>
     </div>
   )
 }
