@@ -170,11 +170,13 @@ export default function ContasPage() {
         title="Contas Financeiras"
         description="Gerencie suas contas bancárias e carteiras"
         action={
-          <button onClick={openCreate} className="btn-primary flex items-center gap-2 text-sm px-4 py-2 rounded-lg">
-            <Plus weight="bold" size={16} />
-            Nova Conta
-          </button>
-        }
+  <div className="hidden md:flex">
+    <button onClick={openCreate} className="btn-primary flex items-center gap-2 text-sm px-4 py-2 rounded-lg">
+      <Plus weight="bold" size={16} />
+      Nova Conta
+    </button>
+  </div>
+}
       />
 
       {/* Banner cartões */}
