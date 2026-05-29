@@ -24,7 +24,7 @@ import { Account, AccountType } from '@/types'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AppModal } from '@/components/AppModal'
-import { AnimatedValue } from '@/components/AnimatedValue'
+import { AnimatedValue } from '@/components/ui/AnimatedValue'
 import { useActionHubStore } from '@/stores/useActionHubStore'
 import {
   Bank, PiggyBank, Wallet, TrendUp, Folder,
