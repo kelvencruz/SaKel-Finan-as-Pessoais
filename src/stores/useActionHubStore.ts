@@ -13,12 +13,6 @@
 //  3. ActionHubController observa pendingAction, abre o modal correto
 //  4. ActionHubController chama clear() após consumir
 //
-// PAYLOAD OPCIONAL (modo edição):
-//  Páginas que precisam abrir um modal em modo edição passam o payload:
-//    dispatch('novo-cartao', cardPayload)
-//  O ActionHubController lê actionPayload e repassa ao modal via prop (ex: editCard).
-//  Dispatches sem payload continuam funcionando normalmente (payload = null).
-//
 // IMPORTANTE: ActionKey é importada de fabRegistry para single-source de verdade.
 // Não duplicar a union type aqui.
 
@@ -27,14 +21,12 @@ import type { ActionKey } from '@/lib/fabRegistry'
 
 interface ActionHubState {
   pendingAction: ActionKey | null
-  actionPayload: unknown
-  dispatch: (action: ActionKey, payload?: unknown) => void
+  dispatch: (action: ActionKey) => void
   clear:    () => void
 }
 
 export const useActionHubStore = create<ActionHubState>((set) => ({
   pendingAction: null,
-  actionPayload: null,
-  dispatch: (action, payload = null) => set({ pendingAction: action, actionPayload: payload }),
-  clear:    ()                       => set({ pendingAction: null,   actionPayload: null }),
+  dispatch: (action) => set({ pendingAction: action }),
+  clear:    ()       => set({ pendingAction: null }),
 }))

@@ -25,27 +25,22 @@
 //  Cada modal emite um evento CustomEvent diferente ao salvar.
 //  Páginas interessadas escutam o evento relevante via useEffect.
 //  Isso desacopla o controller das páginas.
-//
-// MODO EDIÇÃO (editCard, etc.):
-//  Páginas passam o payload via dispatch('novo-cartao', cardPayload).
-//  O controller captura em actionPayload e repassa ao modal via editCard prop.
 
 'use client'
 
 import { useEffect, useState } from 'react'
 import { useActionHubStore } from '@/stores/useActionHubStore'
-import type { ActionKey }    from '@/lib/fabRegistry'
+import type { ActionKey } from '@/lib/fabRegistry'
 
 // ─── Modais canônicos ────────────────────────────────────────────────────────
 // Cada modal tem UMA implementação. Nunca fork, nunca clone local.
 import NovaTransacaoModal  from './NovaTransacaoModal'
 import NovaContaModal      from './NovaContaModal'
 import NovaCategoriaModal  from './NovaCategoriaModal'
-import NovoCartaoModal     from './NovoCartaoModal'
-import type { CardPayload } from './NovoCartaoModal'
 
 // TODO: descomentar quando os modais forem implementados
 // import NovoInvestimentoModal from './NovoInvestimentoModal'
+// import NovoCartaoModal       from './NovoCartaoModal'
 // import NovaRecorrenciaModal  from './NovaRecorrenciaModal'
 
 // ─── Mapa de evento por ActionKey ────────────────────────────────────────────
@@ -68,34 +63,22 @@ function emitSaveEvent(actionKey: ActionKey) {
 }
 
 export default function ActionHubController() {
-  const { pendingAction, actionPayload, clear } = useActionHubStore()
-
-  const [modal,    setModal]    = useState<ActionKey | null>(null)
-  const [editCard, setEditCard] = useState<CardPayload | null>(null)
+  const { pendingAction, clear } = useActionHubStore()
+  const [modal, setModal] = useState<ActionKey | null>(null)
 
   useEffect(() => {
     if (!pendingAction) return
-
-    // captura payload de edição antes de limpar a store
-    if (pendingAction === 'novo-cartao') {
-      setEditCard((actionPayload as CardPayload) ?? null)
-    } else {
-      setEditCard(null)
-    }
-
     setModal(pendingAction)
     clear()
-  }, [pendingAction, actionPayload, clear])
+  }, [pendingAction, clear])
 
   function handleClose() {
     setModal(null)
-    setEditCard(null)
   }
 
   function handleSaved(actionKey: ActionKey) {
     emitSaveEvent(actionKey)
     setModal(null)
-    setEditCard(null)
   }
 
   return (
@@ -130,18 +113,6 @@ export default function ActionHubController() {
         mode="objetivo"
       />
 
-      {/* ── Novo Cartão ─────────────────────────────────────────────────────
-          Suporta criação (editCard = null) e edição (editCard = CardPayload).
-          cartoes/page.tsx despacha 'novo-cartao' com payload opcional via
-          dispatch('novo-cartao', cardPayload) para o modo edição.
-      ──────────────────────────────────────────────────────────────────── */}
-      <NovoCartaoModal
-        open={modal === 'novo-cartao'}
-        onClose={handleClose}
-        onSaved={() => handleSaved('novo-cartao')}
-        editCard={editCard}
-      />
-
       {/* ── Novo Investimento ──────────────────────────────────────────────
           TODO: substituir pelo modal canônico quando implementado.
           A página de investimentos tem modal próprio (AppModal inline).
@@ -155,6 +126,15 @@ export default function ActionHubController() {
         open={modal === 'novo-investimento'}
         onClose={handleClose}
         onSaved={() => handleSaved('novo-investimento')}
+      />
+      */}
+
+      {/* ── Novo Cartão ── */}
+      {/*
+      <NovoCartaoModal
+        open={modal === 'novo-cartao'}
+        onClose={handleClose}
+        onSaved={() => handleSaved('novo-cartao')}
       />
       */}
 
