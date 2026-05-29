@@ -65,13 +65,7 @@ export const FAB_REGISTRY: Record<string, FabConfig> = {
     shortLabel: 'Transação',
     Icon:       ArrowsDownUp,
   },
-  '/dashboard/faturas': {
-    actionKey:  'nova-transacao',
-    label:      'Nova Transação',
-    shortLabel: 'Transação',
-    Icon:       ArrowsDownUp,
-  },
-  '/dashboard/investimentos': {
+   '/dashboard/investimentos': {
     actionKey:  'novo-investimento',
     label:      'Novo Investimento',
     shortLabel: 'Investimento',
@@ -114,4 +108,12 @@ export const FAB_REGISTRY: Record<string, FabConfig> = {
  */
 export function resolveFabConfig(pathname: string): FabConfig | null {
   return FAB_REGISTRY[pathname] ?? null
+  // Rotas SEM FAB (intencionalmente ausentes):
+  // /dashboard/conquistas    → página de leitura, sem ação primária
+  // /dashboard/perfil        → página de configuração pessoal
+  // /dashboard/settings      → página de configuração do sistema
+  // /dashboard/importar      → fluxo próprio, sem FAB global
+  // /dashboard/faturas       → tela de fechamento/pagamento — CTA principal é "Pagar fatura"
+  // /dashboard/reconciliacao → tela de validação — sem input rápido
 }
+
