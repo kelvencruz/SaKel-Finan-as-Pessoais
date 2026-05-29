@@ -1,45 +1,14 @@
 'use client'
 
-// src/app/dashboard/contas/page.tsx
-//
-// Etapa 12 — Migração visual Luminous completa
-//
-// MUDANÇAS (sessão 8):
-//  - Modal de criação completamente removido — delegado ao NovaContaModal canônico via dispatch
-//  - confirm() nativo removido — substituído por modal de confirmação AppModal (anti-padrão documentado)
-//  - alert() nativo removido — substituído por toast de erro
-//  - PageHeader action com wrapper hidden md:flex (BUG-016 definitivamente corrigido)
-//  - Escuta sakel:conta-criada para reload automático
-//  - Glass-card padrão Luminous nos KPI cards e lista
-//  - AnimatedValue nos valores financeiros
-//  - Tokens Luminous: var(--glass-bg), var(--glass-border), var(--primary), var(--text-primary/secondary)
-//  - Removidos todos os tokens legados: --bg-surface, --color-*, border-white/5
-//  - Hover: onMouseEnter/onMouseLeave com var(--glass-hover-border) — NUNCA hover:bg-white/5
-//  - Skeleton loading nos KPI cards
-
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { awardXP } from '@/lib/gamification'
-import { Account, AccountType } from '@/types'
+import { Category, CategoryType, InvestmentGoal } from '@/types'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { AppModal } from '@/components/AppModal'
-import { AnimatedValue } from '@/components/ui/AnimatedValue'
-import { useActionHubStore } from '@/stores/useActionHubStore'
 import {
-  Bank, PiggyBank, Wallet, TrendUp, Folder,
-  Plus, CheckCircle, XCircle, Warning,
+  ArrowDown, ArrowUp, TrendUp,
+  Plus, CheckCircle, XCircle,
 } from '@phosphor-icons/react'
-
-// ─── Tipos e constantes ──────────────────────────────────────────────────────
-
-const ACCOUNT_TYPES: { value: AccountType; label: string; Icon: React.ElementType }[] = [
-  { value: 'checking',   label: 'Conta Corrente', Icon: Bank },
-  { value: 'savings',    label: 'Poupança',        Icon: PiggyBank },
-  { value: 'cash',       label: 'Dinheiro',        Icon: Wallet },
-  { value: 'investment', label: 'Investimentos',   Icon: TrendUp },
-  { value: 'other',      label: 'Outro',            Icon: Folder },
-]
 
 const COLORS = [
   '#6366f1','#3b82f6','#22c55e','#f97316',
@@ -47,628 +16,596 @@ const COLORS = [
   '#8b5cf6','#6b7280',
 ]
 
+// category_icon — escolha do usuário, exceção permitida pela regra de ícones
+const ICONS = [
+  '🛒','🚗','🏠','❤️','🎵','📚','👕','📱','✈️','🍔',
+  '💼','💻','📈','💰','🎮','⚽','🐾','💊','🎁','⚡',
+  '🍕','☕','🎓','🏋️','🧾','🎬','🏥','🐶','🌱','🧴',
+]
+
+const GOAL_ICONS = [
+  '🎯','🛡️','🏖️','✈️','🏠','🚗','📚','💍','👶','🏥',
+  '💼','🌍','📈','💰','🔑','⛵','🎓','🏋️','🌱','👑',
+]
+
+const emptyForm     = { name: '', type: 'expense' as CategoryType, color: '#6366f1', icon: '🛒', customIcon: '' }
+const emptyGoalForm = { name: '', icon: '🎯', color: '#6366f1', target_amount: '', target_date: '' }
+
+type Tab   = 'expense' | 'income' | 'investment'
 type Toast = { message: string; type: 'success' | 'error' }
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-// ─── Glass card inline (padrão Luminous — sem componente global ainda) ───────
-const glassStyle: React.CSSProperties = {
-  background:           'var(--glass-bg)',
-  backdropFilter:       'blur(var(--glass-blur))',
-  WebkitBackdropFilter: 'blur(var(--glass-blur))',
-  border:               '1px solid var(--glass-border)',
-  borderRadius:         '0.75rem',
-}
-
-// ─── Componente ──────────────────────────────────────────────────────────────
-
-export default function ContasPage() {
+export default function CategoriasPage() {
   const supabase = createClient()
-  const dispatch = useActionHubStore(s => s.dispatch)
 
-  const [accounts,   setAccounts]   = useState<Account[]>([])
-  const [loading,    setLoading]    = useState(true)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [toast,      setToast]      = useState<Toast | null>(null)
+  const [categories,     setCategories]     = useState<Category[]>([])
+  const [loading,        setLoading]        = useState(true)
+  const [showModal,      setShowModal]      = useState(false)
+  const [editingId,      setEditingId]      = useState<string | null>(null)
+  const [form,           setForm]           = useState(emptyForm)
+  const [saving,         setSaving]         = useState(false)
+  const [error,          setError]          = useState<string | null>(null)
+  const [deletingId,     setDeletingId]     = useState<string | null>(null)
 
-  // Modal de confirmação de exclusão (substitui confirm() nativo — anti-padrão)
-  const [confirmDelete, setConfirmDelete] = useState<Account | null>(null)
-  const [deleteBlocked, setDeleteBlocked] = useState<{ account: Account; count: number } | null>(null)
+  const [goals,          setGoals]          = useState<InvestmentGoal[]>([])
+  const [showGoalModal,  setShowGoalModal]  = useState(false)
+  const [editingGoalId,  setEditingGoalId]  = useState<string | null>(null)
+  const [goalForm,       setGoalForm]       = useState(emptyGoalForm)
+  const [savingGoal,     setSavingGoal]     = useState(false)
+  const [goalError,      setGoalError]      = useState<string | null>(null)
+  const [deletingGoalId, setDeletingGoalId] = useState<string | null>(null)
 
-  // Modal de edição — permanece local pois é edição inline de dados existentes
-  // (criação é 100% delegada ao NovaContaModal canônico via dispatch)
-  const [editModal,  setEditModal]  = useState(false)
-  const [editingId,  setEditingId]  = useState<string | null>(null)
-  const [editForm,   setEditForm]   = useState({
-    name: '', type: 'checking' as AccountType,
-    color: '#6366f1', icon: '', is_active: true,
-  })
-  const [editSaving, setEditSaving] = useState(false)
-  const [editError,  setEditError]  = useState<string | null>(null)
+  const [tab,   setTab]   = useState<Tab>('expense')
+  const [toast, setToast] = useState<Toast | null>(null)
 
-  // ─── Toast ────────────────────────────────────────────────────────────────
   function showToast(message: string, type: Toast['type'] = 'success') {
     setToast({ message, type })
     setTimeout(() => setToast(null), 3000)
   }
 
-  // ─── Load ─────────────────────────────────────────────────────────────────
-  const loadAccounts = useCallback(async () => {
-    const { data } = await supabase
-      .from('accounts')
-      .select('*')
-      .neq('type', 'credit')
-      .order('created_at')
-    setAccounts(data ?? [])
+  async function loadAll() {
+    const [{ data: cats }, { data: gls }] = await Promise.all([
+      supabase.from('categories').select('*').order('name'),
+      supabase.from('investment_goals').select('*').order('name'),
+    ])
+    setCategories(cats ?? [])
+    setGoals((gls ?? []) as InvestmentGoal[])
     setLoading(false)
-  }, [supabase])
+  }
 
-  useEffect(() => { loadAccounts() }, [loadAccounts])
+  useEffect(() => { loadAll() }, [])
 
-  // ─── Escuta sakel:conta-criada (NovaContaModal canônico) ─────────────────
-  useEffect(() => {
-    function onContaCriada() { loadAccounts() }
-    window.addEventListener('sakel:conta-criada', onContaCriada)
-    return () => window.removeEventListener('sakel:conta-criada', onContaCriada)
-  }, [loadAccounts])
+  // ── categoria modal ───────────────────────────────────────────────────
+  function openCreate() {
+    setForm({ ...emptyForm, type: tab === 'investment' ? 'investment' : tab })
+    setEditingId(null); setError(null); setShowModal(true)
+  }
 
-  // ─── Edição ───────────────────────────────────────────────────────────────
-  function openEdit(account: Account) {
-    setEditForm({
-      name:      account.name,
-      type:      account.type === 'credit' ? 'checking' : account.type,
-      color:     account.color,
-      icon:      account.icon ?? '',
-      is_active: account.is_active,
+  function openEdit(cat: Category) {
+    const isCustom = !ICONS.includes(cat.icon)
+    setForm({
+      name:       cat.name,
+      type:       cat.type,
+      color:      cat.color,
+      icon:       isCustom ? ICONS[0] : cat.icon,
+      customIcon: isCustom ? cat.icon : '',
     })
-    setEditingId(account.id)
-    setEditError(null)
-    setEditModal(true)
+    setEditingId(cat.id); setError(null); setShowModal(true)
   }
 
-  async function handleEditSave() {
-    setEditError(null)
-    if (!editForm.name.trim()) { setEditError('Nome é obrigatório.'); return }
+  async function handleSave() {
+    setError(null)
+    if (!form.name.trim()) { setError('Nome é obrigatório.'); return }
+    const finalIcon = form.customIcon.trim() || form.icon
+    setSaving(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setError('Não autenticado.'); setSaving(false); return }
 
-    setEditSaving(true)
-    const { error: err } = await supabase
-      .from('accounts')
-      .update({
-        name:      editForm.name.trim(),
-        type:      editForm.type,
-        color:     editForm.color,
-        icon:      editForm.icon || null,
-        is_active: editForm.is_active,
-      })
-      .eq('id', editingId!)
-
-    if (err) { setEditError(err.message); setEditSaving(false); return }
-
-    showToast('Conta atualizada!')
-    await loadAccounts()
-    setEditModal(false)
-    setEditSaving(false)
+    if (editingId) {
+      const { error: err } = await supabase
+        .from('categories')
+        .update({ name: form.name.trim(), type: form.type, color: form.color, icon: finalIcon })
+        .eq('id', editingId)
+      if (err) { setError(err.message); setSaving(false); return }
+      showToast('Categoria atualizada!')
+    } else {
+      const { error: err } = await supabase
+        .from('categories')
+        .insert({ name: form.name.trim(), type: form.type, color: form.color, icon: finalIcon, user_id: user.id })
+      if (err) { setError(err.message); setSaving(false); return }
+      showToast('Categoria criada!')
+    }
+    await loadAll(); setShowModal(false); setSaving(false)
   }
 
-  // ─── Ativar/Desativar ─────────────────────────────────────────────────────
-  async function toggleActive(account: Account) {
-    await supabase.from('accounts').update({ is_active: !account.is_active }).eq('id', account.id)
-    showToast(account.is_active ? 'Conta desativada.' : 'Conta reativada.')
-    await loadAccounts()
-  }
-
-  // ─── Exclusão (fluxo com modal — sem confirm() nativo) ───────────────────
-  async function requestDelete(account: Account) {
+  async function handleDelete(cat: Category) {
+    if (!confirm(`Excluir a categoria "${cat.name}"?`)) return
     const { count } = await supabase
-      .from('transactions')
-      .select('id', { count: 'exact', head: true })
-      .eq('account_id', account.id)
-
+      .from('transactions').select('id', { count: 'exact', head: true }).eq('category_id', cat.id)
     if (count && count > 0) {
-      setDeleteBlocked({ account, count })
+      alert(`Não é possível excluir "${cat.name}" pois ela possui ${count} transação(ões) vinculada(s).`)
       return
     }
-    setConfirmDelete(account)
+    setDeletingId(cat.id)
+    const { error: err } = await supabase.from('categories').delete().eq('id', cat.id)
+    if (err) showToast('Erro ao excluir categoria.', 'error')
+    else showToast('Categoria excluída.')
+    await loadAll(); setDeletingId(null)
   }
 
-  async function confirmDeleteAccount() {
-    if (!confirmDelete) return
-    setDeletingId(confirmDelete.id)
-    setConfirmDelete(null)
-
-    const { error: err } = await supabase.from('accounts').delete().eq('id', confirmDelete.id)
-    if (err) showToast('Erro ao excluir conta.', 'error')
-    else showToast('Conta excluída.')
-
-    await loadAccounts()
-    setDeletingId(null)
+  // ── goal modal ────────────────────────────────────────────────────────
+  function openCreateGoal() {
+    setGoalForm(emptyGoalForm); setEditingGoalId(null); setGoalError(null); setShowGoalModal(true)
   }
 
-  // ─── Derivados ────────────────────────────────────────────────────────────
-  const totalBalance = accounts.reduce((s, a) => s + Number(a.current_balance), 0)
-  const activeCount  = accounts.filter(a => a.is_active).length
-  const typeInfo     = (type: AccountType) =>
-    ACCOUNT_TYPES.find(t => t.value === type) ?? { label: type, Icon: Folder }
+  function openEditGoal(g: InvestmentGoal) {
+    setGoalForm({
+      name:          g.name,
+      icon:          g.icon,
+      color:         g.color,
+      target_amount: g.target_amount ? String(g.target_amount) : '',
+      target_date:   g.target_date ?? '',
+    })
+    setEditingGoalId(g.id); setGoalError(null); setShowGoalModal(true)
+  }
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  async function handleSaveGoal() {
+    setGoalError(null)
+    if (!goalForm.name.trim()) { setGoalError('Nome é obrigatório.'); return }
+    const targetAmount = goalForm.target_amount ? parseFloat(goalForm.target_amount) : null
+    if (goalForm.target_amount && isNaN(targetAmount!)) { setGoalError('Valor meta inválido.'); return }
+
+    setSavingGoal(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setGoalError('Não autenticado.'); setSavingGoal(false); return }
+
+    const payload = {
+      name:          goalForm.name.trim(),
+      icon:          goalForm.icon,
+      color:         goalForm.color,
+      target_amount: targetAmount,
+      target_date:   goalForm.target_date || null,
+    }
+
+    if (editingGoalId) {
+      const { error: err } = await supabase.from('investment_goals').update(payload).eq('id', editingGoalId)
+      if (err) { setGoalError(err.message); setSavingGoal(false); return }
+      showToast('Objetivo atualizado!')
+    } else {
+      const { error: err } = await supabase.from('investment_goals').insert({ ...payload, user_id: user.id })
+      if (err) { setGoalError(err.message); setSavingGoal(false); return }
+      showToast('Objetivo criado!')
+    }
+    await loadAll(); setShowGoalModal(false); setSavingGoal(false)
+  }
+
+  async function handleDeleteGoal(g: InvestmentGoal) {
+    if (!confirm(`Excluir o objetivo "${g.name}"?`)) return
+    const { count: invCount } = await supabase
+      .from('investments').select('id', { count: 'exact', head: true }).eq('goal_id', g.id)
+    if (invCount && invCount > 0) {
+      alert(`Não é possível excluir "${g.name}" pois ele possui ${invCount} investimento(s) vinculado(s).`)
+      return
+    }
+    setDeletingGoalId(g.id)
+    const { error: err } = await supabase.from('investment_goals').delete().eq('id', g.id)
+    if (err) showToast('Erro ao excluir objetivo.', 'error')
+    else showToast('Objetivo excluído.')
+    await loadAll(); setDeletingGoalId(null)
+  }
+
+  // ── derived ───────────────────────────────────────────────────────────
+  const filtered     = categories.filter(c => c.type === tab)
+  const expenseCount = categories.filter(c => c.type === 'expense').length
+  const incomeCount  = categories.filter(c => c.type === 'income').length
+  const investCount  = categories.filter(c => c.type === 'investment').length
+  const activeIcon   = form.customIcon.trim() || form.icon
+
+  const TABS = [
+    { key: 'expense'    as const, label: 'Despesas',      count: expenseCount, Icon: ArrowDown, activeClass: 'bg-danger/10 text-danger'           },
+    { key: 'income'     as const, label: 'Receitas',      count: incomeCount,  Icon: ArrowUp,   activeClass: 'bg-success/10 text-success'         },
+    { key: 'investment' as const, label: 'Investimentos', count: investCount,  Icon: TrendUp,   activeClass: 'bg-accent-primary/10 text-accent-primary' },
+  ]
+
+  // helper: classes de tipo para o modal
+  function typeActiveClass(v: CategoryType) {
+    if (v === 'expense')    return 'bg-danger/10 text-danger'
+    if (v === 'income')     return 'bg-success/10 text-success'
+    return 'bg-accent-primary/10 text-accent-primary'
+  }
+
   return (
     <PageContainer>
-
-      {/* ── Toast ── */}
+      {/* Toast */}
       {toast && (
-        <div
-          className="fixed top-5 right-5 z-[60] px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2"
-          style={glassStyle}
-        >
+        <div className={`fixed top-5 right-5 z-[60] px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 border ${
+          toast.type === 'success'
+            ? 'bg-success/10 text-success border-success/30'
+            : 'bg-danger/10 text-danger border-danger/30'
+        }`}>
           {toast.type === 'success'
-            ? <CheckCircle weight="duotone" size={16} style={{ color: 'var(--success)' }} />
-            : <XCircle weight="duotone" size={16} style={{ color: 'var(--danger)' }} />}
-          <span style={{ color: 'var(--text-primary)' }}>{toast.message}</span>
+            ? <CheckCircle weight="duotone" size={16} />
+            : <XCircle weight="duotone" size={16} />}
+          {toast.message}
         </div>
       )}
 
-      {/* ── PageHeader — action com wrapper hidden md:flex (BUG-016 corrigido) ── */}
       <PageHeader
-        title="Contas Financeiras"
-        description="Gerencie suas contas bancárias e carteiras"
+        title="Categorias"
+        description="Organize despesas, receitas e objetivos de investimento"
         action={
-          <div className="hidden md:flex">
-            <button
-              onClick={() => dispatch('nova-conta')}
-              className="flex items-center gap-2 text-sm px-4 py-2 rounded-lg font-semibold text-white transition-opacity hover:opacity-90"
-              style={{ background: 'var(--primary)' }}
-            >
-              <Plus weight="bold" size={16} />
-              Nova Conta
-            </button>
-          </div>
+          <button
+            onClick={tab === 'investment' ? openCreateGoal : openCreate}
+            className="btn-primary flex items-center gap-2 text-sm px-4 py-2 rounded-lg"
+          >
+            <Plus weight="bold" size={16} />
+            {tab === 'investment' ? 'Novo Objetivo' : 'Nova Categoria'}
+          </button>
         }
       />
 
-      {/* ── Banner cartões — glass sutil ── */}
-      <div
-        className="mb-6 flex items-center justify-between px-4 py-3 rounded-xl"
-        style={{
-          background:   'rgba(var(--primary-rgb, 124,58,237),0.06)',
-          border:       '1px solid rgba(var(--primary-rgb, 124,58,237),0.15)',
-          borderRadius: '0.75rem',
-        }}
-      >
-        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          Cartões de crédito são gerenciados separadamente.
-        </p>
-        <a
-          href="/dashboard/cartoes"
-          className="text-xs font-medium hover:underline ml-4 shrink-0"
-          style={{ color: 'var(--primary)' }}
-        >
-          Ir para Cartões →
-        </a>
-      </div>
-
-      {/* ── KPI Cards — glass + AnimatedValue ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-
-        {/* Saldo total */}
-        <div className="p-5 sm:col-span-2" style={glassStyle}>
-          {loading ? (
-            <>
-              <div className="h-3.5 w-20 rounded mb-3"
-                style={{ background: 'var(--glass-border)', animation: 'pulse 1.5s infinite' }} />
-              <div className="h-8 w-40 rounded"
-                style={{ background: 'var(--glass-border)', animation: 'pulse 1.5s infinite' }} />
-            </>
-          ) : (
-            <>
-              <p className="text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Saldo total</p>
-              <AnimatedValue
-                value={totalBalance}
-                format="currency"
-                group="financial"
-                className={`text-3xl font-bold ${totalBalance >= 0 ? '' : ''}`}
-                style={{ color: totalBalance >= 0 ? 'var(--success)' : 'var(--danger)' }}
-              />
-            </>
-          )}
-        </div>
-
-        {/* Contas ativas */}
-        <div className="p-5" style={glassStyle}>
-          {loading ? (
-            <>
-              <div className="h-3.5 w-24 rounded mb-3"
-                style={{ background: 'var(--glass-border)', animation: 'pulse 1.5s infinite' }} />
-              <div className="h-8 w-12 rounded"
-                style={{ background: 'var(--glass-border)', animation: 'pulse 1.5s infinite' }} />
-            </>
-          ) : (
-            <>
-              <p className="text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Contas ativas</p>
-              <p className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>
-                {activeCount}
-              </p>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ── Lista de contas ── */}
-      {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="p-5" style={glassStyle}>
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-full shrink-0"
-                  style={{ background: 'var(--glass-border)', animation: 'pulse 1.5s infinite' }} />
-                <div className="space-y-2 flex-1">
-                  <div className="h-3.5 w-32 rounded"
-                    style={{ background: 'var(--glass-border)', animation: 'pulse 1.5s infinite' }} />
-                  <div className="h-3 w-20 rounded"
-                    style={{ background: 'var(--glass-border)', animation: 'pulse 1.5s infinite' }} />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : accounts.length === 0 ? (
-        <div
-          className="p-10 text-center"
-          style={{
-            ...glassStyle,
-            border: '1px dashed var(--glass-border)',
-          }}
-        >
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            Nenhuma conta cadastrada ainda.
-          </p>
-          <button
-            onClick={() => dispatch('nova-conta')}
-            className="mt-3 text-sm hover:underline"
-            style={{ color: 'var(--primary)' }}
-          >
-            Criar primeira conta
+      {/* Tabs */}
+      <div className="flex gap-2 mb-6">
+        {TABS.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              tab === t.key
+                ? t.activeClass
+                : 'bg-bg-surface text-text-secondary border border-white/5 hover:bg-white/5'
+            }`}>
+            <t.Icon weight="duotone" size={15} />
+            {t.label}
+            <span className="text-xs opacity-60">{t.count}</span>
           </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {accounts.map(account => {
-            const info = typeInfo(account.type)
-            return (
-              <div
-                key={account.id}
-                className="p-5 flex items-start justify-between"
-                style={{
-                  ...glassStyle,
-                  opacity: account.is_active ? 1 : 0.55,
-                  transition: 'border-color 200ms, box-shadow 200ms, opacity 200ms',
-                }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--glass-hover-border)'
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--glass-border)'
-                }}
-              >
-                {/* Avatar + info */}
-                <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-base shrink-0"
-                    style={{ backgroundColor: account.color }}
-                  >
-                    {account.icon ? account.icon : account.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-                        {account.name}
-                      </p>
-                      {!account.is_active && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0"
-                          style={{
-                            background: 'var(--glass-border)',
-                            color:      'var(--text-secondary)',
-                          }}
-                        >
-                          inativa
-                        </span>
-                      )}
-                    </div>
-                    <p
-                      className="text-xs flex items-center gap-1 mt-0.5"
-                      style={{ color: 'var(--text-secondary)' }}
-                    >
-                      <info.Icon weight="duotone" size={12} />
-                      {info.label}
-                    </p>
-                    <AnimatedValue
-                      value={Number(account.current_balance)}
-                      format="currency"
-                      group="financial"
-                      className="text-sm font-semibold mt-1"
-                      style={{
-                        color: Number(account.current_balance) >= 0
-                          ? 'var(--success)'
-                          : 'var(--danger)',
-                      }}
-                    />
-                  </div>
-                </div>
+        ))}
+      </div>
 
-                {/* Ações */}
-                <div className="flex flex-col gap-1 items-end shrink-0 ml-2">
-                  <button
-                    onClick={() => openEdit(account)}
-                    className="text-xs px-2 py-1 rounded transition-colors"
-                    style={{ color: 'var(--text-secondary)' }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.color = 'var(--primary)'
-                      e.currentTarget.style.background = 'rgba(var(--primary-rgb,124,58,237),0.08)'
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.color = 'var(--text-secondary)'
-                      e.currentTarget.style.background = 'transparent'
-                    }}
-                  >
-                    Editar
-                  </button>
-                  <button
-                    onClick={() => toggleActive(account)}
-                    className="text-xs px-2 py-1 rounded transition-colors"
-                    style={{ color: 'var(--text-secondary)' }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.color = 'var(--warning)'
-                      e.currentTarget.style.background = 'rgba(var(--primary-rgb,124,58,237),0.08)'
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.color = 'var(--text-secondary)'
-                      e.currentTarget.style.background = 'transparent'
-                    }}
-                  >
-                    {account.is_active ? 'Desativar' : 'Ativar'}
-                  </button>
-                  <button
-                    onClick={() => requestDelete(account)}
-                    disabled={deletingId === account.id}
-                    className="text-xs px-2 py-1 rounded transition-colors disabled:opacity-40"
-                    style={{ color: 'var(--text-secondary)' }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.color = 'var(--danger)'
-                      e.currentTarget.style.background = 'rgba(var(--primary-rgb,124,58,237),0.08)'
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.color = 'var(--text-secondary)'
-                      e.currentTarget.style.background = 'transparent'
-                    }}
-                  >
-                    {deletingId === account.id ? '...' : 'Excluir'}
-                  </button>
+      {loading ? (
+        <p className="text-text-secondary text-sm">Carregando...</p>
+
+      ) : tab === 'investment' ? (
+        <div className="space-y-8">
+          {/* Categorias de investimento */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-semibold text-text-primary">Categorias de Investimento</p>
+                <p className="text-xs text-text-secondary mt-0.5">Classificam as transações do tipo investimento</p>
+              </div>
+              <button onClick={openCreate} className="text-xs text-accent-primary hover:underline font-medium">
+                + Nova categoria
+              </button>
+            </div>
+            {filtered.length === 0 ? (
+              <div className="bg-bg-surface border border-dashed border-white/10 rounded-xl p-6 text-center">
+                <p className="text-text-secondary text-sm">Nenhuma categoria de investimento ainda.</p>
+                <button onClick={openCreate} className="mt-2 text-accent-primary text-sm hover:underline">Criar primeira</button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {filtered.map(cat => (
+                  <CategoryCard key={cat.id} cat={cat} deletingId={deletingId}
+                    onEdit={openEdit} onDelete={handleDelete} />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-white/5" />
+
+          {/* Objetivos financeiros */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-semibold text-text-primary">Objetivos Financeiros</p>
+                <p className="text-xs text-text-secondary mt-0.5">Agrupam investimentos por intenção — reserva, viagem, aposentadoria…</p>
+              </div>
+              <button onClick={openCreateGoal} className="text-xs text-accent-primary hover:underline font-medium">
+                + Novo objetivo
+              </button>
+            </div>
+            {goals.length === 0 ? (
+              <div className="bg-bg-surface border border-dashed border-white/10 rounded-xl p-6 text-center">
+                <p className="text-text-secondary text-sm">Nenhum objetivo criado ainda.</p>
+                <button onClick={openCreateGoal} className="mt-2 text-accent-primary text-sm hover:underline">
+                  Criar primeiro objetivo
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {goals.map(g => (
+                  <GoalCard key={g.id} g={g} deletingGoalId={deletingGoalId}
+                    onEdit={openEditGoal} onDelete={handleDeleteGoal} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+      ) : (
+        filtered.length === 0 ? (
+          <div className="bg-bg-surface border border-dashed border-white/10 rounded-xl p-10 text-center">
+            <p className="text-text-secondary text-sm">
+              Nenhuma categoria de {tab === 'expense' ? 'despesa' : 'receita'} ainda.
+            </p>
+            <button onClick={openCreate} className="mt-3 text-accent-primary text-sm hover:underline">
+              Criar primeira categoria
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filtered.map(cat => (
+              <CategoryCard key={cat.id} cat={cat} deletingId={deletingId}
+                onEdit={openEdit} onDelete={handleDelete} />
+            ))}
+          </div>
+        )
+      )}
+
+      {/* ── Modal Categoria ─────────────────────────────────────────────── */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-bg-surface rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg font-semibold text-text-primary mb-5">
+              {editingId ? 'Editar Categoria' : 'Nova Categoria'}
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-text-secondary mb-1">Nome</label>
+                <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                  placeholder="Ex: Aporte, Reserva, Ações..."
+                  className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+              </div>
+
+              <div>
+                <label className="block text-sm text-text-secondary mb-1">Tipo</label>
+                <div className="flex gap-2">
+                  {([
+                    { v: 'expense'    as const, label: 'Despesa',      Icon: ArrowDown },
+                    { v: 'income'     as const, label: 'Receita',      Icon: ArrowUp   },
+                    { v: 'investment' as const, label: 'Investimento', Icon: TrendUp   },
+                  ]).map(t => (
+                    <button key={t.v} onClick={() => setForm({ ...form, type: t.v })}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                        form.type === t.v
+                          ? typeActiveClass(t.v)
+                          : 'border border-white/10 text-text-secondary hover:bg-white/5'
+                      }`}>
+                      <t.Icon weight="duotone" size={13} />
+                      {t.label}
+                    </button>
+                  ))}
                 </div>
               </div>
-            )
-          })}
+
+              {/* Ícone — category_icon, exceção permitida */}
+              <div>
+                <label className="block text-sm text-text-secondary mb-2">Ícone</label>
+                <div className="flex gap-2 flex-wrap">
+                  {ICONS.map(icon => (
+                    <button key={icon} onClick={() => setForm({ ...form, icon, customIcon: '' })}
+                      className={`w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all ${
+                        form.icon === icon && !form.customIcon
+                          ? 'bg-accent-primary/20 ring-2 ring-accent-primary scale-110'
+                          : 'bg-white/5 hover:bg-white/10'
+                      }`}>
+                      {icon}
+                    </button>
+                  ))}
+                </div>
+                <input type="text" value={form.customIcon} onChange={e => setForm({ ...form, customIcon: e.target.value })}
+                  placeholder="Ou digite um emoji personalizado…" maxLength={4}
+                  className="mt-2 w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+              </div>
+
+              <div>
+                <label className="block text-sm text-text-secondary mb-2">Cor</label>
+                <div className="flex gap-2 flex-wrap">
+                  {COLORS.map(color => (
+                    <button key={color} onClick={() => setForm({ ...form, color })}
+                      className="w-7 h-7 rounded-full transition-transform hover:scale-110"
+                      style={{ backgroundColor: color, outline: form.color === color ? `3px solid ${color}` : 'none', outlineOffset: '2px' }} />
+                  ))}
+                </div>
+              </div>
+
+              {/* Preview */}
+              <div className="bg-bg rounded-lg p-3 flex items-center gap-3 border border-white/5">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
+                  style={{ backgroundColor: form.color + '22', border: `2px solid ${form.color}55` }}>
+                  {activeIcon}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-text-primary">{form.name || 'Prévia da categoria'}</p>
+                  <p className="text-xs text-text-secondary">
+                    {form.type === 'expense' ? 'Despesa' : form.type === 'income' ? 'Receita' : 'Investimento'}
+                  </p>
+                </div>
+              </div>
+
+              {error && <p className="text-sm text-danger">{error}</p>}
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setShowModal(false)}
+                className="flex-1 border border-white/10 text-text-secondary rounded-lg py-2 text-sm hover:bg-white/5 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={handleSave} disabled={saving}
+                className="flex-1 btn-primary rounded-lg py-2 text-sm font-medium disabled:opacity-50 transition-colors">
+                {saving ? 'Salvando...' : editingId ? 'Salvar alterações' : 'Criar categoria'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          Modal de confirmação de exclusão
-          (substitui confirm() nativo — anti-padrão documentado)
-      ══════════════════════════════════════════════════════════════════════ */}
-      <AppModal
-        open={!!confirmDelete}
-        onClose={() => setConfirmDelete(null)}
-        title="Excluir conta"
-        size="sm"
-        footer={
-          <AppModal.Footer align="between">
-            <button
-              onClick={() => setConfirmDelete(null)}
-              className="flex-1 rounded-lg py-2 text-sm transition-colors hover:opacity-80"
-              style={{
-                border:     '1px solid var(--glass-border)',
-                color:      'var(--text-secondary)',
-                background: 'transparent',
-              }}
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={confirmDeleteAccount}
-              className="flex-1 rounded-lg py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-              style={{ background: 'var(--danger)' }}
-            >
-              Excluir
-            </button>
-          </AppModal.Footer>
-        }
-      >
-        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          Tem certeza que deseja excluir a conta{' '}
-          <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
-            "{confirmDelete?.name}"
-          </span>
-          ? Esta ação não pode ser desfeita.
-        </p>
-      </AppModal>
+      {/* ── Modal Objetivo ───────────────────────────────────────────────── */}
+      {showGoalModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-bg-surface rounded-2xl w-full max-w-md p-6 shadow-xl border border-white/5 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg font-semibold text-text-primary mb-5">
+              {editingGoalId ? 'Editar Objetivo' : 'Novo Objetivo'}
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-text-secondary mb-1">Nome do objetivo</label>
+                <input type="text" value={goalForm.name} onChange={e => setGoalForm({ ...goalForm, name: e.target.value })}
+                  placeholder="Ex: Reserva de emergência, Carro, Viagem..."
+                  className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+              </div>
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          Modal de exclusão bloqueada (conta com transações)
-          (substitui alert() nativo)
-      ══════════════════════════════════════════════════════════════════════ */}
-      <AppModal
-        open={!!deleteBlocked}
-        onClose={() => setDeleteBlocked(null)}
-        title="Não é possível excluir"
-        size="sm"
-        footer={
-          <AppModal.Footer align="end">
-            <button
-              onClick={() => setDeleteBlocked(null)}
-              className="rounded-lg px-5 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-              style={{ background: 'var(--primary)' }}
-            >
-              Entendi
-            </button>
-          </AppModal.Footer>
-        }
-      >
-        <div className="flex items-start gap-3">
-          <Warning weight="duotone" size={20} style={{ color: 'var(--warning)', flexShrink: 0, marginTop: 2 }} />
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            A conta{' '}
-            <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
-              "{deleteBlocked?.account.name}"
-            </span>{' '}
-            possui{' '}
-            <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
-              {deleteBlocked?.count} transação(ões)
-            </span>{' '}
-            vinculada(s) e não pode ser excluída.
-          </p>
-        </div>
-      </AppModal>
+              {/* Ícone do objetivo — category_icon, exceção permitida */}
+              <div>
+                <label className="block text-sm text-text-secondary mb-2">Ícone</label>
+                <div className="flex gap-2 flex-wrap">
+                  {GOAL_ICONS.map(icon => (
+                    <button key={icon} onClick={() => setGoalForm({ ...goalForm, icon })}
+                      className={`w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all ${
+                        goalForm.icon === icon
+                          ? 'bg-accent-primary/20 ring-2 ring-accent-primary scale-110'
+                          : 'bg-white/5 hover:bg-white/10'
+                      }`}>
+                      {icon}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          Modal de edição — permanece local (edição de dados existentes)
-          Criação delegada ao NovaContaModal canônico via dispatch('nova-conta')
-      ══════════════════════════════════════════════════════════════════════ */}
-      <AppModal
-        open={editModal}
-        onClose={() => setEditModal(false)}
-        title="Editar Conta"
-        size="md"
-        footer={
-          <AppModal.Footer align="between">
-            <button
-              onClick={() => setEditModal(false)}
-              className="flex-1 rounded-lg py-2 text-sm transition-colors hover:opacity-80"
-              style={{
-                border:     '1px solid var(--glass-border)',
-                color:      'var(--text-secondary)',
-                background: 'transparent',
-              }}
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleEditSave}
-              disabled={editSaving}
-              className="flex-1 rounded-lg py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-              style={{ background: 'var(--primary)' }}
-            >
-              {editSaving ? 'Salvando...' : 'Salvar alterações'}
-            </button>
-          </AppModal.Footer>
-        }
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>
-              Nome da conta
-            </label>
-            <input
-              type="text"
-              value={editForm.name}
-              onChange={e => setEditForm({ ...editForm, name: e.target.value })}
-              placeholder="Ex: Nubank, Bradesco..."
-              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
-              style={{
-                background:  'var(--glass-bg)',
-                color:       'var(--text-primary)',
-                border:      '1px solid var(--glass-border)',
-              }}
-              onFocus={e => { e.currentTarget.style.borderColor = 'var(--primary)' }}
-              onBlur={e => { e.currentTarget.style.borderColor = 'var(--glass-border)' }}
-            />
-          </div>
+              <div>
+                <label className="block text-sm text-text-secondary mb-2">Cor</label>
+                <div className="flex gap-2 flex-wrap">
+                  {COLORS.map(color => (
+                    <button key={color} onClick={() => setGoalForm({ ...goalForm, color })}
+                      className="w-7 h-7 rounded-full transition-transform hover:scale-110"
+                      style={{ backgroundColor: color, outline: goalForm.color === color ? `3px solid ${color}` : 'none', outlineOffset: '2px' }} />
+                  ))}
+                </div>
+              </div>
 
-          <div>
-            <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>
-              Tipo
-            </label>
-            <select
-              value={editForm.type}
-              onChange={e => setEditForm({ ...editForm, type: e.target.value as AccountType })}
-              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
-              style={{
-                background:  'var(--glass-bg)',
-                color:       'var(--text-primary)',
-                border:      '1px solid var(--glass-border)',
-              }}
-              onFocus={e => { e.currentTarget.style.borderColor = 'var(--primary)' }}
-              onBlur={e => { e.currentTarget.style.borderColor = 'var(--glass-border)' }}
-            >
-              {ACCOUNT_TYPES.map(t => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </select>
-          </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-text-secondary mb-1">
+                    Valor meta (R$) <span className="opacity-60">opcional</span>
+                  </label>
+                  <input type="number" value={goalForm.target_amount} onChange={e => setGoalForm({ ...goalForm, target_amount: e.target.value })}
+                    placeholder="0,00" min="0" step="0.01"
+                    className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+                </div>
+                <div>
+                  <label className="block text-sm text-text-secondary mb-1">
+                    Data alvo <span className="opacity-60">opcional</span>
+                  </label>
+                  <input type="date" value={goalForm.target_date} onChange={e => setGoalForm({ ...goalForm, target_date: e.target.value })}
+                    className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary" />
+                </div>
+              </div>
 
-          <div>
-            <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>
-              Ícone <span style={{ opacity: 0.5 }}>(emoji opcional)</span>
-            </label>
-            <input
-              type="text"
-              value={editForm.icon}
-              onChange={e => setEditForm({ ...editForm, icon: e.target.value })}
-              placeholder="Ex: 💜 🏦 💰"
-              maxLength={4}
-              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
-              style={{
-                background:  'var(--glass-bg)',
-                color:       'var(--text-primary)',
-                border:      '1px solid var(--glass-border)',
-              }}
-              onFocus={e => { e.currentTarget.style.borderColor = 'var(--primary)' }}
-              onBlur={e => { e.currentTarget.style.borderColor = 'var(--glass-border)' }}
-            />
-          </div>
+              {/* Preview */}
+              <div className="bg-bg rounded-lg p-3 flex items-center gap-3 border border-white/5">
+                <div className="w-11 h-11 rounded-full flex items-center justify-center text-xl shrink-0"
+                  style={{ backgroundColor: goalForm.color + '22', border: `2px solid ${goalForm.color}55` }}>
+                  {goalForm.icon}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-text-primary">{goalForm.name || 'Prévia do objetivo'}</p>
+                  {goalForm.target_amount && (
+                    <p className="text-xs text-text-secondary">
+                      Meta: {parseFloat(goalForm.target_amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      {goalForm.target_date ? ` · ${new Date(goalForm.target_date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
+                    </p>
+                  )}
+                </div>
+              </div>
 
-          <div>
-            <label className="block text-sm mb-2" style={{ color: 'var(--text-secondary)' }}>
-              Cor
-            </label>
-            <div className="flex gap-2 flex-wrap">
-              {COLORS.map(color => (
-                <button
-                  key={color}
-                  onClick={() => setEditForm({ ...editForm, color })}
-                  className="w-7 h-7 rounded-full transition-transform hover:scale-110"
-                  style={{
-                    backgroundColor: color,
-                    outline:         editForm.color === color ? `3px solid ${color}` : 'none',
-                    outlineOffset:   '2px',
-                  }}
-                />
-              ))}
+              {goalError && <p className="text-sm text-danger">{goalError}</p>}
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setShowGoalModal(false)}
+                className="flex-1 border border-white/10 text-text-secondary rounded-lg py-2 text-sm hover:bg-white/5 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={handleSaveGoal} disabled={savingGoal}
+                className="flex-1 btn-primary rounded-lg py-2 text-sm font-medium disabled:opacity-50 transition-colors">
+                {savingGoal ? 'Salvando...' : editingGoalId ? 'Salvar alterações' : 'Criar objetivo'}
+              </button>
             </div>
           </div>
+        </div>
+      )}
+    </PageContainer>
+  )
+}
 
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="is_active_edit"
-              checked={editForm.is_active}
-              onChange={e => setEditForm({ ...editForm, is_active: e.target.checked })}
-              className="w-4 h-4"
-              style={{ accentColor: 'var(--primary)' }}
-            />
-            <label
-              htmlFor="is_active_edit"
-              className="text-sm"
-              style={{ color: 'var(--text-secondary)' }}
-            >
-              Conta ativa
-            </label>
-          </div>
+// ── Sub-componentes extraídos para evitar repetição ───────────────────────────
 
-          {editError && (
-            <p className="text-sm" style={{ color: 'var(--danger)' }}>{editError}</p>
+function CategoryCard({
+  cat, deletingId, onEdit, onDelete,
+}: {
+  cat: Category
+  deletingId: string | null
+  onEdit: (cat: Category) => void
+  onDelete: (cat: Category) => void
+}) {
+  return (
+    <div className="bg-bg-surface border border-white/5 rounded-xl p-4 flex items-center justify-between group hover:border-white/10 transition-colors">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
+          style={{ backgroundColor: cat.color + '22', border: `2px solid ${cat.color}44` }}>
+          {cat.icon}
+        </div>
+        <span className="font-medium text-text-primary text-sm">{cat.name}</span>
+      </div>
+      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button onClick={() => onEdit(cat)}
+          className="text-xs text-text-secondary hover:text-accent-primary px-2 py-1 rounded hover:bg-white/5 transition-colors">
+          Editar
+        </button>
+        <button onClick={() => onDelete(cat)} disabled={deletingId === cat.id}
+          className="text-xs text-text-secondary hover:text-danger px-2 py-1 rounded hover:bg-white/5 transition-colors disabled:opacity-50">
+          {deletingId === cat.id ? '...' : 'Excluir'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function GoalCard({
+  g, deletingGoalId, onEdit, onDelete,
+}: {
+  g: InvestmentGoal
+  deletingGoalId: string | null
+  onEdit: (g: InvestmentGoal) => void
+  onDelete: (g: InvestmentGoal) => void
+}) {
+  const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return (
+    <div className="bg-bg-surface border border-white/5 rounded-xl p-4 flex items-center justify-between group hover:border-white/10 transition-colors">
+      <div className="flex items-center gap-3">
+        <div className="w-11 h-11 rounded-full flex items-center justify-center text-xl shrink-0"
+          style={{ backgroundColor: g.color + '22', border: `2px solid ${g.color}55` }}>
+          {g.icon}
+        </div>
+        <div>
+          <p className="font-medium text-text-primary text-sm">{g.name}</p>
+          {g.target_amount && (
+            <p className="text-xs text-text-secondary mt-0.5">
+              Meta: {fmt(g.target_amount)}
+              {g.target_date ? ` · ${new Date(g.target_date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
+            </p>
           )}
         </div>
-      </AppModal>
-
-    </PageContainer>
+      </div>
+      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button onClick={() => onEdit(g)}
+          className="text-xs text-text-secondary hover:text-accent-primary px-2 py-1 rounded hover:bg-white/5 transition-colors">
+          Editar
+        </button>
+        <button onClick={() => onDelete(g)} disabled={deletingGoalId === g.id}
+          className="text-xs text-text-secondary hover:text-danger px-2 py-1 rounded hover:bg-white/5 transition-colors disabled:opacity-50">
+          {deletingGoalId === g.id ? '...' : 'Excluir'}
+        </button>
+      </div>
+    </div>
   )
 }
