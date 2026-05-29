@@ -1,4 +1,3 @@
-// src/components/layout/PageHeader.tsx
 import React from 'react'
 
 interface PageHeaderProps {
@@ -29,8 +28,8 @@ export function PageHeader({
     >
       <div>
         {backHref && (
-          
-          <a  href={backHref}
+          <a
+            href={backHref}
             className="text-sm transition-opacity duration-200 hover:opacity-100"
             style={{ color: 'var(--text-muted)', opacity: 0.7 }}
           >
@@ -50,15 +49,15 @@ export function PageHeader({
           {title}
         </h1>
         {description && (
-          <p
-            className="text-sm mt-0.5"
-            style={{ color: 'var(--text-muted)' }}
-          >
+          <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
             {description}
           </p>
         )}
       </div>
-      {action && <div className="shrink-0">{action}</div>}
+
+      {action && (
+        <div className="hidden md:flex shrink-0">{action}</div>
+      )}
     </div>
   )
 }

@@ -505,29 +505,29 @@ export default function DashboardPage() {
 
       {/* ── Toggles de privacidade ── */}
       <div className="flex items-center justify-end gap-4 mb-3">
-        <button
-          onClick={toggleFinancial}
-          className="flex items-center gap-1.5 text-xs transition-opacity hover:opacity-70"
-          style={{ color: 'var(--text-secondary)' }}
-          aria-label={financialVisible ? 'Ocultar valores financeiros' : 'Mostrar valores financeiros'}
-        >
-          {financialVisible
-            ? <Eye weight="duotone" size={14} />
-            : <EyeSlash weight="duotone" size={14} />}
-          Financeiro
-        </button>
-        <button
-          onClick={toggleInvestments}
-          className="flex items-center gap-1.5 text-xs transition-opacity hover:opacity-70"
-          style={{ color: 'var(--text-secondary)' }}
-          aria-label={investmentsVisible ? 'Ocultar investimentos' : 'Mostrar investimentos'}
-        >
-          {investmentsVisible
-            ? <Eye weight="duotone" size={14} />
-            : <EyeSlash weight="duotone" size={14} />}
-          Investimentos
-        </button>
-      </div>
+  <button
+    onClick={toggleFinancial}
+    className="flex items-center gap-1.5 text-xs min-h-[44px] px-2 transition-opacity hover:opacity-70"
+    style={{ color: 'var(--text-secondary)' }}
+    aria-label={financialVisible ? 'Ocultar valores financeiros' : 'Mostrar valores financeiros'}
+  >
+    {financialVisible
+      ? <Eye weight="duotone" size={14} />
+      : <EyeSlash weight="duotone" size={14} />}
+    Financeiro
+  </button>
+  <button
+    onClick={toggleInvestments}
+    className="flex items-center gap-1.5 text-xs min-h-[44px] px-2 transition-opacity hover:opacity-70"
+    style={{ color: 'var(--text-secondary)' }}
+    aria-label={investmentsVisible ? 'Ocultar investimentos' : 'Mostrar investimentos'}
+  >
+    {investmentsVisible
+      ? <Eye weight="duotone" size={14} />
+      : <EyeSlash weight="duotone" size={14} />}
+    Investimentos
+  </button>
+</div>
 
       {/* ── KPI Cards — glass-card + AnimatedValue + accent bar ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-7">
@@ -659,50 +659,52 @@ export default function DashboardPage() {
                 <Receipt weight="duotone" size={32} style={{ color: 'var(--border)' }} />
                 <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Sem despesas este mês</p>
               </div>
-            ) : (
-              <div className="flex items-center gap-6">
-                <ResponsiveContainer width="45%" height={160}>
-                  <PieChart>
-                    <Pie
-                      data={catSlices}
-                      cx="50%" cy="50%"
-                      innerRadius={48}
-                      outerRadius={72}
-                      dataKey="value"
-                      stroke="var(--glass-bg, var(--surface))"
-                      strokeWidth={3}
-                      paddingAngle={2}
-                    >
-                      {catSlices.map((_, i) => (
-                        <Cell key={i} fill={SLICE_COLORS[i % SLICE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<ChartTooltip />} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="flex-1 space-y-2.5">
-                  {catSlices.map((slice, i) => {
-                    const total = catSlices.reduce((s, c) => s + c.value, 0)
-                    const pct   = total > 0 ? Math.round((slice.value / total) * 100) : 0
-                    return (
-                      <div key={slice.name} className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full shrink-0"
-                          style={{
-                            backgroundColor: SLICE_COLORS[i % SLICE_COLORS.length],
-                            boxShadow: `0 0 6px ${SLICE_COLORS[i % SLICE_COLORS.length]}88`,
-                          }} />
-                        <p className="text-xs truncate flex-1" style={{ color: 'var(--text-secondary)' }}>
-                          {slice.name}
-                        </p>
-                        <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>
-                          {pct}%
-                        </p>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
+           ) : (
+  <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+    <div className="w-full sm:w-[45%] shrink-0">
+      <ResponsiveContainer width="100%" height={150}>
+        <PieChart>
+          <Pie
+            data={catSlices}
+            cx="50%" cy="50%"
+            innerRadius={44}
+            outerRadius={66}
+            dataKey="value"
+            stroke="var(--glass-bg, var(--surface))"
+            strokeWidth={3}
+            paddingAngle={2}
+          >
+            {catSlices.map((_, i) => (
+              <Cell key={i} fill={SLICE_COLORS[i % SLICE_COLORS.length]} />
+            ))}
+          </Pie>
+          <Tooltip content={<ChartTooltip />} />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+    <div className="flex-1 w-full space-y-2">
+      {catSlices.map((slice, i) => {
+        const total = catSlices.reduce((s, c) => s + c.value, 0)
+        const pct   = total > 0 ? Math.round((slice.value / total) * 100) : 0
+        return (
+          <div key={slice.name} className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full shrink-0"
+              style={{
+                backgroundColor: SLICE_COLORS[i % SLICE_COLORS.length],
+                boxShadow: `0 0 6px ${SLICE_COLORS[i % SLICE_COLORS.length]}88`,
+              }} />
+            <p className="text-xs truncate flex-1" style={{ color: 'var(--text-secondary)' }}>
+              {slice.name}
+            </p>
+            <p className="text-xs font-medium shrink-0" style={{ color: 'var(--text)' }}>
+              {pct}%
+            </p>
+          </div>
+        )
+      })}
+    </div>
+  </div>
+)}
           </div>
         </div>
 
