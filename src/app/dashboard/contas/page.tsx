@@ -7,6 +7,7 @@ import { Account, AccountType } from '@/types'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AppModal } from '@/components/AppModal'
+import { AnimatedValue } from '@/components/ui/AnimatedValue'
 import { Bank, PiggyBank, Wallet, TrendUp, Folder, Plus, CheckCircle, XCircle } from '@phosphor-icons/react'
 
 const ACCOUNT_TYPES: { value: AccountType; label: string; Icon: React.ElementType }[] = [
