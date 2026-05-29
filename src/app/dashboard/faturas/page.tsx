@@ -13,6 +13,7 @@ import {
   ArrowsClockwise,
   CheckCircle,
   Clock,
+  Scales,
 } from '@phosphor-icons/react'
 import {
   projectForecast,
@@ -179,9 +180,6 @@ function FaturasError({ message, onRetry }: { message?: string; onRetry: () => v
   )
 }
 
-// ─── Badge "Recorrente" ───────────────────────────────────────────────────────
-// Linguagem: "Recorrente" comunica automático, contínuo, inevitável — sem parecer pendente
-
 function RecorrenteBadge() {
   return (
     <span
@@ -194,6 +192,197 @@ function RecorrenteBadge() {
     >
       Recorrente
     </span>
+  )
+}
+
+// ─── Bloco de Reconciliação ───────────────────────────────────────────────────
+// Princípios:
+//   - computedTotal = ledger factual (LEDGER_STATUSES) — forecast não entra
+//   - valorInformado = estado local/localStorage — não é dado financeiro canônico
+//   - divergência = valorInformado - computedTotal — derivado em runtime, nunca persistido
+//   - fatura cancelled → bloco não renderiza
+//   - fatura futura → bloco não renderiza (reconciliar previsão é conceitualmente errado)
+//   - fatura open → modo "parcial" com aviso discreto
+
+interface ReconciliacaoBlockProps {
+  invoice:       Invoice
+  computedTotal: number
+  storageKey:    string
+}
+
+function ReconciliacaoBlock({ invoice, computedTotal, storageKey }: ReconciliacaoBlockProps) {
+  const [rawValue,  setRawValue]  = useState('')
+  const [isFocused, setIsFocused] = useState(false)
+
+  // Lê localStorage ao montar / quando chave muda
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey)
+      setRawValue(saved ?? '')
+    } catch {
+      setRawValue('')
+    }
+  }, [storageKey])
+
+  // Persiste no localStorage ao digitar
+  useEffect(() => {
+    try {
+      if (rawValue.trim()) {
+        localStorage.setItem(storageKey, rawValue)
+      } else {
+        localStorage.removeItem(storageKey)
+      }
+    } catch { /* localStorage pode estar bloqueado */ }
+  }, [rawValue, storageKey])
+
+  const valorInformado = parseFloat(rawValue.replace(',', '.')) || 0
+  const temValor       = valorInformado > 0
+  const divergencia    = temValor ? valorInformado - computedTotal : null
+  const conciliado     = divergencia !== null && Math.abs(divergencia) < 0.01
+  const isOpen         = invoice.status === 'open'
+
+  // Badge semântica por estado
+  type BadgeVariant = 'conciliado' | 'divergencia' | 'parcial_ok' | 'parcial_dif' | 'aguardando'
+  let badge: BadgeVariant = 'aguardando'
+  if (temValor) {
+    if (isOpen)      badge = conciliado ? 'parcial_ok'  : 'parcial_dif'
+    else             badge = conciliado ? 'conciliado'  : 'divergencia'
+  }
+
+  const BADGE_CONFIG: Record<BadgeVariant, { label: string; background: string; color: string; border: string }> = {
+    conciliado:  { label: '✓ Conciliada',         background: 'rgba(34,197,94,0.08)',   color: 'var(--success, #16a34a)', border: '1px solid rgba(34,197,94,0.2)'   },
+    divergencia: { label: '⚠ Divergência',         background: 'rgba(239,68,68,0.08)',   color: 'var(--danger, #dc2626)',  border: '1px solid rgba(239,68,68,0.2)'   },
+    parcial_ok:  { label: '✓ Parcial conciliada',  background: 'rgba(59,130,246,0.08)',  color: 'var(--info, #3b82f6)',    border: '1px solid rgba(59,130,246,0.2)'  },
+    parcial_dif: { label: '⚠ Diferença parcial',   background: 'rgba(234,179,8,0.08)',   color: 'var(--warning, #ca8a04)', border: '1px solid rgba(234,179,8,0.2)'   },
+    aguardando:  { label: '— Aguardando valor',    background: 'rgba(107,114,128,0.08)', color: 'var(--text-secondary)',   border: '1px solid rgba(107,114,128,0.15)' },
+  }
+  const badgeCfg = BADGE_CONFIG[badge]
+
+  return (
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{
+        background:           'var(--glass-bg)',
+        backdropFilter:       'blur(var(--glass-blur))',
+        WebkitBackdropFilter: 'blur(var(--glass-blur))',
+        border:               '1px solid var(--glass-border)',
+      }}
+    >
+      {/* Header */}
+      <div
+        className="px-5 py-3 flex items-center justify-between"
+        style={{ borderBottom: '1px solid var(--glass-border)' }}
+      >
+        <div className="flex items-center gap-2">
+          <Scales size={14} weight="duotone" style={{ color: 'var(--text-secondary)' }} />
+          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+            Reconciliação
+          </p>
+        </div>
+        <span
+          className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+          style={{ background: badgeCfg.background, color: badgeCfg.color, border: badgeCfg.border }}
+        >
+          {badgeCfg.label}
+        </span>
+      </div>
+
+      <div className="px-5 py-4 space-y-4">
+
+        {/* Aviso discreto para fatura aberta */}
+        {isOpen && (
+          <div
+            className="flex items-start gap-2 rounded-lg px-3 py-2"
+            style={{
+              background: 'rgba(59,130,246,0.06)',
+              border:     '1px solid rgba(59,130,246,0.12)',
+            }}
+          >
+            <Clock size={12} weight="duotone" style={{ color: 'var(--info, #3b82f6)', marginTop: 1, flexShrink: 0 }} />
+            <p className="text-[11px]" style={{ color: 'var(--info, #3b82f6)' }}>
+              Fatura aberta — novos lançamentos podem alterar o total do Sakel.
+            </p>
+          </div>
+        )}
+
+        {/* Linha: Total Sakel */}
+        <div className="flex items-center justify-between">
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Total Sakel</p>
+          <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+            {fmt(computedTotal)}
+          </p>
+        </div>
+
+        {/* Linha: Valor da fatura real (input) */}
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-sm shrink-0" style={{ color: 'var(--text-secondary)' }}>
+            Valor do banco
+          </p>
+          <div className="relative">
+            <span
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
+              style={{ color: isFocused ? 'var(--primary)' : 'var(--text-secondary)' }}
+            >
+              R$
+            </span>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={rawValue}
+              onChange={e => setRawValue(e.target.value)}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              placeholder="0,00"
+              className="w-36 pl-9 pr-3 py-1.5 rounded-lg text-sm text-right focus:outline-none"
+              style={{
+                background:   'var(--glass-bg)',
+                color:        'var(--text-primary)',
+                border:       `1px solid ${isFocused ? 'var(--primary)' : 'var(--glass-border)'}`,
+                boxShadow:    isFocused ? '0 0 0 2px rgba(var(--primary-rgb, 124,58,237), 0.12)' : 'none',
+                transition:   'border-color 0.15s, box-shadow 0.15s',
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Divider sutil */}
+        <div style={{ borderTop: '1px solid var(--glass-border)' }} />
+
+        {/* Linha: Divergência */}
+        <div className="flex items-center justify-between">
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Divergência</p>
+          {!temValor ? (
+            <p className="text-sm" style={{ color: 'var(--text-secondary)', opacity: 0.4 }}>—</p>
+          ) : conciliado ? (
+            <div className="flex items-center gap-1.5">
+              <CheckCircle size={14} weight="duotone" style={{ color: 'var(--success, #16a34a)' }} />
+              <p className="text-sm font-semibold" style={{ color: 'var(--success, #16a34a)' }}>
+                Nenhuma
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <Warning size={14} weight="duotone" style={{ color: divergencia! > 0 ? 'var(--warning, #ca8a04)' : 'var(--danger, #dc2626)' }} />
+              <p
+                className="text-sm font-semibold"
+                style={{ color: divergencia! > 0 ? 'var(--warning, #ca8a04)' : 'var(--danger, #dc2626)' }}
+              >
+                {divergencia! > 0 ? '+' : ''}{fmt(divergencia!)}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Nota explicativa quando há divergência */}
+        {temValor && !conciliado && divergencia !== null && (
+          <p className="text-[11px]" style={{ color: 'var(--text-secondary)', opacity: 0.7 }}>
+            {divergencia > 0
+              ? 'O banco registra mais do que o Sakel. Verifique lançamentos faltantes.'
+              : 'O Sakel registra mais do que o banco. Verifique duplicidades ou cancelamentos.'}
+          </p>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -266,7 +455,6 @@ export default function FaturasPage() {
     }
 
     // ── Forecast layer — só para faturas futuras não fechadas ─────────────────
-    // Princípio: fatura fechada/paga/cancelada = 100% factual, sem forecast
     let forecastItems: ForecastItem[] = []
 
     const invoiceStatus = invData?.status
@@ -399,7 +587,7 @@ export default function FaturasPage() {
     setInvoiceState(prev => ({
       ...prev,
       invoice:       prev.invoice ? { ...prev.invoice, status: 'paid', paid_account_id: payAccountId } : null,
-      forecastItems: [], // fatura paga → remove forecast
+      forecastItems: [],
     }))
     setHistory(prev => prev.map(h => h.id === invoice.id ? { ...h, status: 'paid' } : h))
     setShowPayModal(false)
@@ -415,6 +603,22 @@ export default function FaturasPage() {
   // Totais derivados
   const forecastTotal = forecastItems.reduce((s, f) => s + f.amount, 0)
   const expectedTotal = computedTotal + forecastTotal
+
+  // Chave de reconciliação — por cartão + competência (não por invoice id, para persistir entre reloads)
+  const reconStorageKey = selectedCard
+    ? `reconciliacao:${selectedCard.id}:${viewYear}-${String(viewMonth).padStart(2, '0')}`
+    : ''
+
+  // Condição para mostrar bloco de reconciliação:
+  //   - invoice existe (fatura real)
+  //   - não é futura (reconciliar previsão é conceitualmente errado)
+  //   - não está cancelada
+  const showReconciliacao = !!(
+    invoice &&
+    !isFuture &&
+    invoice.status !== 'cancelled' &&
+    invStatus === 'loaded'
+  )
 
   if (pageLoading) return <FaturasSkeleton />
   if (loadError)   return <FaturasError message={loadError} onRetry={boot} />
@@ -639,7 +843,6 @@ export default function FaturasPage() {
 
               <div className="flex items-end justify-between">
                 <div>
-                  {/* Label: "Total esperado" para mês futuro com forecast, senão "Total da fatura" */}
                   <p className="text-white/70 text-xs">
                     {hasForecast ? 'Total esperado' : 'Total da fatura'}
                   </p>
@@ -649,14 +852,12 @@ export default function FaturasPage() {
                     <p className="text-2xl font-bold opacity-50">—</p>
                   ) : (
                     <div>
-                      {/* Hero mostra total esperado (confirmado + recorrentes) quando há forecast */}
                       <p className="text-3xl font-bold">
                         {hasForecast
                           ? (expectedTotal > 0 ? fmt(expectedTotal) : '—')
                           : (computedTotal > 0 ? fmt(computedTotal) : '—')
                         }
                       </p>
-                      {/* Breakdown abaixo do total quando há forecast */}
                       {hasForecast && computedTotal > 0 && (
                         <p className="text-white/60 text-xs mt-0.5">
                           {fmt(computedTotal)} confirmados · {fmt(forecastTotal)} recorrentes
@@ -714,6 +915,16 @@ export default function FaturasPage() {
               )}
             </div>
 
+            {/* ── Bloco de Reconciliação ── */}
+            {/* Renderiza apenas para faturas reais não-futuras não-canceladas */}
+            {showReconciliacao && (
+              <ReconciliacaoBlock
+                invoice={invoice!}
+                computedTotal={computedTotal}
+                storageKey={reconStorageKey}
+              />
+            )}
+
             {/* Lista de lançamentos */}
             {invStatus === 'loaded' && (transactions.length > 0 || hasForecast) && (
               <div
@@ -748,7 +959,7 @@ export default function FaturasPage() {
                 </div>
 
                 <div>
-                  {/* ── Transações reais ── */}
+                  {/* Transações reais */}
                   {transactions.map((tx, i) => (
                     <div key={tx.id}>
                       <div className="flex items-center gap-4 px-5 py-3">
@@ -775,7 +986,7 @@ export default function FaturasPage() {
                     </div>
                   ))}
 
-                  {/* ── Itens recorrentes (forecast layer) ── */}
+                  {/* Itens recorrentes (forecast layer) */}
                   {hasForecast && (
                     <>
                       {transactions.length > 0 && (
@@ -826,9 +1037,7 @@ export default function FaturasPage() {
                     </>
                   )}
 
-                  {/* ── Rodapé de totais ── */}
-                  {/* Quando há forecast: mostra total esperado com breakdown */}
-                  {/* Quando não há forecast: mostra só total confirmado */}
+                  {/* Rodapé de totais */}
                   {hasForecast ? (
                     <div
                       className="px-5 py-3 space-y-1"
@@ -847,9 +1056,7 @@ export default function FaturasPage() {
                       </div>
                       <div className="flex justify-between items-center">
                         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                          {computedTotal > 0
-                            ? `Confirmados · Recorrentes`
-                            : 'Recorrentes estimados'}
+                          {computedTotal > 0 ? `Confirmados · Recorrentes` : 'Recorrentes estimados'}
                         </p>
                         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                           {computedTotal > 0
