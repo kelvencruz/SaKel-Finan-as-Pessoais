@@ -12,6 +12,8 @@
 //      Nunca de created_at ou updated_at.
 //   4. O mesmo número calculado de formas diferentes em telas diferentes é um bug.
 //      Dashboard, faturas, transações e reconciliação usam as mesmas funções daqui.
+//   5. Engine nunca retorna dados de UI (cor, label, ícone, opacity, classes CSS).
+//      A UI decide representação visual. Engine retorna semântica financeira.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Tipos base ───────────────────────────────────────────────────────────────
@@ -40,7 +42,6 @@ export const LEDGER_STATUSES: LifecycleStatus[] = [
   'PENDING_REVIEW',
 ]
 
-// Helper usado nos filtros Supabase (.in('lifecycle_status', getLedgerStatuses()))
 export function getLedgerStatuses(): LifecycleStatus[] {
   return LEDGER_STATUSES
 }
@@ -49,10 +50,7 @@ export function isLedgerStatus(status: LifecycleStatus): boolean {
   return LEDGER_STATUSES.includes(status)
 }
 
-// ─── OPERATIONAL_STATUSES — status que afetam visão operacional mas não ledger ─
-//
-// Usado na seção "Previsto / Em revisão" da tela de transações.
-// Separado do ledger para não contaminar saldo real.
+// ─── OPERATIONAL_STATUSES ─────────────────────────────────────────────────────
 
 export const OPERATIONAL_STATUSES: LifecycleStatus[] = [
   'PENDING_EXPECTED',
@@ -64,16 +62,12 @@ export function isOperationalStatus(status: LifecycleStatus): boolean {
 
 // ─── Helpers de data ──────────────────────────────────────────────────────────
 
-/**
- * Retorna { inicioMes, fimMes } no formato YYYY-MM-DD.
- * Sempre derivado do campo `date` — nunca de created_at.
- */
 export function getMonthRange(
   year: number,
   month: number, // 0-indexed (Date.getMonth())
 ): { inicioMes: string; fimMes: string } {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const m   = month + 1
+  const pad     = (n: number) => String(n).padStart(2, '0')
+  const m       = month + 1
   const lastDay = new Date(year, month + 1, 0).getDate()
   return {
     inicioMes: `${year}-${pad(m)}-01`,
@@ -81,24 +75,31 @@ export function getMonthRange(
   }
 }
 
-/**
- * Retorna a competência do mês atual no formato YYYY-MM.
- * Competência é sempre derivada de `date` — nunca de created_at.
- */
 export function getCurrentMonthKey(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
-/**
- * Converte uma data YYYY-MM-DD para competência YYYY-MM.
- * Use esta função — nunca slice(0,7) diretamente em created_at.
- */
 export function dateToCompetencia(date: string): string {
   return date.slice(0, 7)
 }
 
-// ─── Tipos de agregação ───────────────────────────────────────────────────────
+/**
+ * Retorna quantos dias até uma data YYYY-MM-DD.
+ * Negativo = vencida. Zero = hoje.
+ *
+ * Extraído do dashboard — centralizado aqui para que faturas,
+ * reconciliação e alertas usem a mesma referência.
+ */
+export function daysUntil(dateStr: string): number {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return Math.round(
+    (new Date(dateStr + 'T12:00:00').getTime() - today.getTime()) / 86_400_000
+  )
+}
+
+// ─── Agregações canônicas ─────────────────────────────────────────────────────
 
 export interface CatSlice {
   categoryId: string | null
@@ -109,31 +110,17 @@ export interface CatSlice {
 export const UNCATEGORIZED_LABEL = 'Sem categoria'
 
 export interface DualSummary {
-  /** Ledger factual — CONFIRMED + OVERDUE + PENDING_REVIEW */
   ledger: {
     income:  number
     expense: number
     balance: number
   }
-  /** Operacional — PENDING_EXPECTED (previsão que não é fato ainda) */
   operational: {
     income:  number
     expense: number
     balance: number
   }
 }
-
-// ─── calcDualSummary ──────────────────────────────────────────────────────────
-//
-// Calcula resumo financeiro em duas camadas a partir de uma lista de transações
-// já carregadas no cliente (ex: filtered em transações/page.tsx).
-//
-// ATENÇÃO: esta função opera sobre dados já filtrados pela UI.
-// Para agregações canônicas server-side (dashboard KPIs), use as queries
-// do dashboard com getLedgerStatuses() diretamente no Supabase.
-//
-// TD-001: destino correto é uma Supabase view get_financial_summary(user_id).
-// Mantido aqui até sprint de infraestrutura financeira.
 
 export function calcDualSummary(
   transactions: Array<{
@@ -157,7 +144,6 @@ export function calcDualSummary(
       if (tx.type === 'income')  opIncome  += Number(tx.amount)
       if (tx.type === 'expense') opExpense += Number(tx.amount)
     }
-    // CANCELLED: ignorado em ambas as camadas — nem ledger, nem operacional
   }
 
   return {
@@ -174,29 +160,32 @@ export function calcDualSummary(
   }
 }
 
+/**
+ * Calcula o saldo total de contas ativas (excluindo tipo 'credit').
+ *
+ * Extraído do dashboard — único ponto de verdade para saldo de contas.
+ * Faturas, reconciliação e widgets consomem esta função.
+ *
+ * @param accounts Lista de contas com current_balance
+ */
+export function calcAccountsBalance(
+  accounts: Array<{ current_balance: number }>
+): number {
+  return accounts.reduce((sum, a) => sum + Number(a.current_balance), 0)
+}
+
 // ─── Forecast layer ───────────────────────────────────────────────────────────
-//
-// Camada derivada — previsão de recorrências ativas calculada em runtime.
-// NÃO persistida. NÃO entra em saldo real, total de fatura ou reconciliação.
-//
-// Modelo mental:
-//   recurrence → intenção
-//   transaction → fato financeiro (gerado pelo engine)
-//   ForecastItem → derivação visual efêmera
-//
-// Transição: quando o engine gerar a transaction real para uma competência,
-// o ForecastItem dessa competência some — a transaction real aparece no lugar.
 
 export interface ForecastItem {
   recurrenceId:  string
   description:   string
   amount:        number
   type:          TxType
-  competencia:   string // YYYY-MM
-  expectedDate:  string // YYYY-MM-DD (próxima ocorrência estimada)
+  competencia:   string
+  expectedDate:  string
   creditCardId:  string | null
   categoryId:    string | null
-  isProjected:   true   // sempre true — distingue do ledger factual
+  isProjected:   true
 }
 
 export interface RecurrenceForForecast {
@@ -212,38 +201,22 @@ export interface RecurrenceForForecast {
   is_active:      boolean
 }
 
-/**
- * Projeta recorrências ativas para um conjunto de competências futuras.
- *
- * Retorna ForecastItem[] — itens derivados, nunca persistidos.
- *
- * @param recurrences  Lista de recorrências ativas (is_active=true, sem deleted_at)
- * @param competencias Lista de YYYY-MM a projetar (ex: ['2026-06', '2026-07'])
- * @param existing     Set de "recurrenceId:YYYY-MM" que já têm transaction real
- *                     Esses são excluídos do forecast — engine já gerou o fato
- */
 export function projectForecast(
   recurrences:  RecurrenceForForecast[],
   competencias: string[],
   existing:     Set<string>,
 ): ForecastItem[] {
   const items: ForecastItem[] = []
-  const today = new Date(); today.setHours(0, 0, 0, 0)
 
   for (const rec of recurrences) {
     if (!rec.is_active || !rec.next_due_date) continue
 
     for (const competencia of competencias) {
       const key = `${rec.id}:${competencia}`
-
-      // Se engine já gerou transaction real para essa competência → skip
       if (existing.has(key)) continue
 
-      // Verifica se a recorrência tem ocorrência nessa competência
       const expectedDate = getExpectedDateInCompetencia(rec, competencia)
       if (!expectedDate) continue
-
-      // Verifica end_date
       if (rec.end_date && expectedDate > rec.end_date) continue
 
       items.push({
@@ -263,71 +236,51 @@ export function projectForecast(
   return items
 }
 
-/**
- * Retorna a data esperada (YYYY-MM-DD) de uma recorrência em uma competência,
- * ou null se não há ocorrência nesse mês.
- *
- * Para frequência monthly: projeta a partir de next_due_date avançando mês a mês
- * até encontrar a competência alvo ou passar dela.
- */
 function getExpectedDateInCompetencia(
   rec:         RecurrenceForForecast,
-  competencia: string, // YYYY-MM
+  competencia: string,
 ): string | null {
   if (!rec.next_due_date) return null
 
-  const [targetYear, targetMonth] = competencia.split('-').map(Number)
-  const next = new Date(rec.next_due_date + 'T12:00:00')
-
-  // Competência do next_due_date
-  const nextComp = dateToCompetencia(rec.next_due_date)
+  const [targetYear] = competencia.split('-').map(Number)
+  const next         = new Date(rec.next_due_date + 'T12:00:00')
+  const nextComp     = dateToCompetencia(rec.next_due_date)
 
   if (rec.frequency === 'monthly') {
-    // Avança next_due_date mês a mês até chegar na competência alvo
-    let d = new Date(next)
+    let d      = new Date(next)
     let safety = 0
     while (safety++ < 36) {
       const comp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
       if (comp === competencia) return d.toISOString().split('T')[0]
-      if (comp > competencia)  return null
+      if (comp > competencia)   return null
       d.setMonth(d.getMonth() + 1)
     }
     return null
   }
 
   if (rec.frequency === 'yearly') {
-    // Mesmo dia/mês, ano diferente
     const d = new Date(next)
     d.setFullYear(targetYear)
     const comp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
     return comp === competencia ? d.toISOString().split('T')[0] : null
   }
 
-  // daily/weekly: se next_due_date está dentro da competência alvo → retorna
-  // (simplificação: retorna a primeira ocorrência no mês)
   if (nextComp === competencia) return rec.next_due_date
   if (nextComp > competencia)   return null
 
-  // Avança até entrar na competência
-  let d = new Date(next)
+  let d      = new Date(next)
   let safety = 0
   const step = rec.frequency === 'daily' ? 1 : 7
   while (safety++ < 400) {
     const comp = dateToCompetencia(d.toISOString().split('T')[0])
     if (comp === competencia) return d.toISOString().split('T')[0]
-    if (comp > competencia)  return null
+    if (comp > competencia)   return null
     d.setDate(d.getDate() + step)
   }
 
   return null
 }
 
-/**
- * Gera o Set de chaves "recurrenceId:YYYY-MM" a partir de transactions reais.
- * Usado por projectForecast para excluir o que o engine já gerou.
- *
- * @param transactions Transações com recurrence_id e competencia (campo text do DB)
- */
 export function buildExistingRecurrenceSet(
   transactions: Array<{ recurrence_id: string | null; competencia: string | null }>
 ): Set<string> {
@@ -341,10 +294,6 @@ export function buildExistingRecurrenceSet(
 }
 
 // ─── occurrencesInWindow ──────────────────────────────────────────────────────
-//
-// Conta quantas ocorrências de uma recorrência caem numa janela de N dias.
-// Usada no dashboard para projeção de 30 dias.
-// Extraída aqui para evitar duplicação entre dashboard e futura tela de projeção.
 
 export function occurrencesInWindow(
   nextDueDate: string,
@@ -361,9 +310,9 @@ export function occurrencesInWindow(
   while (current <= horizonDate && count < 60) {
     if (current >= today) count++
     switch (frequency) {
-      case 'daily':   current.setDate(current.getDate() + 1);       break
-      case 'weekly':  current.setDate(current.getDate() + 7);       break
-      case 'monthly': current.setMonth(current.getMonth() + 1);     break
+      case 'daily':   current.setDate(current.getDate() + 1);        break
+      case 'weekly':  current.setDate(current.getDate() + 7);        break
+      case 'monthly': current.setMonth(current.getMonth() + 1);      break
       case 'yearly':  current.setFullYear(current.getFullYear() + 1); break
       default:        return count
     }
@@ -371,4 +320,153 @@ export function occurrencesInWindow(
   }
 
   return count
+}
+
+// ─── getForecastSummary ───────────────────────────────────────────────────────
+//
+// API canônica de projeção financeira de curto prazo.
+//
+// Consolida a lógica que estava espalhada no dashboard (recEntradas, recSaidas,
+// saldoPrevisto, recCount) em uma única função de domínio reutilizável.
+//
+// Consumidores: dashboard, faturas futuras, widgets, insights, notificações.
+//
+// SEPARAÇÃO DE CONCEITOS:
+//   - recurrences  → coisas que ainda vão nascer (intenção)
+//   - installments → fatos já contratados distribuídos no tempo (obrigação)
+//   installmentCount NÃO entra aqui — pertence a getInstallmentProjection() futuro.
+//
+// PRINCÍPIO: engine retorna semântica financeira e dados derivados canônicos.
+//   Nunca retorna cor, label, ícone, opacity ou classes CSS.
+//   A UI decide representação visual.
+
+export interface ForecastProjectionItem {
+  recurrenceId: string
+  description:  string
+  amount:       number
+  type:         TxType        // 'income' | 'expense'
+  expectedDate: string        // YYYY-MM-DD (próxima ocorrência na janela)
+  competencia:  string        // YYYY-MM
+  source:       'recurrence'  // extensível: 'installment' | 'scheduled' no futuro
+}
+
+export interface ForecastSummary {
+  /** Receitas recorrentes projetadas na janela */
+  projectedIncome:    number
+  /** Despesas recorrentes projetadas na janela */
+  projectedExpense:   number
+  /**
+   * Saldo projetado ao final da janela.
+   * Fórmula: currentBalance + projectedIncome - projectedExpense - openInvoicesTotal
+   */
+  projectedBalance:   number
+  /** Total de ocorrências de recorrências na janela */
+  recurrenceCount:    number
+  /** Itens individuais — dados brutos sem representação visual */
+  items:              ForecastProjectionItem[]
+}
+
+export interface GetForecastSummaryParams {
+  /** Recorrências ativas do usuário (is_active = true) */
+  recurrences:        Array<{
+    id:            string
+    description:   string
+    amount:        number
+    type:          TxType
+    frequency:     'daily' | 'weekly' | 'monthly' | 'yearly'
+    next_due_date: string | null
+    end_date:      string | null
+    is_active:     boolean
+  }>
+  /** Janela de projeção em dias a partir de hoje (padrão: 30) */
+  horizonDays:        number
+  /** Saldo atual de contas (já calculado via calcAccountsBalance) */
+  currentBalance:     number
+  /** Total de faturas em aberto — deduzido do saldo projetado */
+  openInvoicesTotal:  number
+}
+
+export function getForecastSummary({
+  recurrences,
+  horizonDays,
+  currentBalance,
+  openInvoicesTotal,
+}: GetForecastSummaryParams): ForecastSummary {
+  const today       = new Date(); today.setHours(0, 0, 0, 0)
+  const horizonDate = new Date(today); horizonDate.setDate(horizonDate.getDate() + horizonDays)
+  const horizonStr  = horizonDate.toISOString().split('T')[0]
+  const todayStr    = today.toISOString().split('T')[0]
+
+  const items: ForecastProjectionItem[] = []
+  let projectedIncome  = 0
+  let projectedExpense = 0
+  let recurrenceCount  = 0
+
+  for (const rec of recurrences) {
+    if (!rec.is_active || !rec.next_due_date) continue
+    if (rec.end_date && rec.end_date < todayStr) continue
+
+    const occ = occurrencesInWindow(rec.next_due_date, rec.frequency, horizonDate)
+    if (occ === 0) continue
+
+    const total = Number(rec.amount) * occ
+    recurrenceCount += occ
+
+    if (rec.type === 'income')  projectedIncome  += total
+    if (rec.type === 'expense') projectedExpense += total
+
+    // Gera item para a primeira ocorrência na janela
+    const expectedDate = getFirstOccurrenceInWindow(rec.next_due_date, rec.frequency, todayStr, horizonStr)
+    if (expectedDate) {
+      items.push({
+        recurrenceId: rec.id,
+        description:  rec.description,
+        amount:       Number(rec.amount),
+        type:         rec.type,
+        expectedDate,
+        competencia:  dateToCompetencia(expectedDate),
+        source:       'recurrence',
+      })
+    }
+  }
+
+  const projectedBalance = currentBalance + projectedIncome - projectedExpense - openInvoicesTotal
+
+  return {
+    projectedIncome,
+    projectedExpense,
+    projectedBalance,
+    recurrenceCount,
+    items,
+  }
+}
+
+/**
+ * Retorna a primeira data de ocorrência de uma recorrência dentro da janela [today, horizon].
+ * Função interna — usada apenas por getForecastSummary para popular items[].
+ */
+function getFirstOccurrenceInWindow(
+  nextDueDate:  string,
+  frequency:    string,
+  todayStr:     string,
+  horizonStr:   string,
+): string | null {
+  let d      = new Date(nextDueDate + 'T12:00:00')
+  let safety = 0
+
+  while (safety++ < 400) {
+    const ds = d.toISOString().split('T')[0]
+    if (ds > horizonStr) return null
+    if (ds >= todayStr)  return ds
+
+    switch (frequency) {
+      case 'daily':   d.setDate(d.getDate() + 1);        break
+      case 'weekly':  d.setDate(d.getDate() + 7);        break
+      case 'monthly': d.setMonth(d.getMonth() + 1);      break
+      case 'yearly':  d.setFullYear(d.getFullYear() + 1); break
+      default:        return null
+    }
+  }
+
+  return null
 }

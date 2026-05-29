@@ -12,69 +12,77 @@ import {
   ArrowUp, ArrowDown, ArrowUpRight, CalendarCheck, Eye, EyeSlash,
 } from '@phosphor-icons/react'
 
-import { PageContainer }    from '@/components/layout/PageContainer'
-import { usePrivacyStore }  from '@/stores/usePrivacyStore'
-import { PrivateValue }     from '@/components/ui/PrivateValue'
-import { AnimatedValue }    from '@/components/ui/AnimatedValue'
+import { PageContainer }   from '@/components/layout/PageContainer'
+import { usePrivacyStore } from '@/stores/usePrivacyStore'
+import { PrivateValue }    from '@/components/ui/PrivateValue'
+import { AnimatedValue }   from '@/components/ui/AnimatedValue'
 import {
   getMonthRange,
   getCurrentMonthKey,
   getLedgerStatuses,
+  calcAccountsBalance,
+  daysUntil,
+  getForecastSummary,
   UNCATEGORIZED_LABEL,
   occurrencesInWindow,
   type CatSlice,
+  type ForecastSummary,
 } from '@/lib/financialEngine'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-interface MonthLine    { mes: string; saldo: number }
-interface InvoiceDue   { id: string; card_name: string; card_color: string; due_date: string; total_amount: number; days_until_due: number }
-interface ProjecaoItem { label: string; value: number; color: string; sign: string }
-interface RecentTx     { id: string; description: string; amount: number; type: 'income' | 'expense' | 'transfer'; category_name?: string; category_icon?: string; date: string }
+interface MonthLine  { mes: string; saldo: number }
+interface InvoiceDue {
+  id:             string
+  card_name:      string
+  card_color:     string
+  due_date:       string
+  total_amount:   number
+  days_until_due: number
+}
+interface RecentTx {
+  id:            string
+  description:   string
+  amount:        number
+  type:          'income' | 'expense' | 'transfer'
+  category_name?: string
+  category_icon?: string
+  date:          string
+}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Constantes
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── UI: itens de projeção (representação visual — não pertence ao engine) ────
+
+interface ProjecaoItem {
+  label: string
+  value: number
+  color: string
+  sign:  string
+}
+
+// ─── Constantes ───────────────────────────────────────────────────────────────
 
 const SLICE_COLORS = ['#7C3AED', '#f97316', '#22c55e', '#f59e0b', '#3b82f6', '#ec4899']
 const MONTH_NAMES  = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
 const fmt  = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtK = (v: number) => v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v.toFixed(0)}`
 
-function daysUntil(dateStr: string) {
-  const today = new Date(); today.setHours(0, 0, 0, 0)
-  return Math.round((new Date(dateStr + 'T12:00:00').getTime() - today.getTime()) / 86400000)
-}
-
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Tooltip customizado — fix dark mode (BUG-DARK-MODE-TEXT)
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Tooltip customizado ──────────────────────────────────────────────────────
 
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
   return (
     <div style={{
-      background:   'var(--surface-premium, var(--surface))',
-      border:       '1px solid var(--glass-border, var(--border-subtle, var(--border)))',
-      borderRadius: 8,
-      padding:      '6px 10px',
-      fontSize:     12,
-      color:        'var(--text)',
-      boxShadow:    'var(--card-shadow)',
+      background:     'var(--surface-premium, var(--surface))',
+      border:         '1px solid var(--glass-border, var(--border-subtle, var(--border)))',
+      borderRadius:   8,
+      padding:        '6px 10px',
+      fontSize:       12,
+      color:          'var(--text)',
+      boxShadow:      'var(--card-shadow)',
       backdropFilter: 'blur(var(--glass-blur, 12px))',
     }}>
-      {label && (
-        <p style={{ color: 'var(--text-secondary)', marginBottom: 2 }}>{label}</p>
-      )}
+      {label && <p style={{ color: 'var(--text-secondary)', marginBottom: 2 }}>{label}</p>}
       {payload.map((entry: any, i: number) => (
         <p key={i} style={{ color: 'var(--text)', fontWeight: 500 }}>
           {entry.name ? `${entry.name}: ` : ''}{fmt(Number(entry.value))}
@@ -84,9 +92,7 @@ function ChartTooltip({ active, payload, label }: any) {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-componentes utilitários
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Sub-componentes ──────────────────────────────────────────────────────────
 
 function DashboardSkeleton() {
   return (
@@ -105,7 +111,7 @@ function DashboardSkeleton() {
           </div>
           <div className="space-y-5">
             <div className="h-64 rounded-xl opacity-60" style={{ background: 'var(--surface-raised, var(--surface))' }} />
-            <div className="h-40 rounded-xl opacity-60" style={{ background: 'var(--surface-raised, var(--surface))' }} />
+            <div className="h-40 rounded-xl opacity-60"  style={{ background: 'var(--surface-raised, var(--surface))' }} />
           </div>
         </div>
       </div>
@@ -125,7 +131,9 @@ function DashboardError({ message, onRetry }: { message: string; onRetry: () => 
         <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text)' }}>
           Erro ao carregar o dashboard
         </p>
-        <p className="text-xs mb-6 max-w-xs mx-auto" style={{ color: 'var(--text-secondary)' }}>{message}</p>
+        <p className="text-xs mb-6 max-w-xs mx-auto" style={{ color: 'var(--text-secondary)' }}>
+          {message}
+        </p>
         <button onClick={onRetry}
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
           style={{ background: 'var(--primary)' }}>
@@ -184,9 +192,7 @@ function InvoiceBadge({ days }: { days: number }) {
   return               <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-[var(--text-secondary)]">{days}d</span>
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Dashboard principal
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Dashboard principal ──────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const supabase = createClient()
@@ -198,11 +204,8 @@ export default function DashboardPage() {
     investmentsVisible,
     toggleInvestments,
   } = usePrivacyStore()
-const [syncStatus, setSyncStatus] = useState<{
-  ran_at: string
-  processed: number
-  failed: number
-} | null>(null)
+
+  const [syncStatus,          setSyncStatus]          = useState<{ ran_at: string; processed: number; failed: number } | null>(null)
   const [saldoContas,         setSaldoContas]         = useState(0)
   const [totalFaturas,        setTotalFaturas]        = useState(0)
   const [patrimonioInvestido, setPatrimonioInvestido] = useState(0)
@@ -215,10 +218,16 @@ const [syncStatus, setSyncStatus] = useState<{
   const [loading,             setLoading]             = useState(true)
   const [loadError,           setLoadError]           = useState<string | null>(null)
   const [hasAccounts,         setHasAccounts]         = useState(true)
-  const [projecaoItens,       setProjecaoItens]       = useState<ProjecaoItem[]>([])
-  const [saldoPrevisto,       setSaldoPrevisto]       = useState(0)
-  const [recCount,            setRecCount]            = useState(0)
   const [instCount,           setInstCount]           = useState(0)
+
+  // ForecastSummary — dados canônicos do engine (sem lógica UI)
+  const [forecastSummary, setForecastSummary] = useState<ForecastSummary>({
+    projectedIncome:  0,
+    projectedExpense: 0,
+    projectedBalance: 0,
+    recurrenceCount:  0,
+    items:            [],
+  })
 
   const load = useCallback(async () => {
     setLoadError(null)
@@ -233,13 +242,13 @@ const [syncStatus, setSyncStatus] = useState<{
       const month = now.getMonth()
 
       const { inicioMes, fimMes } = getMonthRange(year, month)
-      const monthKey = getCurrentMonthKey()
+      const monthKey              = getCurrentMonthKey()
+      const hoje                  = now.toISOString().split('T')[0]
 
-      const hoje      = now.toISOString().split('T')[0]
-      const limit30   = new Date(now); limit30.setDate(limit30.getDate() + 30)
+      const limit30 = new Date(now); limit30.setDate(limit30.getDate() + 30)
       const horizon30 = limit30.toISOString().split('T')[0]
 
-      // ── Contas ──────────────────────────────────────────────
+      // ── Contas ────────────────────────────────────────────────────────────
       const { data: acc, error: accErr } = await supabase
         .from('accounts').select('current_balance')
         .eq('user_id', user.id).eq('is_active', true).neq('type', 'credit')
@@ -248,31 +257,39 @@ const [syncStatus, setSyncStatus] = useState<{
       const accList = (acc ?? []) as { current_balance: number }[]
       if (accList.length === 0) { setHasAccounts(false); setLoading(false); return }
       setHasAccounts(true)
-      const saldo = accList.reduce((s, a) => s + Number(a.current_balance), 0)
+
+      // calcAccountsBalance — engine é a única fonte de verdade para saldo
+      const saldo = calcAccountsBalance(accList)
       setSaldoContas(saldo)
 
-      // ── Faturas ──────────────────────────────────────────────
+      // ── Faturas abertas ───────────────────────────────────────────────────
       const { data: openInv } = await supabase
         .from('credit_card_invoices').select('total_amount')
         .eq('user_id', user.id).in('status', ['open', 'overdue'])
-      const faturas = ((openInv ?? []) as { total_amount: number }[]).reduce((s, i) => s + Number(i.total_amount), 0)
+      const faturas = ((openInv ?? []) as { total_amount: number }[])
+        .reduce((s, i) => s + Number(i.total_amount), 0)
       setTotalFaturas(faturas)
 
-      // ── Investimentos ────────────────────────────────────────
+      // ── Investimentos ─────────────────────────────────────────────────────
       const { data: invData } = await supabase
-        .from('investments').select('current_amount').eq('user_id', user.id).eq('is_active', true)
-      const totalInv = ((invData ?? []) as { current_amount: number }[]).reduce((s, i) => s + Number(i.current_amount), 0)
+        .from('investments').select('current_amount')
+        .eq('user_id', user.id).eq('is_active', true)
+      const totalInv = ((invData ?? []) as { current_amount: number }[])
+        .reduce((s, i) => s + Number(i.current_amount), 0)
       setPatrimonioInvestido(totalInv)
 
-      // ── Faturas próximas ─────────────────────────────────────
+      // ── Faturas próximas ──────────────────────────────────────────────────
       const { data: dueInv } = await supabase
         .from('credit_card_invoices').select('id, total_amount, status, due_date, credit_card_id')
         .eq('user_id', user.id).in('status', ['open', 'overdue'])
         .lte('due_date', horizon30).order('due_date')
-      const { data: cards } = await supabase.from('credit_cards').select('id, name, color').eq('user_id', user.id)
+      const { data: cards } = await supabase
+        .from('credit_cards').select('id, name, color').eq('user_id', user.id)
       const cardMap = Object.fromEntries(
         ((cards ?? []) as { id: string; name: string; color: string }[]).map(c => [c.id, c])
       )
+
+      // daysUntil — engine é a única fonte de verdade para dias até vencimento
       setInvoicesDue(
         ((dueInv ?? []) as { id: string; total_amount: number; due_date: string; credit_card_id: string }[])
           .map(inv => ({
@@ -285,7 +302,7 @@ const [syncStatus, setSyncStatus] = useState<{
           }))
       )
 
-      // ── Transações do mês ────────────────────────────────────
+      // ── Transações do mês ─────────────────────────────────────────────────
       const { data: txMes, error: txErr } = await supabase
         .from('transactions')
         .select('type, amount')
@@ -301,7 +318,7 @@ const [syncStatus, setSyncStatus] = useState<{
       setRecMes(recMesVal)
       setDespMes(despMesVal)
 
-      // ── Histórico 6 meses ────────────────────────────────────
+      // ── Histórico 6 meses ─────────────────────────────────────────────────
       const meses = Array.from({ length: 6 }, (_, i) => {
         const d = new Date(year, month - (5 - i), 1)
         return { key: d.toISOString().slice(0, 7), label: MONTH_NAMES[d.getMonth()] }
@@ -322,10 +339,9 @@ const [syncStatus, setSyncStatus] = useState<{
         return { mes: label, saldo: rec - desp }
       }))
 
-      // ── Categorias ───────────────────────────────────────────
+      // ── Categorias ────────────────────────────────────────────────────────
       const { data: cats } = await supabase
         .from('categories').select('id, name, icon').eq('user_id', user.id)
-
       const catNameMap = Object.fromEntries(
         ((cats ?? []) as { id: string; name: string }[]).map(c => [c.id, c.name])
       )
@@ -340,20 +356,16 @@ const [syncStatus, setSyncStatus] = useState<{
         .eq('month_key', monthKey)
         .order('total_amount', { ascending: false })
         .limit(6)
-
       setCatSlices(
-        ((catData ?? []) as {
-          category_id:   string | null
-          category_name: string | null
-          total_amount:  number
-        }[]).map((row): CatSlice => ({
-          categoryId: row.category_id,
-          name:       row.category_name ?? UNCATEGORIZED_LABEL,
-          value:      Number(row.total_amount),
-        }))
+        ((catData ?? []) as { category_id: string | null; category_name: string | null; total_amount: number }[])
+          .map(row => ({
+            categoryId: row.category_id,
+            name:       row.category_name ?? UNCATEGORIZED_LABEL,
+            value:      Number(row.total_amount),
+          }))
       )
 
-      // ── Últimas transações ───────────────────────────────────
+      // ── Últimas transações ────────────────────────────────────────────────
       const { data: recentData } = await supabase
         .from('transactions')
         .select('id, type, description, amount, date, category_id')
@@ -361,7 +373,6 @@ const [syncStatus, setSyncStatus] = useState<{
         .in('lifecycle_status', getLedgerStatuses())
         .order('date', { ascending: false })
         .limit(5)
-
       setRecentTxs(
         ((recentData ?? []) as { id: string; type: string; description: string; amount: number; date: string; category_id: string | null }[])
           .map(t => ({
@@ -375,31 +386,24 @@ const [syncStatus, setSyncStatus] = useState<{
           }))
       )
 
-      // ── Recorrências ─────────────────────────────────────────
+      // ── Recorrências — getForecastSummary ─────────────────────────────────
+      // Engine calcula projeção 30d. Dashboard só renderiza.
       const { data: recRules } = await supabase
         .from('recurrences')
-        .select('type, amount, frequency, next_due_date, end_date, is_active')
+        .select('id, type, amount, frequency, next_due_date, end_date, is_active, description')
         .eq('user_id', user.id).eq('is_active', true)
         .or(`next_due_date.lte.${horizon30},end_date.is.null,end_date.gte.${hoje}`)
-      const recRulesArr = (recRules ?? []) as {
-        type: string; amount: number; frequency: string
-        next_due_date: string | null; end_date: string | null
-      }[]
 
-      let recEntradas = 0; let recSaidas = 0; let recCountVal = 0
-      for (const rule of recRulesArr) {
-        if (!rule.next_due_date) continue
-        if (rule.end_date && rule.end_date < hoje) continue
-        const occ = occurrencesInWindow(rule.next_due_date, rule.frequency, limit30)
-        if (occ === 0) continue
-        const total = Number(rule.amount) * occ
-        recCountVal += occ
-        if (rule.type === 'income') recEntradas += total
-        else recSaidas += total
-      }
-      setRecCount(recCountVal)
+      const summary = getForecastSummary({
+        recurrences:       (recRules ?? []) as any[],
+        horizonDays:       30,
+        currentBalance:    saldo,
+        openInvoicesTotal: faturas,
+      })
+      setForecastSummary(summary)
 
-      // ── Parcelas ─────────────────────────────────────────────
+      // ── Parcelas (installments — domínio separado de forecast) ────────────
+      // TD: extrair para getInstallmentProjection() quando sprint de infra chegar
       const { data: instData } = await supabase
         .from('transactions').select('type, amount')
         .eq('user_id', user.id)
@@ -407,30 +411,18 @@ const [syncStatus, setSyncStatus] = useState<{
         .in('lifecycle_status', getLedgerStatuses())
         .gte('date', hoje).lte('date', horizon30)
         .in('type', ['income', 'expense'])
-      const instArr       = (instData ?? []) as { type: string; amount: number }[]
-      const totalParcelas = instArr.filter(i => i.type === 'expense').reduce((s, i) => s + Number(i.amount), 0)
-      const parcRec       = instArr.filter(i => i.type === 'income').reduce((s,  i) => s + Number(i.amount), 0)
+      const instArr = (instData ?? []) as { type: string; amount: number }[]
       setInstCount(instArr.length)
 
-      // ── Projeção ─────────────────────────────────────────────
-      const previsto = saldo + recEntradas + parcRec - recSaidas - totalParcelas - faturas
-      setSaldoPrevisto(previsto)
-      setProjecaoItens([
-        { label: 'Saldo atual em contas',      value: saldo,         color: 'var(--primary)',                sign: ''  },
-        { label: 'Receitas recorrentes (30d)', value: recEntradas,   color: 'var(--success, #16A34A)',       sign: '+' },
-        { label: 'Despesas recorrentes (30d)', value: recSaidas,     color: 'var(--danger, #DC2626)',        sign: '−' },
-        { label: 'Parcelas pendentes (30d)',   value: totalParcelas, color: 'var(--warning, #D97706)',       sign: '−' },
-        { label: 'Faturas em aberto',          value: faturas,       color: 'var(--danger, #DC2626)',        sign: '−' },
-      ])
-// ── Última sincronização do engine ──────────────────────
-const { data: syncLog } = await supabase
-  .from('lifecycle_engine_logs')
-  .select('ran_at, processed, failed')
-  .order('ran_at', { ascending: false })
-  .limit(1)
-  .maybeSingle()
+      // ── Última sincronização do engine ────────────────────────────────────
+      const { data: syncLog } = await supabase
+        .from('lifecycle_engine_logs')
+        .select('ran_at, processed, failed')
+        .order('ran_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (syncLog) setSyncStatus(syncLog)
 
-if (syncLog) setSyncStatus(syncLog)
     } catch (err: unknown) {
       setLoadError(err instanceof Error ? err.message : 'Falha ao carregar dados financeiros.')
     } finally {
@@ -445,10 +437,16 @@ if (syncLog) setSyncStatus(syncLog)
   if (loadError)    return <DashboardError message={loadError} onRetry={load} />
   if (!hasAccounts) return <EmptyDashboard />
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // KPIs
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── Representação visual da projeção — responsabilidade da UI, não do engine ──
+  // O engine retorna números. O dashboard decide label, cor e sinal.
+  const projecaoItens: ProjecaoItem[] = [
+    { label: 'Saldo atual em contas',      value: saldoContas,                       color: 'var(--primary)',                sign: ''  },
+    { label: 'Receitas recorrentes (30d)', value: forecastSummary.projectedIncome,   color: 'var(--success, #16A34A)',       sign: '+' },
+    { label: 'Despesas recorrentes (30d)', value: forecastSummary.projectedExpense,  color: 'var(--danger, #DC2626)',        sign: '−' },
+    { label: 'Faturas em aberto',          value: totalFaturas,                      color: 'var(--danger, #DC2626)',        sign: '−' },
+  ]
 
+  // ── KPIs ──────────────────────────────────────────────────────────────────────
   const kpis = [
     {
       label:       'Saldo Total',
@@ -492,62 +490,62 @@ if (syncLog) setSyncStatus(syncLog)
     },
   ]
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────────────────────────────────
+  // ─── Render ───────────────────────────────────────────────────────────────────
 
   return (
     <PageContainer>
 
-      {/* ── Toggles de privacidade + status de sincronização ── */}
-<div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-
-  {/* Status engine — esquerda */}
-  {syncStatus && (
-    <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
-      <ArrowClockwise weight="duotone" size={12} style={{ color: syncStatus.failed > 0 ? 'var(--danger)' : 'var(--success)' }} />
-      <span>
-        Sincronizado{' '}
-        {new Date(syncStatus.ran_at).toLocaleDateString('pt-BR', {
-          day: '2-digit', month: 'short', timeZone: 'America/Sao_Paulo'
-        })}{' às '}
-        {new Date(syncStatus.ran_at).toLocaleTimeString('pt-BR', {
-          hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo'
-        })}
-        {syncStatus.processed > 0 && (
-          <span style={{ color: 'var(--success)' }}> · {syncStatus.processed} processada{syncStatus.processed !== 1 ? 's' : ''}</span>
+      {/* Toggles de privacidade + status de sincronização */}
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        {syncStatus && (
+          <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+            <ArrowClockwise weight="duotone" size={12}
+              style={{ color: syncStatus.failed > 0 ? 'var(--danger)' : 'var(--success)' }} />
+            <span>
+              Sincronizado{' '}
+              {new Date(syncStatus.ran_at).toLocaleDateString('pt-BR', {
+                day: '2-digit', month: 'short', timeZone: 'America/Sao_Paulo',
+              })}{' às '}
+              {new Date(syncStatus.ran_at).toLocaleTimeString('pt-BR', {
+                hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo',
+              })}
+              {syncStatus.processed > 0 && (
+                <span style={{ color: 'var(--success)' }}>
+                  {' · '}{syncStatus.processed} processada{syncStatus.processed !== 1 ? 's' : ''}
+                </span>
+              )}
+              {syncStatus.failed > 0 && (
+                <span style={{ color: 'var(--danger)' }}>
+                  {' · '}{syncStatus.failed} falha{syncStatus.failed !== 1 ? 's' : ''}
+                </span>
+              )}
+            </span>
+          </div>
         )}
-        {syncStatus.failed > 0 && (
-          <span style={{ color: 'var(--danger)' }}> · {syncStatus.failed} falha{syncStatus.failed !== 1 ? 's' : ''}</span>
-        )}
-      </span>
-    </div>
-  )}
 
-  {/* Toggles — direita */}
-  <div className="flex items-center gap-4 ml-auto">
-    <button
-      onClick={toggleFinancial}
-      className="flex items-center gap-1.5 text-xs min-h-[44px] px-2 transition-opacity hover:opacity-70"
-      style={{ color: 'var(--text-secondary)' }}
-      aria-label={financialVisible ? 'Ocultar valores financeiros' : 'Mostrar valores financeiros'}
-    >
-      {financialVisible ? <Eye weight="duotone" size={14} /> : <EyeSlash weight="duotone" size={14} />}
-      Financeiro
-    </button>
-    <button
-      onClick={toggleInvestments}
-      className="flex items-center gap-1.5 text-xs min-h-[44px] px-2 transition-opacity hover:opacity-70"
-      style={{ color: 'var(--text-secondary)' }}
-      aria-label={investmentsVisible ? 'Ocultar investimentos' : 'Mostrar investimentos'}
-    >
-      {investmentsVisible ? <Eye weight="duotone" size={14} /> : <EyeSlash weight="duotone" size={14} />}
-      Investimentos
-    </button>
-  </div>
-</div>
+        <div className="flex items-center gap-4 ml-auto">
+          <button
+            onClick={toggleFinancial}
+            className="flex items-center gap-1.5 text-xs min-h-[44px] px-2 transition-opacity hover:opacity-70"
+            style={{ color: 'var(--text-secondary)' }}
+            aria-label={financialVisible ? 'Ocultar valores financeiros' : 'Mostrar valores financeiros'}
+          >
+            {financialVisible ? <Eye weight="duotone" size={14} /> : <EyeSlash weight="duotone" size={14} />}
+            Financeiro
+          </button>
+          <button
+            onClick={toggleInvestments}
+            className="flex items-center gap-1.5 text-xs min-h-[44px] px-2 transition-opacity hover:opacity-70"
+            style={{ color: 'var(--text-secondary)' }}
+            aria-label={investmentsVisible ? 'Ocultar investimentos' : 'Mostrar investimentos'}
+          >
+            {investmentsVisible ? <Eye weight="duotone" size={14} /> : <EyeSlash weight="duotone" size={14} />}
+            Investimentos
+          </button>
+        </div>
+      </div>
 
-      {/* ── KPI Cards — glass-card + AnimatedValue + accent bar ── */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-7">
         {kpis.map((kpi, idx) => (
           <div
@@ -565,45 +563,35 @@ if (syncLog) setSyncStatus(syncLog)
                 <kpi.icon size={20} weight="duotone" style={{ color: kpi.color }} />
               </div>
             </div>
-
-            {/* AnimatedValue — substitui PrivateValue + fmt() */}
             {kpi.group === 'investments' ? (
               <AnimatedValue
-                value={kpi.value}
-                trigger={!loading}
-                group="investments"
-                delay={idx * 80}
-                colorize={false}
+                value={kpi.value} trigger={!loading} group="investments"
+                delay={idx * 80} colorize={false}
                 className="text-2xl font-bold tracking-tight"
                 style={{ color: kpi.color } as React.CSSProperties}
               />
             ) : (
               <AnimatedValue
-                value={kpi.value}
-                trigger={!loading}
-                group="financial"
-                delay={idx * 80}
-                colorize={false}
+                value={kpi.value} trigger={!loading} group="financial"
+                delay={idx * 80} colorize={false}
                 className="text-2xl font-bold tracking-tight"
                 style={{ color: kpi.color } as React.CSSProperties}
               />
             )}
-
-            <p className="text-xs uppercase tracking-wider"
-              style={{ color: 'var(--text-muted)' }}>
+            <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
               {kpi.sub}
             </p>
           </div>
         ))}
       </div>
 
-      {/* ── Layout 2 colunas ── */}
+      {/* Layout 2 colunas */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-        {/* ── Coluna principal — 2/3 ── */}
+        {/* Coluna principal */}
         <div className="lg:col-span-2 space-y-5">
 
-          {/* Gráfico evolução do saldo — AreaChart Luminous (gradiente 3 stops) */}
+          {/* Gráfico evolução do saldo */}
           <div className="glass-card rounded-xl p-5 cursor-default">
             <div className="flex items-center justify-between mb-4">
               <div>
@@ -622,13 +610,11 @@ if (syncLog) setSyncStatus(syncLog)
             <ResponsiveContainer width="100%" height={180}>
               <AreaChart data={monthLine}>
                 <defs>
-                  {/* Gradiente da linha — tokens Luminous (--chart-line-start/mid/end) */}
                   <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
                     <stop offset="0%"   stopColor="var(--chart-line-start, #4f46e5)" />
                     <stop offset="50%"  stopColor="var(--chart-line-mid,   #0ea5e9)" />
                     <stop offset="100%" stopColor="var(--chart-line-end,   #a78bfa)" />
                   </linearGradient>
-                  {/* Gradiente da área — token Luminous (--chart-area-fill) */}
                   <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
                     <stop offset="0%"   stopColor="var(--chart-line-start, #4f46e5)" stopOpacity={0.18} />
                     <stop offset="60%"  stopColor="var(--chart-line-mid,   #0ea5e9)" stopOpacity={0.06} />
@@ -636,38 +622,21 @@ if (syncLog) setSyncStatus(syncLog)
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, var(--border))" />
-                <XAxis
-                  dataKey="mes"
-                  tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
-                  axisLine={false} tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
-                  tickFormatter={fmtK}
-                  axisLine={false} tickLine={false}
-                />
+                <XAxis dataKey="mes" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} tickFormatter={fmtK} axisLine={false} tickLine={false} />
                 <Tooltip content={<ChartTooltip />} />
                 <Area
                   type="monotone" dataKey="saldo"
                   stroke="url(#lineGradient)" strokeWidth={2.5}
                   fill="url(#areaGradient)"
-                  dot={{
-                    fill: 'var(--chart-line-start, #4f46e5)',
-                    r: 4, strokeWidth: 2,
-                    stroke: 'var(--glass-bg, var(--surface))',
-                  }}
-                  activeDot={{
-                    r: 6,
-                    fill: 'var(--chart-line-mid, #0ea5e9)',
-                    stroke: 'var(--chart-line-mid, #0ea5e9)',
-                    strokeWidth: 2,
-                  }}
+                  dot={{ fill: 'var(--chart-line-start, #4f46e5)', r: 4, strokeWidth: 2, stroke: 'var(--glass-bg, var(--surface))' }}
+                  activeDot={{ r: 6, fill: 'var(--chart-line-mid, #0ea5e9)', stroke: 'var(--chart-line-mid, #0ea5e9)', strokeWidth: 2 }}
                 />
               </AreaChart>
             </ResponsiveContainer>
           </div>
 
-          {/* Despesas por categoria — Donut + glow nos dots */}
+          {/* Despesas por categoria */}
           <div className="glass-card rounded-xl p-5 cursor-default">
             <p className="text-sm font-semibold mb-4" style={{ color: 'var(--text)' }}>
               Despesas por categoria
@@ -677,59 +646,55 @@ if (syncLog) setSyncStatus(syncLog)
                 <Receipt weight="duotone" size={32} style={{ color: 'var(--border)' }} />
                 <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Sem despesas este mês</p>
               </div>
-           ) : (
-  <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
-    <div className="w-full sm:w-[45%] shrink-0">
-      <ResponsiveContainer width="100%" height={150}>
-        <PieChart>
-          <Pie
-            data={catSlices}
-            cx="50%" cy="50%"
-            innerRadius={44}
-            outerRadius={66}
-            dataKey="value"
-            stroke="var(--glass-bg, var(--surface))"
-            strokeWidth={3}
-            paddingAngle={2}
-          >
-            {catSlices.map((_, i) => (
-              <Cell key={i} fill={SLICE_COLORS[i % SLICE_COLORS.length]} />
-            ))}
-          </Pie>
-          <Tooltip content={<ChartTooltip />} />
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
-    <div className="flex-1 w-full space-y-2">
-      {catSlices.map((slice, i) => {
-        const total = catSlices.reduce((s, c) => s + c.value, 0)
-        const pct   = total > 0 ? Math.round((slice.value / total) * 100) : 0
-        return (
-          <div key={slice.name} className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full shrink-0"
-              style={{
-                backgroundColor: SLICE_COLORS[i % SLICE_COLORS.length],
-                boxShadow: `0 0 6px ${SLICE_COLORS[i % SLICE_COLORS.length]}88`,
-              }} />
-            <p className="text-xs truncate flex-1" style={{ color: 'var(--text-secondary)' }}>
-              {slice.name}
-            </p>
-            <p className="text-xs font-medium shrink-0" style={{ color: 'var(--text)' }}>
-              {pct}%
-            </p>
-          </div>
-        )
-      })}
-    </div>
-  </div>
-)}
+            ) : (
+              <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+                <div className="w-full sm:w-[45%] shrink-0">
+                  <ResponsiveContainer width="100%" height={150}>
+                    <PieChart>
+                      <Pie
+                        data={catSlices} cx="50%" cy="50%"
+                        innerRadius={44} outerRadius={66}
+                        dataKey="value"
+                        stroke="var(--glass-bg, var(--surface))" strokeWidth={3} paddingAngle={2}
+                      >
+                        {catSlices.map((_, i) => (
+                          <Cell key={i} fill={SLICE_COLORS[i % SLICE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<ChartTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex-1 w-full space-y-2">
+                  {catSlices.map((slice, i) => {
+                    const total = catSlices.reduce((s, c) => s + c.value, 0)
+                    const pct   = total > 0 ? Math.round((slice.value / total) * 100) : 0
+                    return (
+                      <div key={slice.name} className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full shrink-0"
+                          style={{
+                            backgroundColor: SLICE_COLORS[i % SLICE_COLORS.length],
+                            boxShadow:       `0 0 6px ${SLICE_COLORS[i % SLICE_COLORS.length]}88`,
+                          }} />
+                        <p className="text-xs truncate flex-1" style={{ color: 'var(--text-secondary)' }}>
+                          {slice.name}
+                        </p>
+                        <p className="text-xs font-medium shrink-0" style={{ color: 'var(--text)' }}>
+                          {pct}%
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* ── Coluna lateral — 1/3 ── */}
+        {/* Coluna lateral */}
         <div className="space-y-5">
 
-          {/* Saldo Previsto */}
+          {/* Saldo Previsto — dados do engine, visual do dashboard */}
           <div className="glass-card rounded-xl p-5 cursor-default">
             <div className="flex items-center justify-between mb-1">
               <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
@@ -744,9 +709,8 @@ if (syncLog) setSyncStatus(syncLog)
               Projeção para os próximos 30 dias
             </p>
 
-            {/* AnimatedValue no saldo previsto */}
             <AnimatedValue
-              value={saldoPrevisto}
+              value={forecastSummary.projectedBalance}
               trigger={!loading}
               group="financial"
               colorize={true}
@@ -766,10 +730,13 @@ if (syncLog) setSyncStatus(syncLog)
                 </div>
               ))}
             </div>
-            {(recCount > 0 || instCount > 0) && (
+
+            {(forecastSummary.recurrenceCount > 0 || instCount > 0) && (
               <p className="text-[10px] mt-3" style={{ color: 'var(--text-secondary)' }}>
-                {recCount > 0 && <>{recCount} recorrência{recCount !== 1 ? 's' : ''}</>}
-                {recCount > 0 && instCount > 0 && <span className="mx-1">·</span>}
+                {forecastSummary.recurrenceCount > 0 && (
+                  <>{forecastSummary.recurrenceCount} recorrência{forecastSummary.recurrenceCount !== 1 ? 's' : ''}</>
+                )}
+                {forecastSummary.recurrenceCount > 0 && instCount > 0 && <span className="mx-1">·</span>}
                 {instCount > 0 && <>{instCount} parcela{instCount !== 1 ? 's' : ''}</>}
               </p>
             )}
@@ -872,15 +839,14 @@ if (syncLog) setSyncStatus(syncLog)
                         <CreditCard weight="duotone" size={12} style={{ color: '#fff' }} />
                       </div>
                       <div>
-                        <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>
-                          {inv.card_name}
-                        </p>
+                        <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>{inv.card_name}</p>
                         <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
                           {new Date(inv.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}
                         </p>
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
+                      {/* daysUntil já foi chamado no load — dashboard só renderiza */}
                       <InvoiceBadge days={inv.days_until_due} />
                       <p className="text-xs font-semibold" style={{ color: 'var(--primary)' }}>
                         <PrivateValue value={fmt(inv.total_amount)} group="financial" />
@@ -913,17 +879,11 @@ if (syncLog) setSyncStatus(syncLog)
                     : <EyeSlash weight="duotone" size={14} />}
                 </button>
               </div>
-
-              {/* AnimatedValue no patrimônio investido */}
               <AnimatedValue
-                value={patrimonioInvestido}
-                trigger={!loading}
-                group="investments"
-                colorize={false}
-                className="text-xl font-bold mb-2"
+                value={patrimonioInvestido} trigger={!loading} group="investments"
+                colorize={false} className="text-xl font-bold mb-2"
                 style={{ color: '#a78bfa' } as React.CSSProperties}
               />
-
               <a href="/dashboard/investimentos"
                 className="text-[11px] flex items-center gap-1 transition-opacity hover:opacity-70"
                 style={{ color: '#a78bfa' }}>

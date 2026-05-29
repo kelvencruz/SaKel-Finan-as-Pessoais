@@ -92,7 +92,6 @@ const STATUS_STYLE: Record<string, { background: string; color: string }> = {
 const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-// Retorna se uma competência YYYY-MM é futura em relação a hoje
 function isFutureCompetencia(year: number, month: number): boolean {
   const current = getCurrentMonthKey()
   const target  = `${year}-${String(month).padStart(2, '0')}`
@@ -180,20 +179,20 @@ function FaturasError({ message, onRetry }: { message?: string; onRetry: () => v
   )
 }
 
-// ─── Badge "Previsto" ─────────────────────────────────────────────────────────
+// ─── Badge "Recorrente" ───────────────────────────────────────────────────────
+// Linguagem: "Recorrente" comunica automático, contínuo, inevitável — sem parecer pendente
 
-function PrevistoBadge() {
+function RecorrenteBadge() {
   return (
     <span
-      className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0"
+      className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0"
       style={{
         background: 'rgba(var(--primary-rgb, 124,58,237), 0.08)',
         color:      'var(--primary)',
-        border:     '1px dashed rgba(var(--primary-rgb, 124,58,237), 0.3)',
+        border:     '1px solid rgba(var(--primary-rgb, 124,58,237), 0.2)',
       }}
     >
-      <Clock size={9} weight="duotone" />
-      Previsto
+      Recorrente
     </span>
   )
 }
@@ -237,7 +236,6 @@ export default function FaturasPage() {
 
     const isFuture = isFutureCompetencia(year, month)
 
-    // ── Busca fatura existente ────────────────────────────────────────────────
     const { data: invData } = await supabase
       .from('credit_card_invoices')
       .select('*')
@@ -250,7 +248,6 @@ export default function FaturasPage() {
 
     if (seq !== loadSeq.current) return
 
-    // ── Transações reais da fatura ────────────────────────────────────────────
     let transactions: InvoiceTransaction[] = []
     if (invData) {
       const { data: txData } = await supabase
@@ -268,16 +265,14 @@ export default function FaturasPage() {
       }))
     }
 
-    // ── Forecast layer — só para faturas futuras ──────────────────────────────
-    // Princípio: fatura fechada/paga = 100% factual, sem forecast
-    // Fatura futura = híbrida (transactions reais + itens previstos)
+    // ── Forecast layer — só para faturas futuras não fechadas ─────────────────
+    // Princípio: fatura fechada/paga/cancelada = 100% factual, sem forecast
     let forecastItems: ForecastItem[] = []
 
     const invoiceStatus = invData?.status
     const isClosed = invoiceStatus === 'closed' || invoiceStatus === 'paid' || invoiceStatus === 'cancelled'
 
     if (isFuture && !isClosed) {
-      // Busca recorrências ativas do cartão
       const { data: recData } = await supabase
         .from('recurrences')
         .select('id, description, amount, type, frequency, next_due_date, end_date, credit_card_id, category_id, is_active')
@@ -288,20 +283,14 @@ export default function FaturasPage() {
       if (seq !== loadSeq.current) return
 
       const recurrences = (recData ?? []) as RecurrenceForForecast[]
-
-      // Monta set de transactions reais para excluir do forecast
-      const existing = buildExistingRecurrenceSet(transactions)
-
-      // Competência alvo
+      const existing    = buildExistingRecurrenceSet(transactions)
       const competencia = `${year}-${String(month).padStart(2, '0')}`
-
-      forecastItems = projectForecast(recurrences, [competencia], existing)
+      forecastItems     = projectForecast(recurrences, [competencia], existing)
     }
 
     if (seq !== loadSeq.current) return
 
-    // ── computedTotal — NUNCA inclui forecast ─────────────────────────────────
-    // Princípio contábil: previsão não entra em saldo real nem total de fatura
+    // computedTotal NUNCA inclui forecast — princípio contábil inviolável
     const computedTotal = transactions.reduce((s, t) => s + Number(t.amount), 0)
 
     if (!invData && forecastItems.length === 0) {
@@ -310,14 +299,7 @@ export default function FaturasPage() {
     }
 
     if (!invData && forecastItems.length > 0) {
-      // Fatura futura sem transaction ainda — mostra só forecast
-      setInvoiceState({
-        status:        'loaded',
-        invoice:       null,
-        transactions:  [],
-        forecastItems,
-        computedTotal: 0,
-      })
+      setInvoiceState({ status: 'loaded', invoice: null, transactions: [], forecastItems, computedTotal: 0 })
       return
     }
 
@@ -407,7 +389,6 @@ export default function FaturasPage() {
         user_id:     user.id,
         account_id:  payAccountId,
         type:        'expense',
-        // computedTotal é confiável — forecast nunca entra aqui
         amount:      invoiceState.computedTotal,
         description: `Pagamento fatura ${selectedCard?.name} ${MONTHS[invoice.month - 1]}/${invoice.year}`,
         date:        new Date().toISOString().split('T')[0],
@@ -417,7 +398,7 @@ export default function FaturasPage() {
 
     setInvoiceState(prev => ({
       ...prev,
-      invoice:      prev.invoice ? { ...prev.invoice, status: 'paid', paid_account_id: payAccountId } : null,
+      invoice:       prev.invoice ? { ...prev.invoice, status: 'paid', paid_account_id: payAccountId } : null,
       forecastItems: [], // fatura paga → remove forecast
     }))
     setHistory(prev => prev.map(h => h.id === invoice.id ? { ...h, status: 'paid' } : h))
@@ -426,10 +407,14 @@ export default function FaturasPage() {
   }
 
   const { invoice, transactions, forecastItems, computedTotal, status: invStatus } = invoiceState
-  const isLoading  = invStatus === 'loading'
-  const isEmpty    = invStatus === 'empty' || invStatus === 'idle'
+  const isLoading   = invStatus === 'loading'
+  const isEmpty     = invStatus === 'empty' || invStatus === 'idle'
   const hasForecast = forecastItems.length > 0
-  const isFuture   = isFutureCompetencia(viewYear, viewMonth)
+  const isFuture    = isFutureCompetencia(viewYear, viewMonth)
+
+  // Totais derivados
+  const forecastTotal = forecastItems.reduce((s, f) => s + f.amount, 0)
+  const expectedTotal = computedTotal + forecastTotal
 
   if (pageLoading) return <FaturasSkeleton />
   if (loadError)   return <FaturasError message={loadError} onRetry={boot} />
@@ -654,8 +639,9 @@ export default function FaturasPage() {
 
               <div className="flex items-end justify-between">
                 <div>
+                  {/* Label: "Total esperado" para mês futuro com forecast, senão "Total da fatura" */}
                   <p className="text-white/70 text-xs">
-                    {isFuture && !invoice ? 'Total previsto (recorrências)' : 'Total da fatura'}
+                    {hasForecast ? 'Total esperado' : 'Total da fatura'}
                   </p>
                   {isLoading ? (
                     <div className="h-9 w-36 bg-white/20 rounded-lg animate-pulse mt-1" />
@@ -663,13 +649,22 @@ export default function FaturasPage() {
                     <p className="text-2xl font-bold opacity-50">—</p>
                   ) : (
                     <div>
+                      {/* Hero mostra total esperado (confirmado + recorrentes) quando há forecast */}
                       <p className="text-3xl font-bold">
-                        {computedTotal > 0 ? fmt(computedTotal) : '—'}
+                        {hasForecast
+                          ? (expectedTotal > 0 ? fmt(expectedTotal) : '—')
+                          : (computedTotal > 0 ? fmt(computedTotal) : '—')
+                        }
                       </p>
-                      {/* Total previsto do forecast — separado do real */}
-                      {hasForecast && (
+                      {/* Breakdown abaixo do total quando há forecast */}
+                      {hasForecast && computedTotal > 0 && (
                         <p className="text-white/60 text-xs mt-0.5">
-                          + {fmt(forecastItems.reduce((s, f) => s + f.amount, 0))} previsto
+                          {fmt(computedTotal)} confirmados · {fmt(forecastTotal)} recorrentes
+                        </p>
+                      )}
+                      {hasForecast && computedTotal === 0 && (
+                        <p className="text-white/60 text-xs mt-0.5">
+                          {fmt(forecastTotal)} em recorrências estimadas
                         </p>
                       )}
                     </div>
@@ -730,6 +725,7 @@ export default function FaturasPage() {
                   border:               '1px solid var(--glass-border)',
                 }}
               >
+                {/* Header da lista */}
                 <div
                   className="px-5 py-3 flex items-center justify-between"
                   style={{ borderBottom: '1px solid var(--glass-border)' }}
@@ -740,12 +736,14 @@ export default function FaturasPage() {
                   <div className="flex items-center gap-2">
                     {hasForecast && (
                       <span className="text-xs" style={{ color: 'var(--primary)' }}>
-                        {forecastItems.length} previsto{forecastItems.length !== 1 ? 's' : ''}
+                        {forecastItems.length} recorrente{forecastItems.length !== 1 ? 's' : ''}
                       </span>
                     )}
-                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      {transactions.length} real{transactions.length !== 1 ? 'is' : ''}
-                    </span>
+                    {transactions.length > 0 && (
+                      <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                        {transactions.length} confirmado{transactions.length !== 1 ? 's' : ''}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -777,33 +775,32 @@ export default function FaturasPage() {
                     </div>
                   ))}
 
-                  {/* ── Itens previstos (forecast layer) ── */}
-                  {/* Princípio: visual diferenciado — opacity + badge "Previsto" + borda dashed */}
+                  {/* ── Itens recorrentes (forecast layer) ── */}
                   {hasForecast && (
                     <>
                       {transactions.length > 0 && (
                         <div
                           className="px-5 py-2 flex items-center gap-2"
                           style={{
-                            background:  'rgba(var(--primary-rgb, 124,58,237), 0.03)',
+                            background:   'rgba(var(--primary-rgb, 124,58,237), 0.03)',
                             borderBottom: '1px solid var(--glass-border)',
                           }}
                         >
                           <Clock size={11} weight="duotone" style={{ color: 'var(--primary)' }} />
                           <p className="text-[11px] font-medium" style={{ color: 'var(--primary)' }}>
-                            Recorrências previstas
+                            Recorrências estimadas
                           </p>
                         </div>
                       )}
 
                       {forecastItems.map((item, i) => (
-                        <div key={`forecast-${item.recurrenceId}`} style={{ opacity: 0.65 }}>
+                        <div key={`forecast-${item.recurrenceId}`} style={{ opacity: 0.75 }}>
                           <div className="flex items-center gap-4 px-5 py-3">
                             <div
                               className="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0"
                               style={{
                                 background: 'rgba(var(--primary-rgb, 124,58,237), 0.08)',
-                                border:     '1px dashed rgba(var(--primary-rgb, 124,58,237), 0.3)',
+                                border:     '1px solid rgba(var(--primary-rgb, 124,58,237), 0.2)',
                               }}
                             >
                               <Clock size={14} weight="duotone" style={{ color: 'var(--primary)' }} />
@@ -813,14 +810,13 @@ export default function FaturasPage() {
                                 <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
                                   {item.description}
                                 </p>
-                                <Previstobadge />
+                                <RecorrenteBadge />
                               </div>
                               <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                                Previsto para {new Date(item.expectedDate + 'T12:00:00').toLocaleDateString('pt-BR')}
-                                {' · recorrência'}
+                                Cobrança estimada para {new Date(item.expectedDate + 'T12:00:00').toLocaleDateString('pt-BR')}
                               </p>
                             </div>
-                            <p className="text-sm font-semibold flex-shrink-0" style={{ color: 'var(--danger)', opacity: 0.7 }}>
+                            <p className="text-sm font-semibold flex-shrink-0" style={{ color: 'var(--danger)', opacity: 0.8 }}>
                               -{fmt(item.amount)}
                             </p>
                           </div>
@@ -830,13 +826,44 @@ export default function FaturasPage() {
                     </>
                   )}
 
-                  {/* ── Rodapé com totais ── */}
-                  {transactions.length > 0 && (
+                  {/* ── Rodapé de totais ── */}
+                  {/* Quando há forecast: mostra total esperado com breakdown */}
+                  {/* Quando não há forecast: mostra só total confirmado */}
+                  {hasForecast ? (
+                    <div
+                      className="px-5 py-3 space-y-1"
+                      style={{
+                        background: 'rgba(var(--primary-rgb, 124,58,237), 0.05)',
+                        borderTop:  '1px solid var(--glass-border)',
+                      }}
+                    >
+                      <div className="flex justify-between items-center">
+                        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                          Total esperado
+                        </p>
+                        <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                          {fmt(expectedTotal)}
+                        </p>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                          {computedTotal > 0
+                            ? `Confirmados · Recorrentes`
+                            : 'Recorrentes estimados'}
+                        </p>
+                        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                          {computedTotal > 0
+                            ? `${fmt(computedTotal)} · ${fmt(forecastTotal)}`
+                            : fmt(forecastTotal)}
+                        </p>
+                      </div>
+                    </div>
+                  ) : transactions.length > 0 ? (
                     <div
                       className="px-5 py-3 flex justify-between items-center"
                       style={{
-                        background:  'rgba(var(--primary-rgb, 124,58,237), 0.05)',
-                        borderTop:   '1px solid var(--glass-border)',
+                        background: 'rgba(var(--primary-rgb, 124,58,237), 0.05)',
+                        borderTop:  '1px solid var(--glass-border)',
                       }}
                     >
                       <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Total confirmado</p>
@@ -844,24 +871,7 @@ export default function FaturasPage() {
                         {fmt(computedTotal)}
                       </p>
                     </div>
-                  )}
-
-                  {hasForecast && (
-                    <div
-                      className="px-5 py-2.5 flex justify-between items-center"
-                      style={{
-                        background: 'rgba(var(--primary-rgb, 124,58,237), 0.03)',
-                        borderTop:  '1px dashed rgba(var(--primary-rgb, 124,58,237), 0.15)',
-                      }}
-                    >
-                      <p className="text-xs" style={{ color: 'var(--primary)', opacity: 0.7 }}>
-                        Total previsto (não confirmado)
-                      </p>
-                      <p className="text-xs font-semibold" style={{ color: 'var(--primary)', opacity: 0.7 }}>
-                        {fmt(forecastItems.reduce((s, f) => s + f.amount, 0))}
-                      </p>
-                    </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
             )}
@@ -952,6 +962,3 @@ export default function FaturasPage() {
     </PageContainer>
   )
 }
-
-// Alias para evitar conflito de nome com o componente interno
-function Previstobadge() { return <PrevistoBadge /> }
