@@ -403,7 +403,6 @@ body {
 
 /* Botão primário */
 .btn-primary {
-  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
