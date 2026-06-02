@@ -17,7 +17,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { createCreditCard, updateCreditCard } from '@/lib/financial/creditCards'
+import { createCreditCard, updateCreditCard } from '@/lib/financial/creditcards'
 import { AppModal } from '@/components/AppModal'
 import { CreditCard, Warning } from '@phosphor-icons/react'
 

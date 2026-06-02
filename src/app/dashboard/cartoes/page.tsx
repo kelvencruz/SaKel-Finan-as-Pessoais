@@ -19,7 +19,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { createClient }                     from '@/lib/supabase/client'
-import { toggleCreditCard, softDeleteCreditCard } from '@/lib/financial/creditCards'
+import { toggleCreditCard, softDeleteCreditCard } from '@/lib/financial/creditcards'
 import { useActionHubStore }    from '@/stores/useActionHubStore'
 import { PageContainer }        from '@/components/layout/PageContainer'
 import { PageHeader }           from '@/components/layout/PageHeader'
