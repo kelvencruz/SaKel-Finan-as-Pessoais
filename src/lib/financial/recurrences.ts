@@ -216,3 +216,78 @@ export async function cancelRecurrence(
     return { success: false, error: String(err) }
   }
 }
+// ─── updateRecurrence ─────────────────────────────────────────────────────────
+//
+// Atualiza campos editáveis de uma recorrência.
+// NÃO permite alterar status — usar pauseRecurrence() / cancelRecurrence().
+// NÃO permite alterar is_active diretamente — mesmo motivo.
+// user_id em todo .eq() — boundary multi-usuário.
+
+export type RecurrenceUpdatePayload = Partial<{
+  description:    string
+  amount:         number
+  frequency:      RecurrenceFrequency
+  account_id:     string | null
+  credit_card_id: string | null
+  category_id:    string | null
+  next_due_date:  string   // YYYY-MM-DD — ex: corrigir data após edição
+}>
+
+export async function updateRecurrence(
+  recurrenceId: string,
+  userId: string,
+  payload: RecurrenceUpdatePayload
+): Promise<MutationResult<void>> {
+  try {
+    if (!recurrenceId) return { success: false, error: 'recurrenceId obrigatório' }
+    if (!userId)       return { success: false, error: 'userId obrigatório' }
+
+    // Invariantes do payload
+    if (payload.amount !== undefined && payload.amount <= 0) {
+      return { success: false, error: 'amount deve ser maior que zero' }
+    }
+    if (payload.frequency !== undefined && !VALID_FREQUENCIES.includes(payload.frequency)) {
+      return { success: false, error: `frequency inválida: ${payload.frequency}` }
+    }
+    if (payload.next_due_date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(payload.next_due_date)) {
+      return { success: false, error: 'next_due_date deve estar no formato YYYY-MM-DD' }
+    }
+    if (payload.description !== undefined && !payload.description.trim()) {
+      return { success: false, error: 'description não pode ser vazia' }
+    }
+
+    const supabase = createClient()
+
+    // Confirma existência + boundary antes de escrever
+    const { data: current, error: fetchError } = await supabase
+      .from('recurrences')
+      .select('status')
+      .eq('id', recurrenceId)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchError || !current) {
+      return { success: false, error: 'Recorrência não encontrada' }
+    }
+
+    // Cancelada é imutável — não edita
+    if (current.status === 'cancelled') {
+      return { success: false, error: 'Recorrência cancelada não pode ser editada' }
+    }
+
+    const { error } = await supabase
+      .from('recurrences')
+      .update({
+        ...payload,
+        description: payload.description?.trim(),
+      })
+      .eq('id', recurrenceId)
+      .eq('user_id', userId)   // boundary multi-usuário
+
+    if (error) return { success: false, error: error.message }
+
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}

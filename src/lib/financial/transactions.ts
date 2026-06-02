@@ -349,4 +349,71 @@ export async function restoreTransaction(
   }
 
   return { data: null, error: null }
+}// ─────────────────────────────────────────────────────────────────────────────
+// softDeleteTransactionsByRecurrence
+// Soft-deleta em batch todas as transactions de uma recorrência.
+// Single UPDATE com WHERE recurrence_id — evita N round-trips em loop.
+// Regra inviolável: NUNCA .delete() — deleted_at obrigatório.
+//
+// opts.fromDate (YYYY-MM-DD): quando presente, deleta apenas transactions
+//   com date >= fromDate (ex: cancelar "a partir de hoje").
+//   Omitido: deleta todas as transactions da recorrência (ex: excluir total).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function softDeleteTransactionsByRecurrence(
+  recurrenceId: string,
+  userId: string,
+  opts?: { fromDate?: string }
+): Promise<MutationResult> {
+  if (!recurrenceId?.trim()) return { data: null, error: 'recurrenceId é obrigatório.' }
+  if (!userId?.trim())       return { data: null, error: 'INV-008: user_id é obrigatório.' }
+
+  if (opts?.fromDate && !/^\d{4}-\d{2}-\d{2}$/.test(opts.fromDate)) {
+    return { data: null, error: 'INV-010: fromDate deve estar no formato YYYY-MM-DD.' }
+  }
+
+  const supabase = createClient()
+
+  // Coleta invoice_ids afetados ANTES do soft-delete para re-sync posterior.
+  // Necessário porque após deleted_at preenchido, syncInvoiceTotal os excluiria.
+  let invoiceQuery = supabase
+    .from('transactions')
+    .select('invoice_id')
+    .eq('recurrence_id', recurrenceId)
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+
+  if (opts?.fromDate) {
+    invoiceQuery = invoiceQuery.gte('date', opts.fromDate)
+  }
+
+  const { data: affected, error: selectError } = await invoiceQuery
+  if (selectError) return { data: null, error: selectError.message }
+
+  // Single UPDATE — um round-trip independente do volume de transactions
+  let updateQuery = supabase
+    .from('transactions')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('recurrence_id', recurrenceId)
+    .eq('user_id', userId)        // boundary multi-usuário
+    .is('deleted_at', null)
+
+  if (opts?.fromDate) {
+    updateQuery = updateQuery.gte('date', opts.fromDate)
+  }
+
+  const { error } = await updateQuery
+  if (error) return { data: null, error: error.message }
+
+  // Side-effect: re-sync faturas afetadas (dedup por Set)
+  const invoiceIds = new Set(
+    (affected ?? [])
+      .map(t => t.invoice_id)
+      .filter((id): id is string => !!id)
+  )
+  for (const invoiceId of invoiceIds) {
+    await syncInvoiceTotal(invoiceId)
+  }
+
+  return { data: null, error: null }
 }
