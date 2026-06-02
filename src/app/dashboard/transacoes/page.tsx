@@ -41,9 +41,27 @@ import {
   getCurrentMonthKey,
 } from '@/lib/financialEngine'
 
+// ─── Mutation Layer ───────────────────────────────────────────────────────────
+import {
+  createTransaction,
+  updateTransaction,
+  softDeleteTransaction,
+} from '@/lib/financial/transactions'
+import {
+  createRecurrence,
+  cancelRecurrence,
+} from '@/lib/financial/recurrences'
+import { getOrCreateInvoice } from '@/lib/financial/invoices'
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type TxType = 'income' | 'expense' | 'transfer'
+
+// TransactionStatus confirmado: 'paid' | 'pending' | 'overdue' | 'cancelled'
+type TransactionStatus = 'paid' | 'pending' | 'overdue' | 'cancelled'
+
+// RecurrenceFrequency confirmado: valores aceitos pelo layer
+type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
 interface Transaction {
   id: string
@@ -91,9 +109,7 @@ const TYPE_LABELS: Record<TxType, string> = {
   transfer: 'Transferencia',
 }
 
-// ─── Lifecycle config — tokens Luminous, sem hardcode de cor ─────────────────
-// ANTES: className com bg-green-50, text-green-700, border-green-200 etc.
-// DEPOIS: inline style com CSS variables semânticas do design system
+// ─── Lifecycle config ─────────────────────────────────────────────────────────
 
 const LIFECYCLE_CONFIG: Record<LifecycleStatus, {
   label: string
@@ -133,7 +149,7 @@ const LIFECYCLE_CONFIG: Record<LifecycleStatus, {
   },
 }
 
-// ─── Transition buttons — tokens Luminous ─────────────────────────────────────
+// ─── Transition buttons ───────────────────────────────────────────────────────
 
 const TRANSITION_BUTTON_CONFIG: Record<LifecycleStatus, {
   label: string
@@ -187,19 +203,17 @@ function addMonths(dateStr: string, months: number): string {
   return d.toISOString().split('T')[0]
 }
 
-// ─── Componentes auxiliares — Luminous ───────────────────────────────────────
 
-// ANTES: bg-white border-gray-100 — quebrava dark e arcade
-// DEPOIS: var(--glass-bg) var(--glass-border) — funciona nos 3 temas
+// ─── Componentes auxiliares ───────────────────────────────────────────────────
 
 function SkeletonRow() {
   return (
     <div
       className="rounded-xl px-4 py-3 flex items-center gap-4 animate-pulse"
       style={{
-        background:   'var(--glass-bg)',
+        background:     'var(--glass-bg)',
         backdropFilter: 'blur(var(--glass-blur))',
-        border:       '1px solid var(--glass-border)',
+        border:         '1px solid var(--glass-border)',
       }}
     >
       <div className="w-9 h-9 rounded-full shrink-0" style={{ background: 'var(--glass-border)' }} />
@@ -227,9 +241,9 @@ function PageEmptyState({ Icon, title, description, action }: PageEmptyStateProp
     <div
       className="rounded-xl p-10 text-center"
       style={{
-        background:   'var(--glass-bg)',
+        background:     'var(--glass-bg)',
         backdropFilter: 'blur(var(--glass-blur))',
-        border:       '1px dashed var(--glass-border)',
+        border:         '1px dashed var(--glass-border)',
       }}
     >
       <div className="flex justify-center mb-3">
@@ -262,9 +276,9 @@ function PageErrorState({ message, onRetry }: PageErrorStateProps) {
     <div
       className="rounded-xl p-10 text-center"
       style={{
-        background:   'var(--glass-bg)',
+        background:     'var(--glass-bg)',
         backdropFilter: 'blur(var(--glass-blur))',
-        border:       '1px dashed rgba(220,38,38,0.2)',
+        border:         '1px dashed rgba(220,38,38,0.2)',
       }}
     >
       <div className="flex justify-center mb-3">
@@ -328,7 +342,7 @@ async function handleTransactionGamification(
       await awardXP(userId, 'transaction_categorized')
     }
 
-    const gamAfter = await getGamification(userId)
+    const gamAfter   = await getGamification(userId)
     const streakDays = gamAfter?.streakDays ?? 0
     const earnedAfter = gamAfter?.badges ?? []
 
@@ -370,9 +384,7 @@ function LifecycleActions({ tx, onTransition, transitioning }: LifecycleActionsP
             className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-opacity disabled:opacity-40 hover:opacity-80"
             style={cfg.style}
           >
-            {isLoading && (
-              <Spinner size={12} weight="bold" className="animate-spin" />
-            )}
+            {isLoading && <Spinner size={12} weight="bold" className="animate-spin" />}
             {cfg.label}
           </button>
         )
@@ -451,7 +463,6 @@ export default function TransacoesPage() {
           .from('transactions')
           .select('id, type, description, amount, date, account_id, destination_account_id, category_id, notes, status, lifecycle_status, credit_card_id, invoice_id, is_recurring, recurrence_id, recurrence, recurrence_start, recurrence_end, installment_total, installment_current, installment_group')
           .eq('user_id', user.id)
-          // Soft delete: exclui registros deletados
           .is('deleted_at', null)
           .order('date', { ascending: false })
           .limit(500),
@@ -546,45 +557,24 @@ export default function TransacoesPage() {
     setShowEditModal(true)
   }
 
-  // ─── Invoice helpers ────────────────────────────────────────────────────────
+  // ─── Resolver invoice_id via Mutation Layer ───────────────────────────────
 
-  async function getOrCreateInvoice(cardId: string, date: string, userId: string): Promise<string | null> {
-    const d    = new Date(date + 'T12:00:00')
+  async function resolveInvoiceId(
+    cardId: string,
+    date: string,
+    userId: string,
+  ): Promise<string | null> {
     const card = creditCards.find(c => c.id === cardId)
     if (!card) return null
-
-    let month = d.getMonth() + 1
-    let year  = d.getFullYear()
-    if (d.getDate() > card.closing_day) {
-      month = month === 12 ? 1 : month + 1
-      year  = month === 1 ? year + 1 : year
-    }
-
-    const { data: existing } = await supabase
-      .from('credit_card_invoices').select('id')
-      .eq('credit_card_id', cardId).eq('month', month).eq('year', year).single()
-    if (existing) return existing.id
-
-    const dueMonth = month === 12 ? 1 : month + 1
-    const dueYear  = month === 12 ? year + 1 : year
-    const dueDate  = `${dueYear}-${String(dueMonth).padStart(2,'0')}-${String(card.due_day).padStart(2,'0')}`
-
-    const { data: created } = await supabase
-      .from('credit_card_invoices')
-      .insert({ credit_card_id: cardId, user_id: userId, month, year, total_amount: 0, status: 'open', due_date: dueDate })
-      .select('id').single()
-    return created?.id ?? null
+    return getOrCreateInvoice({
+      cardId,
+      date,
+      userId,
+      closingDay: card.closing_day,
+      dueDay:     card.due_day,
+    })
   }
 
-  // NOTA TÉCNICA: updateInvoiceTotal() é dívida técnica P1.
-  // Reduz correndo no frontend com race condition potencial.
-  // Destino correto: trigger Supabase ou RPC server-side.
-  // Mantido aqui por compatibilidade — não remover sem substituto pronto.
-  async function updateInvoiceTotal(invoiceId: string) {
-    const { data } = await supabase.from('transactions').select('amount').eq('invoice_id', invoiceId)
-    const total = (data ?? []).reduce((s: number, t: any) => s + Number(t.amount), 0)
-    await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
-  }
 
   // ─── Salvar transação ───────────────────────────────────────────────────────
 
@@ -615,44 +605,45 @@ export default function TransacoesPage() {
     if (form.is_installment && !editingId && form.type !== 'transfer') {
       const total   = parseInt(form.installment_total)
       const groupId = crypto.randomUUID()
-      const rows    = []
 
       for (let i = 0; i < total; i++) {
-        const installDate = addMonths(form.date, i)
-        let invoiceId: string | null = null
-        let accountId = form.account_id || null
+        const installDate                  = addMonths(form.date, i)
+        let   invoiceId: string | null     = null
+        let   accountId: string | null     = form.account_id || null
 
         if (form.use_credit_card && form.type === 'expense') {
-          invoiceId = await getOrCreateInvoice(form.credit_card_id, installDate, user.id)
+          invoiceId = await resolveInvoiceId(form.credit_card_id, installDate, user.id)
           accountId = null
         }
 
-        rows.push({
+        const result = await createTransaction({
           user_id:                user.id,
-          type:                   form.type,
+          type:                   form.type as 'income' | 'expense',
           description:            `${form.description.trim()} (${i + 1}/${total})`,
           amount,
           date:                   installDate,
           account_id:             accountId,
           destination_account_id: null,
           category_id:            form.category_id || null,
+          goal_id:                null,
           notes:                  form.notes?.trim() || null,
-          status:                 form.use_credit_card ? 'posted' : form.status,
+          status:                 (form.use_credit_card ? 'paid' : form.status) as TransactionStatus,
           credit_card_id:         form.use_credit_card ? form.credit_card_id : null,
           invoice_id:             invoiceId,
+          is_installment:         true,
           installment_total:      total,
           installment_current:    i + 1,
           installment_group:      groupId,
           is_recurring:           false,
-          lifecycle_status:       form.status === 'pending' || form.status === 'overdue' ? 'PENDING_EXPECTED' : 'CONFIRMED',
+          recurrence_id:          null,
         })
+
+        if (result.error) {
+          setFormError(result.error)
+          setSaving(false)
+          return
+        }
       }
-
-      const { error: err } = await supabase.from('transactions').insert(rows)
-      if (err) { setFormError(err.message); setSaving(false); return }
-
-      const invoiceIds = [...new Set(rows.map(r => r.invoice_id).filter(Boolean))]
-      for (const iid of invoiceIds) { if (iid) await updateInvoiceTotal(iid) }
 
       const { count: txCount } = await supabase
         .from('transactions').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
@@ -666,69 +657,55 @@ export default function TransacoesPage() {
     }
 
     // ── RECORRENTE ─────────────────────────────────────────────
-    if (form.is_recurring && !editingId) {
-      function calcNextDue(startDate: string, frequency: string): string {
-        const today = new Date(); today.setHours(0, 0, 0, 0)
-        const d = new Date(startDate + 'T12:00:00')
-        while (d < today) {
-          if (frequency === 'daily')        d.setDate(d.getDate() + 1)
-          else if (frequency === 'weekly')  d.setDate(d.getDate() + 7)
-          else if (frequency === 'monthly') d.setMonth(d.getMonth() + 1)
-          else if (frequency === 'yearly')  d.setFullYear(d.getFullYear() + 1)
-        }
-        return d.toISOString().split('T')[0]
-      }
-
-      const recPayload = {
+    if (form.is_recurring && !editingId && form.type !== 'transfer') {
+      const recResult = await createRecurrence({
         user_id:        user.id,
-        type:           form.type,
+        type:           form.type as 'income' | 'expense',
         description:    form.description.trim(),
         amount,
-        frequency:      form.recurrence,
-        next_due_date:  calcNextDue(form.date, form.recurrence),
+        frequency:      form.recurrence as RecurrenceFrequency,
         start_date:     form.date,
-        end_date:       form.recurrence_end || null,
         account_id:     form.use_credit_card ? null : (form.account_id || null),
         credit_card_id: form.use_credit_card ? form.credit_card_id : null,
         category_id:    form.category_id || null,
-        is_active:      true,
-      }
+      })
 
-      const { data: recData, error: recErr } = await supabase
-        .from('recurrences').insert(recPayload).select('id').single()
-
-      if (recErr || !recData) {
-        setFormError(recErr?.message ?? 'Erro ao criar recorrencia.')
+      if (recResult.error || !recResult.data?.id) {
+        setFormError(recResult.error ?? 'Erro ao criar recorrencia.')
         setSaving(false)
         return
       }
 
-      let invoiceId: string | null = null
-      const accountId = form.use_credit_card ? null : (form.account_id || null)
+      let   invoiceId: string | null = null
+      const accountId: string | null = form.use_credit_card ? null : (form.account_id || null)
+
       if (form.use_credit_card && form.type === 'expense') {
-        invoiceId = await getOrCreateInvoice(form.credit_card_id, form.date, user.id)
+        invoiceId = await resolveInvoiceId(form.credit_card_id, form.date, user.id)
       }
 
-      const { error: txErr } = await supabase.from('transactions').insert({
+      const txResult = await createTransaction({
         user_id:                user.id,
-        type:                   form.type,
+        type:                   form.type as 'income' | 'expense',
         description:            form.description.trim(),
         amount,
         date:                   form.date,
         account_id:             accountId,
         destination_account_id: null,
         category_id:            form.category_id || null,
+        goal_id:                null,
         notes:                  form.notes?.trim() || null,
-        status:                 form.use_credit_card ? 'posted' : form.status,
+        status:                 (form.use_credit_card ? 'paid' : form.status) as TransactionStatus,
         credit_card_id:         form.use_credit_card ? form.credit_card_id : null,
         invoice_id:             invoiceId,
         is_recurring:           true,
-        recurrence_id:          recData.id,
-        lifecycle_status:       form.status === 'pending' || form.status === 'overdue' ? 'PENDING_EXPECTED' : 'CONFIRMED',
+        recurrence_id:          recResult.data.id,
       })
 
-      if (txErr) { setFormError(txErr.message); setSaving(false); return }
-      if (invoiceId) await updateInvoiceTotal(invoiceId)
+      if (txResult.error) {
+        setFormError(txResult.error)
+        setSaving(false)
+        return
+      }
 
       const { count: txCount } = await supabase
         .from('transactions').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
@@ -742,15 +719,15 @@ export default function TransacoesPage() {
     }
 
     // ── TRANSACAO NORMAL ───────────────────────────────────────
-    let invoiceId: string | null = null
-    let accountId = form.account_id || null
+    let   invoiceId: string | null = null
+    let   accountId: string | null = form.account_id || null
 
     if (form.use_credit_card && form.type === 'expense') {
-      invoiceId = await getOrCreateInvoice(form.credit_card_id, form.date, user.id)
+      invoiceId = await resolveInvoiceId(form.credit_card_id, form.date, user.id)
       accountId = null
     }
 
-    const payload: any = {
+    const payload = {
       type:                   form.type,
       description:            form.description.trim(),
       amount,
@@ -759,25 +736,23 @@ export default function TransacoesPage() {
       destination_account_id: form.type === 'transfer' ? form.destination_account_id : null,
       category_id:            form.category_id || null,
       notes:                  form.notes?.trim() || null,
-      status:                 form.use_credit_card ? 'posted' : form.status,
+      status:                 (form.use_credit_card ? 'paid' : form.status) as TransactionStatus,
       credit_card_id:         form.use_credit_card ? form.credit_card_id : null,
       invoice_id:             invoiceId,
       is_recurring:           false,
     }
 
     if (editingId) {
-      const { error: err } = await supabase.from('transactions').update(payload).eq('id', editingId)
-      if (err) { setFormError(err.message); setSaving(false); return }
-      if (invoiceId) await updateInvoiceTotal(invoiceId)
+      const result = await updateTransaction(editingId, user.id, payload)
+      if (result.error) { setFormError(result.error); setSaving(false); return }
       showToast('Transacao atualizada!')
     } else {
-      const { error: err } = await supabase.from('transactions').insert({
+      const result = await createTransaction({
         ...payload,
-        user_id:          user.id,
-        lifecycle_status: form.status === 'pending' || form.status === 'overdue' ? 'PENDING_EXPECTED' : 'CONFIRMED',
+        user_id: user.id,
+        goal_id: null,
       })
-      if (err) { setFormError(err.message); setSaving(false); return }
-      if (invoiceId) await updateInvoiceTotal(invoiceId)
+      if (result.error) { setFormError(result.error); setSaving(false); return }
 
       const { count: txCount } = await supabase
         .from('transactions').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
@@ -791,9 +766,7 @@ export default function TransacoesPage() {
     setSaving(false)
   }
 
-  // ─── Excluir — soft delete ──────────────────────────────────────────────────
-  // ANTES: supabase.from('transactions').delete().eq('id', id)
-  // DEPOIS: update({ deleted_at: now }) — dados financeiros não desaparecem
+  // ─── Excluir ────────────────────────────────────────────────────────────────
 
   function handleDeleteClick(tx: Transaction) {
     if (tx.is_recurring && tx.recurrence_id) {
@@ -809,12 +782,14 @@ export default function TransacoesPage() {
     if (!deleteTargetId) return
     setShowDeleteModal(false)
     setDeletingId(deleteTargetId)
-    const { error: err } = await supabase
-      .from('transactions')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', deleteTargetId)
-    if (err) showToast('Erro ao excluir.', 'error')
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { showToast('Nao autenticado.', 'error'); setDeletingId(null); return }
+
+    const result = await softDeleteTransaction(deleteTargetId, user.id)
+    if (result.error) showToast('Erro ao excluir.', 'error')
     else showToast('Transacao excluida.')
+
     await loadAll()
     setDeletingId(null)
     setDeleteTargetId(null)
@@ -827,22 +802,26 @@ export default function TransacoesPage() {
     setShowRecurrenceModal(false)
     setRecurrenceTx(null)
 
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { showToast('Nao autenticado.', 'error'); setDeletingId(null); return }
+
     if (mode === 'single') {
-      const { error: err } = await supabase
-        .from('transactions')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', id)
-      if (err) showToast('Erro ao excluir.', 'error')
+      const result = await softDeleteTransaction(id, user.id)
+      if (result.error) showToast('Erro ao excluir.', 'error')
       else showToast('Lancamento excluido. Recorrencia mantida.')
     } else {
-      await supabase
-        .from('transactions')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', id)
-      if (recurrence_id) {
-        await supabase.from('recurrences').update({ is_active: false }).eq('id', recurrence_id)
+      const [txResult, recResult] = await Promise.all([
+        softDeleteTransaction(id, user.id),
+        recurrence_id
+          ? cancelRecurrence(recurrence_id, user.id)
+          : Promise.resolve({ data: null, error: null }),
+      ])
+
+      if (txResult.error || recResult.error) {
+        showToast('Erro ao cancelar recorrencia.', 'error')
+      } else {
+        showToast('Lancamento excluido e recorrencia cancelada.')
       }
-      showToast('Lancamento excluido e recorrencia pausada.')
     }
 
     await loadAll()
@@ -862,9 +841,9 @@ export default function TransacoesPage() {
         const q = search.toLowerCase()
         if (
           !tx.description.toLowerCase().includes(q) &&
-          !(tx.account_name       ?? '').toLowerCase().includes(q) &&
-          !(tx.category_name      ?? '').toLowerCase().includes(q) &&
-          !(tx.credit_card_name   ?? '').toLowerCase().includes(q)
+          !(tx.account_name     ?? '').toLowerCase().includes(q) &&
+          !(tx.category_name    ?? '').toLowerCase().includes(q) &&
+          !(tx.credit_card_name ?? '').toLowerCase().includes(q)
         ) return false
       }
       return true
@@ -872,8 +851,6 @@ export default function TransacoesPage() {
   }, [transactions, filterType, filterAccount, filterCategory, filterLifecycle, filterMonth, search])
 
   // TD-001: calcDualSummary no React é dívida técnica.
-  // Destino correto: Supabase view get_financial_summary(user_id).
-  // Mantido aqui até sprint de infraestrutura financeira.
   const dualSummary = useMemo(
     () => calcDualSummary(
       filtered.map(t => ({
@@ -906,7 +883,7 @@ export default function TransacoesPage() {
     c => form.type !== 'transfer' && (c.type === form.type || c.type === 'both')
   )
 
-  // ─── Conteúdo da lista ───────────────────────────────────────────────────────
+  // ─── Render da lista ─────────────────────────────────────────────────────────
 
   function renderContent() {
     if (loading) {
@@ -955,25 +932,17 @@ export default function TransacoesPage() {
               key={tx.id}
               className="rounded-xl px-4 py-3 flex gap-4 group transition-all"
               style={{
-                background:      'var(--glass-bg)',
-                backdropFilter:  'blur(var(--glass-blur))',
-                border:          '1px solid var(--glass-border)',
+                background:     'var(--glass-bg)',
+                backdropFilter: 'blur(var(--glass-blur))',
+                border:         '1px solid var(--glass-border)',
               }}
-              onMouseEnter={e => {
-                e.currentTarget.style.borderColor = 'var(--glass-hover-border)'
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.borderColor = 'var(--glass-border)'
-              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--glass-hover-border)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--glass-border)' }}
             >
               {isNonDefault && (
-                <div
-                  className="w-1 rounded-full shrink-0 self-stretch"
-                  style={lcCfg.dotStyle}
-                />
+                <div className="w-1 rounded-full shrink-0 self-stretch" style={lcCfg.dotStyle} />
               )}
 
-              {/* Ícone de tipo */}
               <div
                 className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 self-start mt-0.5"
                 style={{
@@ -1000,11 +969,7 @@ export default function TransacoesPage() {
                   {tx.is_recurring && tx.recurrence_id && (
                     <span
                       className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0"
-                      style={{
-                        background: 'rgba(59,130,246,0.08)',
-                        color:      'var(--color-info, #3B82F6)',
-                        border:     '1px solid rgba(59,130,246,0.15)',
-                      }}
+                      style={{ background: 'rgba(59,130,246,0.08)', color: 'var(--color-info, #3B82F6)', border: '1px solid rgba(59,130,246,0.15)' }}
                     >
                       <Repeat size={10} weight="duotone" />
                       Recorrente
@@ -1014,11 +979,7 @@ export default function TransacoesPage() {
                   {tx.installment_total && tx.installment_current && (
                     <span
                       className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0"
-                      style={{
-                        background: 'rgba(234,88,12,0.08)',
-                        color:      '#EA580C',
-                        border:     '1px solid rgba(234,88,12,0.15)',
-                      }}
+                      style={{ background: 'rgba(234,88,12,0.08)', color: '#EA580C', border: '1px solid rgba(234,88,12,0.15)' }}
                     >
                       <CalendarBlank size={10} weight="duotone" />
                       {tx.installment_current}/{tx.installment_total}x
@@ -1047,11 +1008,7 @@ export default function TransacoesPage() {
 
                 {!isTerminal(lcStatus) && (
                   <div className="mt-2">
-                    <LifecycleActions
-                      tx={tx}
-                      onTransition={handleTransition}
-                      transitioning={transitioning}
-                    />
+                    <LifecycleActions tx={tx} onTransition={handleTransition} transitioning={transitioning} />
                   </div>
                 )}
               </div>
@@ -1068,16 +1025,8 @@ export default function TransacoesPage() {
                     onClick={() => openEdit(tx)}
                     className="p-1.5 rounded transition-colors"
                     style={{ color: 'var(--color-text-muted)', opacity: 0.5 }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.color = 'var(--primary)'
-                      e.currentTarget.style.background = 'rgba(var(--primary-rgb, 124,58,237), 0.08)'
-                      e.currentTarget.style.opacity = '1'
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.color = 'var(--color-text-muted)'
-                      e.currentTarget.style.background = 'transparent'
-                      e.currentTarget.style.opacity = '0.5'
-                    }}
+                    onMouseEnter={e => { e.currentTarget.style.color = 'var(--primary)'; e.currentTarget.style.background = 'rgba(var(--primary-rgb, 124,58,237), 0.08)'; e.currentTarget.style.opacity = '1' }}
+                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-text-muted)'; e.currentTarget.style.background = 'transparent'; e.currentTarget.style.opacity = '0.5' }}
                     title="Editar"
                   >
                     <PencilSimple size={14} weight="duotone" />
@@ -1087,16 +1036,8 @@ export default function TransacoesPage() {
                     disabled={deletingId === tx.id}
                     className="p-1.5 rounded transition-colors disabled:opacity-30"
                     style={{ color: 'var(--color-text-muted)', opacity: 0.5 }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.color = 'var(--color-danger)'
-                      e.currentTarget.style.background = 'rgba(220,38,38,0.08)'
-                      e.currentTarget.style.opacity = '1'
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.color = 'var(--color-text-muted)'
-                      e.currentTarget.style.background = 'transparent'
-                      e.currentTarget.style.opacity = '0.5'
-                    }}
+                    onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-danger)'; e.currentTarget.style.background = 'rgba(220,38,38,0.08)'; e.currentTarget.style.opacity = '1' }}
+                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-text-muted)'; e.currentTarget.style.background = 'transparent'; e.currentTarget.style.opacity = '0.5' }}
                     title="Excluir"
                   >
                     {deletingId === tx.id
@@ -1118,7 +1059,6 @@ export default function TransacoesPage() {
   return (
     <PageContainer>
 
-      {/* ── Toast Luminous ── */}
       {toast && (
         <div
           className="fixed top-5 right-5 z-[60] px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2"
@@ -1153,19 +1093,14 @@ export default function TransacoesPage() {
         }
       />
 
-      {/* ── Filtros — glass-card ── */}
+      {/* ── Filtros ── */}
       <div
         className="rounded-xl p-4 mb-4 space-y-3"
-        style={{
-          background:     'var(--glass-bg)',
-          backdropFilter: 'blur(var(--glass-blur))',
-          border:         '1px solid var(--glass-border)',
-        }}
+        style={{ background: 'var(--glass-bg)', backdropFilter: 'blur(var(--glass-blur))', border: '1px solid var(--glass-border)' }}
       >
         <div className="relative">
           <MagnifyingGlass
-            size={16}
-            weight="duotone"
+            size={16} weight="duotone"
             className="absolute left-3 top-1/2 -translate-y-1/2"
             style={{ color: 'var(--color-text-muted)', opacity: 0.5 }}
           />
@@ -1175,18 +1110,13 @@ export default function TransacoesPage() {
             onChange={e => setSearch(e.target.value)}
             placeholder="Buscar por descricao, conta, cartao ou categoria..."
             className="w-full pl-8 pr-3 py-2 rounded-lg text-sm focus:outline-none"
-            style={{
-              background: 'var(--glass-bg)',
-              color:      'var(--color-text-primary)',
-              border:     '1px solid var(--glass-border)',
-            }}
-            onFocus={e  => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(var(--primary-rgb,124,58,237),0.15)' }}
-            onBlur={e   => { e.currentTarget.style.borderColor = 'var(--glass-border)'; e.currentTarget.style.boxShadow = 'none' }}
+            style={{ background: 'var(--glass-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--glass-border)' }}
+            onFocus={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(var(--primary-rgb,124,58,237),0.15)' }}
+            onBlur={e  => { e.currentTarget.style.borderColor = 'var(--glass-border)'; e.currentTarget.style.boxShadow = 'none' }}
           />
         </div>
 
         <div className="flex gap-2 flex-wrap">
-          {/* Tipo */}
           <div className="flex gap-1.5">
             {([['', 'Todas'], ['income', 'Receitas'], ['expense', 'Despesas'], ['transfer', 'Transf.']] as [TxType | '', string][]).map(([val, label]) => (
               <button
@@ -1204,30 +1134,20 @@ export default function TransacoesPage() {
             ))}
           </div>
 
-          {/* Mês */}
           <select
             value={filterMonth}
             onChange={e => setFilterMonth(e.target.value)}
             className="rounded-lg px-2 py-1.5 text-xs focus:outline-none"
-            style={{
-              background: 'var(--glass-bg)',
-              color:      'var(--color-text-primary)',
-              border:     '1px solid var(--glass-border)',
-            }}
+            style={{ background: 'var(--glass-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--glass-border)' }}
           >
             {monthOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
 
-          {/* Status lifecycle */}
           <select
             value={filterLifecycle}
             onChange={e => setFilterLifecycle(e.target.value as LifecycleStatus | '')}
             className="rounded-lg px-2 py-1.5 text-xs focus:outline-none"
-            style={{
-              background: 'var(--glass-bg)',
-              color:      'var(--color-text-primary)',
-              border:     '1px solid var(--glass-border)',
-            }}
+            style={{ background: 'var(--glass-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--glass-border)' }}
           >
             <option value="">Todos os status</option>
             {(Object.keys(LIFECYCLE_CONFIG) as LifecycleStatus[]).map(s => (
@@ -1235,50 +1155,35 @@ export default function TransacoesPage() {
             ))}
           </select>
 
-          {/* Conta */}
           {accounts.length > 0 && (
             <select
               value={filterAccount}
               onChange={e => setFilterAccount(e.target.value)}
               className="rounded-lg px-2 py-1.5 text-xs focus:outline-none"
-              style={{
-                background: 'var(--glass-bg)',
-                color:      'var(--color-text-primary)',
-                border:     '1px solid var(--glass-border)',
-              }}
+              style={{ background: 'var(--glass-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--glass-border)' }}
             >
               <option value="">Todas as contas</option>
               {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           )}
 
-          {/* Categoria */}
           {categories.length > 0 && (
             <select
               value={filterCategory}
               onChange={e => setFilterCategory(e.target.value)}
               className="rounded-lg px-2 py-1.5 text-xs focus:outline-none"
-              style={{
-                background: 'var(--glass-bg)',
-                color:      'var(--color-text-primary)',
-                border:     '1px solid var(--glass-border)',
-              }}
+              style={{ background: 'var(--glass-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--glass-border)' }}
             >
               <option value="">Todas as categorias</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
             </select>
           )}
 
-          {/* Limpar */}
           {hasActiveFilters && (
             <button
               onClick={clearFilters}
               className="px-3 py-1.5 rounded-lg text-xs transition-opacity hover:opacity-70"
-              style={{
-                color:      'var(--color-danger)',
-                background: 'rgba(220,38,38,0.06)',
-                border:     '1px solid rgba(220,38,38,0.15)',
-              }}
+              style={{ color: 'var(--color-danger)', background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.15)' }}
             >
               Limpar
             </button>
@@ -1286,11 +1191,9 @@ export default function TransacoesPage() {
         </div>
       </div>
 
-      {/* ── Summary dual — ledger + operacional — AnimatedValue ── */}
+      {/* ── Summary dual ── */}
       {!loading && !loadError && filtered.length > 0 && (
         <div className="space-y-3 mb-4">
-
-          {/* Confirmado + Vencido */}
           <div>
             <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
               Confirmado + Vencido
@@ -1304,25 +1207,15 @@ export default function TransacoesPage() {
                 <div
                   key={label}
                   className="rounded-xl px-4 py-3"
-                  style={{
-                    background:     'var(--glass-bg)',
-                    backdropFilter: 'blur(var(--glass-blur))',
-                    border:         '1px solid var(--glass-border)',
-                  }}
+                  style={{ background: 'var(--glass-bg)', backdropFilter: 'blur(var(--glass-blur))', border: '1px solid var(--glass-border)' }}
                 >
                   <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{label}</p>
-                  <AnimatedValue
-                    value={value}
-                    group="financial"
-                    className="text-sm font-semibold mt-0.5"
-                    style={{ color }}
-                  />
+                  <AnimatedValue value={value} group="financial" className="text-sm font-semibold mt-0.5" style={{ color }} />
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Previsto / Em revisão */}
           {(dualSummary.operational.income > 0 || dualSummary.operational.expense > 0) && (
             <div>
               <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
@@ -1330,26 +1223,17 @@ export default function TransacoesPage() {
               </p>
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { label: 'Receitas',       value: dualSummary.operational.income,   color: 'var(--color-success, #16A34A)' },
-                  { label: 'Despesas',       value: dualSummary.operational.expense,  color: 'var(--color-danger, #DC2626)'  },
-                  { label: 'Impacto prev.',  value: dualSummary.operational.balance,  color: dualSummary.operational.balance >= 0 ? 'var(--primary)' : 'var(--color-danger, #DC2626)' },
+                  { label: 'Receitas',      value: dualSummary.operational.income,  color: 'var(--color-success, #16A34A)' },
+                  { label: 'Despesas',      value: dualSummary.operational.expense, color: 'var(--color-danger, #DC2626)'  },
+                  { label: 'Impacto prev.', value: dualSummary.operational.balance, color: dualSummary.operational.balance >= 0 ? 'var(--primary)' : 'var(--color-danger, #DC2626)' },
                 ].map(({ label, value, color }) => (
                   <div
                     key={label}
                     className="rounded-xl px-4 py-3"
-                    style={{
-                      background:     'var(--glass-bg)',
-                      backdropFilter: 'blur(var(--glass-blur))',
-                      border:         '1px dashed var(--glass-border)',
-                    }}
+                    style={{ background: 'var(--glass-bg)', backdropFilter: 'blur(var(--glass-blur))', border: '1px dashed var(--glass-border)' }}
                   >
                     <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{label}</p>
-                    <AnimatedValue
-                      value={value}
-                      group="financial"
-                      className="text-sm font-semibold mt-0.5 opacity-60"
-                      style={{ color }}
-                    />
+                    <AnimatedValue value={value} group="financial" className="text-sm font-semibold mt-0.5 opacity-60" style={{ color }} />
                   </div>
                 ))}
               </div>
@@ -1360,7 +1244,7 @@ export default function TransacoesPage() {
 
       {renderContent()}
 
-      {/* ── Modal confirmação exclusão simples ── */}
+      {/* ── Modal exclusão simples ── */}
       <AppModal
         open={showDeleteModal}
         onClose={() => { setShowDeleteModal(false); setDeleteTargetId(null) }}
@@ -1371,11 +1255,7 @@ export default function TransacoesPage() {
             <button
               onClick={() => { setShowDeleteModal(false); setDeleteTargetId(null) }}
               className="flex-1 rounded-lg py-2 text-sm transition-opacity hover:opacity-80"
-              style={{
-                border:     '1px solid var(--glass-border)',
-                color:      'var(--color-text-muted)',
-                background: 'transparent',
-              }}
+              style={{ border: '1px solid var(--glass-border)', color: 'var(--color-text-muted)', background: 'transparent' }}
             >
               Cancelar
             </button>
@@ -1390,10 +1270,7 @@ export default function TransacoesPage() {
         }
       >
         <div className="flex items-start gap-3">
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-            style={{ background: 'rgba(220,38,38,0.1)' }}
-          >
+          <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ background: 'rgba(220,38,38,0.1)' }}>
             <Trash size={20} weight="duotone" style={{ color: 'var(--color-danger)' }} />
           </div>
           <p className="text-sm pt-2" style={{ color: 'var(--color-text-muted)' }}>
@@ -1412,10 +1289,7 @@ export default function TransacoesPage() {
         {recurrenceTx && (
           <>
             <div className="flex items-start gap-3 mb-4">
-              <div
-                className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-                style={{ background: 'rgba(59,130,246,0.1)' }}
-              >
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ background: 'rgba(59,130,246,0.1)' }}>
                 <Repeat size={20} weight="duotone" style={{ color: 'var(--color-info, #3B82F6)' }} />
               </div>
               <p className="text-sm pt-2" style={{ color: 'var(--color-text-muted)' }}>
@@ -1428,11 +1302,7 @@ export default function TransacoesPage() {
 
             <div
               className="rounded-xl px-4 py-3 mb-4 text-xs"
-              style={{
-                background: 'rgba(59,130,246,0.06)',
-                border:     '1px solid rgba(59,130,246,0.15)',
-                color:      'var(--color-info, #3B82F6)',
-              }}
+              style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)', color: 'var(--color-info, #3B82F6)' }}
             >
               <p className="font-semibold mb-1 flex items-center gap-1">
                 <Warning size={12} weight="duotone" />
@@ -1447,14 +1317,8 @@ export default function TransacoesPage() {
                 onClick={() => executeTxDelete('single')}
                 className="w-full text-left rounded-xl px-4 py-3 transition-all"
                 style={{ border: '2px solid var(--glass-border)', background: 'transparent' }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.borderColor = 'rgba(234,88,12,0.4)'
-                  e.currentTarget.style.background  = 'rgba(234,88,12,0.05)'
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.borderColor = 'var(--glass-border)'
-                  e.currentTarget.style.background  = 'transparent'
-                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(234,88,12,0.4)'; e.currentTarget.style.background = 'rgba(234,88,12,0.05)' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--glass-border)'; e.currentTarget.style.background = 'transparent' }}
               >
                 <p className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--color-text-primary)' }}>
                   <Trash size={14} weight="duotone" style={{ color: '#EA580C' }} />
@@ -1469,21 +1333,15 @@ export default function TransacoesPage() {
                 onClick={() => executeTxDelete('all')}
                 className="w-full text-left rounded-xl px-4 py-3 transition-all"
                 style={{ border: '2px solid var(--glass-border)', background: 'transparent' }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.borderColor = 'rgba(220,38,38,0.4)'
-                  e.currentTarget.style.background  = 'rgba(220,38,38,0.05)'
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.borderColor = 'var(--glass-border)'
-                  e.currentTarget.style.background  = 'transparent'
-                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(220,38,38,0.4)'; e.currentTarget.style.background = 'rgba(220,38,38,0.05)' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--glass-border)'; e.currentTarget.style.background = 'transparent' }}
               >
                 <p className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--color-danger)' }}>
                   <ArrowCounterClockwise size={14} weight="duotone" />
-                  Excluir e pausar recorrencia
+                  Excluir e cancelar recorrencia
                 </p>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-                  Remove este lancamento e para de gerar novos. Historico passado preservado.
+                  Remove este lancamento e cancela a recorrencia. Historico passado preservado.
                 </p>
               </button>
             </div>
@@ -1491,11 +1349,7 @@ export default function TransacoesPage() {
             <button
               onClick={() => { setShowRecurrenceModal(false); setRecurrenceTx(null) }}
               className="w-full rounded-lg py-2 text-sm mt-4 transition-opacity hover:opacity-80"
-              style={{
-                border:     '1px solid var(--glass-border)',
-                color:      'var(--color-text-muted)',
-                background: 'transparent',
-              }}
+              style={{ border: '1px solid var(--glass-border)', color: 'var(--color-text-muted)', background: 'transparent' }}
             >
               Cancelar
             </button>
@@ -1503,7 +1357,7 @@ export default function TransacoesPage() {
         )}
       </AppModal>
 
-      {/* ── Modal criar/editar transacao ── */}
+      {/* ── Modal criar/editar ── */}
       <AppModal
         open={showEditModal}
         onClose={() => setShowEditModal(false)}
@@ -1514,11 +1368,7 @@ export default function TransacoesPage() {
             <button
               onClick={() => setShowEditModal(false)}
               className="flex-1 rounded-lg py-2 text-sm transition-opacity hover:opacity-80"
-              style={{
-                border:     '1px solid var(--glass-border)',
-                color:      'var(--color-text-muted)',
-                background: 'transparent',
-              }}
+              style={{ border: '1px solid var(--glass-border)', color: 'var(--color-text-muted)', background: 'transparent' }}
             >
               Cancelar
             </button>
@@ -1574,14 +1424,11 @@ export default function TransacoesPage() {
             </div>
           </div>
 
-          {/* Cartão de crédito toggle */}
+          {/* Cartão toggle */}
           {form.type === 'expense' && creditCards.length > 0 && (
             <div
               className="flex items-center justify-between rounded-lg px-3 py-2.5"
-              style={{
-                background: 'rgba(147,51,234,0.06)',
-                border:     '1px solid rgba(147,51,234,0.15)',
-              }}
+              style={{ background: 'rgba(147,51,234,0.06)', border: '1px solid rgba(147,51,234,0.15)' }}
             >
               <div className="flex items-center gap-2">
                 <CreditCard size={16} weight="duotone" className="text-purple-500" />
@@ -1606,8 +1453,8 @@ export default function TransacoesPage() {
               placeholder={form.type === 'income' ? 'Ex: Salario, Freelance...' : form.type === 'expense' ? 'Ex: Mercado, Aluguel...' : 'Ex: Para reserva...'}
               className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
               style={{ background: 'var(--glass-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--glass-border)' }}
-              onFocus={e  => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(var(--primary-rgb,124,58,237),0.15)' }}
-              onBlur={e   => { e.currentTarget.style.borderColor = 'var(--glass-border)'; e.currentTarget.style.boxShadow = 'none' }}
+              onFocus={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(var(--primary-rgb,124,58,237),0.15)' }}
+              onBlur={e  => { e.currentTarget.style.borderColor = 'var(--glass-border)'; e.currentTarget.style.boxShadow = 'none' }}
             />
           </div>
 
@@ -1623,8 +1470,8 @@ export default function TransacoesPage() {
                 placeholder="0,00"
                 className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
                 style={{ background: 'var(--glass-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--glass-border)' }}
-                onFocus={e  => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(var(--primary-rgb,124,58,237),0.15)' }}
-                onBlur={e   => { e.currentTarget.style.borderColor = 'var(--glass-border)'; e.currentTarget.style.boxShadow = 'none' }}
+                onFocus={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(var(--primary-rgb,124,58,237),0.15)' }}
+                onBlur={e  => { e.currentTarget.style.borderColor = 'var(--glass-border)'; e.currentTarget.style.boxShadow = 'none' }}
               />
             </div>
             <div>
@@ -1635,8 +1482,8 @@ export default function TransacoesPage() {
                 onChange={e => setForm({ ...form, date: e.target.value })}
                 className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
                 style={{ background: 'var(--glass-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--glass-border)' }}
-                onFocus={e  => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(var(--primary-rgb,124,58,237),0.15)' }}
-                onBlur={e   => { e.currentTarget.style.borderColor = 'var(--glass-border)'; e.currentTarget.style.boxShadow = 'none' }}
+                onFocus={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(var(--primary-rgb,124,58,237),0.15)' }}
+                onBlur={e  => { e.currentTarget.style.borderColor = 'var(--glass-border)'; e.currentTarget.style.boxShadow = 'none' }}
               />
             </div>
           </div>
@@ -1733,9 +1580,7 @@ export default function TransacoesPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Repeat size={16} weight="duotone" style={{ color: 'var(--color-text-muted)' }} />
-                  <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
-                    Recorrente
-                  </span>
+                  <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>Recorrente</span>
                 </div>
                 <Toggle
                   checked={form.is_recurring}
@@ -1782,9 +1627,7 @@ export default function TransacoesPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <CalendarBlank size={16} weight="duotone" style={{ color: 'var(--color-text-muted)' }} />
-                  <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
-                    Parcelado
-                  </span>
+                  <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>Parcelado</span>
                 </div>
                 <Toggle
                   checked={form.is_installment}
@@ -1829,8 +1672,8 @@ export default function TransacoesPage() {
               placeholder="Notas adicionais..."
               className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none resize-none"
               style={{ background: 'var(--glass-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--glass-border)' }}
-              onFocus={e  => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(var(--primary-rgb,124,58,237),0.15)' }}
-              onBlur={e   => { e.currentTarget.style.borderColor = 'var(--glass-border)'; e.currentTarget.style.boxShadow = 'none' }}
+              onFocus={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(var(--primary-rgb,124,58,237),0.15)' }}
+              onBlur={e  => { e.currentTarget.style.borderColor = 'var(--glass-border)'; e.currentTarget.style.boxShadow = 'none' }}
             />
           </div>
 

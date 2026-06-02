@@ -21,8 +21,8 @@ export interface PayInvoicePayload {
   invoiceId:     string
   userId:        string
   accountId:     string
-  amount:        number           // computedTotal — nunca total_amount bruto
-  cardName:      string           // para descrição da transaction
+  amount:        number
+  cardName:      string
   invoiceMonth:  number
   invoiceYear:   number
 }
@@ -46,6 +46,14 @@ export interface InvoiceRecord {
   paid_account_id:  string | null
 }
 
+export interface InvoiceRef {
+  cardId:     string
+  date:       string
+  userId:     string
+  closingDay: number
+  dueDay:     number
+}
+
 // ─── Invariantes ──────────────────────────────────────────────────────────────
 
 const MONTHS_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -54,17 +62,7 @@ function assertInvoiceInvariant(condition: boolean, message: string): void {
   if (!condition) throw new Error(`[InvoiceLayer] ${message}`)
 }
 
-// ─── updateInvoiceStatus ─────────────────────────────────────────────────────
-//
-// Atualiza o status de uma fatura.
-// Uso principal: fechar fatura manualmente (open → closed) ou cancelar.
-// Para marcar como paga, usar payInvoice() — que também cria a transaction de débito.
-//
-// Transições permitidas:
-//   open      → closed | cancelled
-//   closed    → open   | paid | cancelled   (reabertura ou correção)
-//   paid      → (bloqueado — fatura paga é imutável)
-//   cancelled → (bloqueado — fatura cancelada é imutável)
+// ─── updateInvoiceStatus ──────────────────────────────────────────────────────
 
 export async function updateInvoiceStatus(
   payload: UpdateInvoiceStatusPayload,
@@ -72,38 +70,31 @@ export async function updateInvoiceStatus(
   const supabase = createClient()
 
   try {
-    // INV-INV-001: campos obrigatórios
     assertInvoiceInvariant(!!payload.invoiceId, 'invoiceId é obrigatório')
     assertInvoiceInvariant(!!payload.userId,    'userId é obrigatório — boundary multi-usuário')
     assertInvoiceInvariant(!!payload.status,    'status é obrigatório')
 
-    // Busca fatura atual para validar transição
     const { data: current, error: fetchErr } = await supabase
       .from('credit_card_invoices')
       .select('*')
       .eq('id',      payload.invoiceId)
-      .eq('user_id', payload.userId)       // garante ownership
+      .eq('user_id', payload.userId)
       .maybeSingle()
 
     if (fetchErr) return { data: null, error: fetchErr.message }
     if (!current) return { data: null, error: 'Fatura não encontrada.' }
 
-    // INV-INV-002: fatura paga é imutável
     assertInvoiceInvariant(
       current.status !== 'paid',
-      `Fatura já paga não pode ter status alterado. Use payInvoice() para registrar pagamento.`,
+      'Fatura já paga não pode ter status alterado. Use payInvoice() para registrar pagamento.',
     )
-
-    // INV-INV-003: fatura cancelada é imutável
     assertInvoiceInvariant(
       current.status !== 'cancelled',
-      `Fatura cancelada não pode ser reaberta ou alterada.`,
+      'Fatura cancelada não pode ser reaberta ou alterada.',
     )
-
-    // INV-INV-004: não usar updateInvoiceStatus para marcar como paga
     assertInvoiceInvariant(
       payload.status !== 'paid',
-      `Para marcar fatura como paga, use payInvoice() — que cria a transaction de débito obrigatoriamente.`,
+      'Para marcar fatura como paga, use payInvoice() — que cria a transaction de débito obrigatoriamente.',
     )
 
     const { data, error } = await supabase
@@ -124,15 +115,6 @@ export async function updateInvoiceStatus(
 }
 
 // ─── payInvoice ───────────────────────────────────────────────────────────────
-//
-// Marca fatura como paga E cria a transaction de débito na conta informada.
-// Os dois writes são dependentes: se a transaction falhar, o status NÃO é atualizado.
-// Ordem: transaction primeiro → depois atualiza status.
-// Motivo: é mais seguro ter a transaction sem o status atualizado do que o inverso.
-//
-// Side-effects centralizados aqui:
-//   1. createTransaction() — débito na conta (via Mutation Layer — nunca .insert() direto)
-//   2. UPDATE credit_card_invoices → status = 'paid', paid_at, paid_account_id
 
 export async function payInvoice(
   payload: PayInvoicePayload,
@@ -140,7 +122,6 @@ export async function payInvoice(
   const supabase = createClient()
 
   try {
-    // INV-INV-005: campos obrigatórios
     assertInvoiceInvariant(!!payload.invoiceId,   'invoiceId é obrigatório')
     assertInvoiceInvariant(!!payload.userId,       'userId é obrigatório — boundary multi-usuário')
     assertInvoiceInvariant(!!payload.accountId,    'accountId é obrigatório para debitar o pagamento')
@@ -149,7 +130,6 @@ export async function payInvoice(
     assertInvoiceInvariant(payload.invoiceMonth >= 1 && payload.invoiceMonth <= 12, 'invoiceMonth inválido')
     assertInvoiceInvariant(payload.invoiceYear > 2000, 'invoiceYear inválido')
 
-    // Busca fatura atual para validar estado
     const { data: current, error: fetchErr } = await supabase
       .from('credit_card_invoices')
       .select('*')
@@ -160,11 +140,10 @@ export async function payInvoice(
     if (fetchErr) return { data: null, error: fetchErr.message }
     if (!current) return { data: null, error: 'Fatura não encontrada.' }
 
-    // INV-INV-006: não pagar fatura já paga (idempotência)
     assertInvoiceInvariant(current.status !== 'paid',      'Fatura já foi paga.')
     assertInvoiceInvariant(current.status !== 'cancelled', 'Fatura cancelada não pode ser paga.')
 
-    // ── Step 1: cria transaction de débito via Mutation Layer ─────────────────
+    // ── Step 1: cria transaction de débito via Mutation Layer ──────────────────
     const monthLabel = MONTHS_PT[payload.invoiceMonth - 1] ?? String(payload.invoiceMonth)
 
     const txResult = await createTransaction({
@@ -178,15 +157,15 @@ export async function payInvoice(
       category_id:    null,
       goal_id:        null,
       notes:          null,
-      credit_card_id: null,   // pagamento de fatura não é lançamento no cartão
-      invoice_id:     null,   // idem — não contamina o total da fatura
+      credit_card_id: null,
+      invoice_id:     null,
     })
 
     if (txResult.error) {
       return { data: null, error: `Erro ao registrar pagamento: ${txResult.error}` }
     }
 
-    // ── Step 2: atualiza status da fatura ─────────────────────────────────────
+    // ── Step 2: atualiza status da fatura ──────────────────────────────────────
     const paidAt = new Date().toISOString()
 
     const { data, error: updateErr } = await supabase
@@ -202,7 +181,6 @@ export async function payInvoice(
       .single()
 
     if (updateErr) {
-      // Transaction já foi criada — logar inconsistência para Health Check detectar
       console.error('[InvoiceLayer] payInvoice: transaction criada mas status não atualizado', {
         invoiceId: payload.invoiceId,
         txId:      txResult.data?.id,
@@ -216,4 +194,58 @@ export async function payInvoice(
   } catch (err: any) {
     return { data: null, error: err?.message ?? 'Erro ao processar pagamento da fatura.' }
   }
+}
+
+// ─── getOrCreateInvoice ───────────────────────────────────────────────────────
+// Resolve a fatura de cartão para um dado (credit_card_id, date).
+// Cria a fatura se ainda não existir para o mês/ano calculado a partir do
+// closing_day do cartão. Retorna o invoice_id ou null em caso de falha.
+// Segue o padrão do layer: createClient() interno — não recebe supabase externo.
+
+export async function getOrCreateInvoice(
+  ref: InvoiceRef,
+): Promise<string | null> {
+  const supabase = createClient()
+  const { cardId, date, userId, closingDay, dueDay } = ref
+
+  const d = new Date(date + 'T12:00:00')
+
+  let month = d.getMonth() + 1
+  let year  = d.getFullYear()
+
+  if (d.getDate() > closingDay) {
+    month = month === 12 ? 1 : month + 1
+    year  = month === 1  ? year + 1 : year
+  }
+
+  const { data: existing } = await supabase
+    .from('credit_card_invoices')
+    .select('id')
+    .eq('credit_card_id', cardId)
+    .eq('user_id', userId)
+    .eq('month', month)
+    .eq('year', year)
+    .maybeSingle()
+
+  if (existing) return existing.id
+
+  const dueMonth = month === 12 ? 1 : month + 1
+  const dueYear  = month === 12 ? year + 1 : year
+  const dueDate  = `${dueYear}-${String(dueMonth).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`
+
+  const { data: created } = await supabase
+    .from('credit_card_invoices')
+    .insert({
+      credit_card_id: cardId,
+      user_id:        userId,
+      month,
+      year,
+      total_amount:   0,
+      status:         'open',
+      due_date:       dueDate,
+    })
+    .select('id')
+    .single()
+
+  return created?.id ?? null
 }
