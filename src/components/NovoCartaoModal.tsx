@@ -11,9 +11,13 @@
 //   onClose   — fecha sem salvar
 //   onSaved   — chamado após insert/update bem-sucedido
 //   editCard  — se fornecido, entra em modo edição
+//
+// Mutation Layer: toda escrita delega para src/lib/financial/creditCards.ts
+// createClient() permanece apenas para auth.getUser() — leitura de sessão.
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { createCreditCard, updateCreditCard } from '@/lib/financial/creditCards'
 import { AppModal } from '@/components/AppModal'
 import { CreditCard, Warning } from '@phosphor-icons/react'
 
@@ -65,14 +69,14 @@ const fmtPreview = (v: number) =>
 // ── componente ────────────────────────────────────────────────────────────────
 
 export default function NovoCartaoModal({ open, onClose, onSaved, editCard }: Props) {
-  const supabase = createClient()
+  const supabase = createClient()   // apenas para auth.getUser() — não faz writes
 
   const [form,     setForm]     = useState(emptyForm)
   const [accounts, setAccounts] = useState<Account[]>([])
   const [saving,   setSaving]   = useState(false)
   const [error,    setError]    = useState<string | null>(null)
 
-  // carrega contas para o select de vínculo
+  // carrega contas para o select de vínculo — leitura aceita
   useEffect(() => {
     supabase
       .from('accounts')
@@ -104,9 +108,9 @@ export default function NovoCartaoModal({ open, onClose, onSaved, editCard }: Pr
 
   async function handleSave() {
     setError(null)
-    if (!form.name.trim())                                         { setError('Nome é obrigatório.'); return }
+    if (!form.name.trim())                               { setError('Nome é obrigatório.');                      return }
     const limit = parseFloat(form.limit_amount)
-    if (!form.limit_amount || isNaN(limit) || limit < 0)           { setError('Limite inválido.'); return }
+    if (!form.limit_amount || isNaN(limit) || limit < 0) { setError('Limite inválido.');                         return }
     const closing = parseInt(form.closing_day)
     const due     = parseInt(form.due_day)
     if (closing < 1 || closing > 31) { setError('Dia de fechamento inválido (1–31).'); return }
@@ -116,27 +120,29 @@ export default function NovoCartaoModal({ open, onClose, onSaved, editCard }: Pr
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setError('Não autenticado.'); setSaving(false); return }
 
-    const payload = {
-      user_id:      user.id,
-      name:         form.name.trim(),
-      limit_amount: limit,
-      closing_day:  closing,
-      due_day:      due,
-      account_id:   form.account_id || null,
-      color:        form.color,
-    }
-
     if (editCard) {
-      const { error: err } = await supabase
-        .from('credit_cards')
-        .update(payload)
-        .eq('id', editCard.id)
-      if (err) { setError(err.message); setSaving(false); return }
+      // ── UPDATE via Mutation Layer ────────────────────────────────────────
+      const { error: err } = await updateCreditCard(editCard.id, user.id, {
+        name:         form.name.trim(),
+        limit_amount: limit,
+        closing_day:  closing,
+        due_day:      due,
+        account_id:   form.account_id || null,
+        color:        form.color,
+      })
+      if (err) { setError(err); setSaving(false); return }
     } else {
-      const { error: err } = await supabase
-        .from('credit_cards')
-        .insert(payload)
-      if (err) { setError(err.message); setSaving(false); return }
+      // ── INSERT via Mutation Layer ────────────────────────────────────────
+      const { error: err } = await createCreditCard({
+        user_id:      user.id,
+        name:         form.name.trim(),
+        limit_amount: limit,
+        closing_day:  closing,
+        due_day:      due,
+        account_id:   form.account_id || null,
+        color:        form.color,
+      })
+      if (err) { setError(err); setSaving(false); return }
     }
 
     setSaving(false)

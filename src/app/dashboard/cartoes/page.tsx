@@ -9,13 +9,17 @@
 //  • Hover: onMouseEnter/onMouseLeave com var(--glass-hover-border) — nunca hover:bg-white/5
 //  • hidden md:flex no CTA primário do PageHeader
 //  • Controller importa modais — esta página NÃO importa nem renderiza modais
-//  • NUNCA .delete() — soft delete obrigatório (deleted_at = now())
+//  • NUNCA .delete() — soft delete obrigatório via softDeleteCreditCard()
 //  • NUNCA omitir .is('deleted_at', null) em queries de leitura
 //  • Phosphor Icons weight=duotone exclusivamente
 //  • Abertura de modal via dispatch → store → ActionHubController
+//
+// Mutation Layer: toda escrita delega para src/lib/financial/creditCards.ts
+// createClient() permanece apenas para SELECTs (loadCards) — não faz writes.
 
 import { useEffect, useState, useCallback } from 'react'
-import { createClient }         from '@/lib/supabase/client'
+import { createClient }                     from '@/lib/supabase/client'
+import { toggleCreditCard, softDeleteCreditCard } from '@/lib/financial/creditCards'
 import { useActionHubStore }    from '@/stores/useActionHubStore'
 import { PageContainer }        from '@/components/layout/PageContainer'
 import { PageHeader }           from '@/components/layout/PageHeader'
@@ -42,7 +46,7 @@ interface Card {
 // ── página ────────────────────────────────────────────────────────────────────
 
 export default function CartoesPage() {
-  const supabase = createClient()
+  const supabase = createClient()   // apenas para SELECTs — não faz writes
   const dispatch = useActionHubStore(s => s.dispatch)
 
   const [cards,      setCards]      = useState<Card[]>([])
@@ -89,19 +93,16 @@ export default function CartoesPage() {
   }
 
   async function handleToggleActive(card: Card) {
-    await supabase
-      .from('credit_cards')
-      .update({ is_active: !card.is_active })
-      .eq('id', card.id)
+    // ── toggle via Mutation Layer ────────────────────────────────────────────
+    await toggleCreditCard(card.id, card.user_id, !card.is_active)
     await loadCards()
   }
 
   async function handleDelete(id: string) {
     setDeletingId(id)
-    await supabase
-      .from('credit_cards')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', id)
+    // ── soft delete via Mutation Layer ───────────────────────────────────────
+    const card = cards.find(c => c.id === id)
+    if (card) await softDeleteCreditCard(id, card.user_id)
     await loadCards()
     setDeletingId(null)
   }
