@@ -25,6 +25,7 @@ import { awardXP } from '@/lib/gamification'
 import { Account, AccountType } from '@/types'
 import { AppModal } from '@/components/AppModal'
 import { Bank, PiggyBank, Wallet, TrendUp, Folder } from '@phosphor-icons/react'
+import { createAccount, updateAccount } from '@/lib/financial/accounts'
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
@@ -72,8 +73,7 @@ export default function NovaContaModal({
   account,
   accountCount = 0,
 }: NovaContaModalProps) {
-  const supabase   = createClient()
-  const isEditing  = Boolean(account)
+  const isEditing = Boolean(account)
 
   const [form,   setForm]   = useState(emptyForm)
   const [saving, setSaving] = useState(false)
@@ -118,6 +118,8 @@ export default function NovaContaModal({
 
     setSaving(true)
 
+    // auth.getUser() é leitura de sessão — não viola a regra de Mutation Layer
+    const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       setError('Não autenticado.')
@@ -126,24 +128,21 @@ export default function NovaContaModal({
     }
 
     if (isEditing && account) {
-      const { error: err } = await supabase
-        .from('accounts')
-        .update({
-          name:      form.name.trim(),
-          type:      form.type,
-          color:     form.color,
-          icon:      form.icon || null,
-          is_active: form.is_active,
-        })
-        .eq('id', account.id)
+      const { error: err } = await updateAccount(account.id, user.id, {
+        name:      form.name.trim(),
+        type:      form.type,
+        color:     form.color,
+        icon:      form.icon || null,
+        is_active: form.is_active,
+      })
 
       if (err) {
-        setError(err.message)
+        setError(err)
         setSaving(false)
         return
       }
     } else {
-      const { error: err } = await supabase.from('accounts').insert({
+      const { error: err } = await createAccount({
         user_id:         user.id,
         name:            form.name.trim(),
         type:            form.type,
@@ -155,7 +154,7 @@ export default function NovaContaModal({
       })
 
       if (err) {
-        setError(err.message)
+        setError(err)
         setSaving(false)
         return
       }

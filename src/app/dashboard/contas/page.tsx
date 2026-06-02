@@ -8,6 +8,7 @@ import { PageHeader }    from '@/components/layout/PageHeader'
 import { AppModal }      from '@/components/AppModal'
 import { AnimatedValue } from '@/components/ui/AnimatedValue'
 import { useActionHubStore } from '@/stores/useActionHubStore'
+import { softDeleteAccount, toggleAccount } from '@/lib/financial/accounts'
 import {
   Bank, PiggyBank, Wallet, TrendUp, Folder,
   Plus, CheckCircle, XCircle, Warning,
@@ -103,24 +104,35 @@ export default function ContasPage() {
       async () => {
         setConfirm(CONFIRM_CLOSED)
         setDeletingId(account.id)
-        const { error: err } = await supabase
-          .from('accounts')
-          .update({ deleted_at: new Date().toISOString() })
-          .eq('id', account.id)
+
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          showToast('Não autenticado.', 'error')
+          setDeletingId(null)
+          return
+        }
+
+        const { error: err } = await softDeleteAccount(account.id, user.id)
         if (err) showToast('Erro ao excluir conta.', 'error')
         else     showToast('Conta excluída.')
+
         await loadAccounts()
         setDeletingId(null)
       },
     )
   }
 
-  async function toggleActive(account: Account) {
-    await supabase
-      .from('accounts')
-      .update({ is_active: !account.is_active })
-      .eq('id', account.id)
-    showToast(account.is_active ? 'Conta desativada.' : 'Conta reativada.')
+  async function handleToggleActive(account: Account) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      showToast('Não autenticado.', 'error')
+      return
+    }
+
+    const { error: err } = await toggleAccount(account.id, user.id, !account.is_active)
+    if (err) showToast('Erro ao atualizar conta.', 'error')
+    else     showToast(account.is_active ? 'Conta desativada.' : 'Conta reativada.')
+
     await loadAccounts()
   }
 
@@ -175,8 +187,7 @@ export default function ContasPage() {
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
           Cartões de crédito são gerenciados separadamente.
         </p>
-        
-         <a href="/dashboard/cartoes"
+        <a href="/dashboard/cartoes"
           className="text-xs font-medium hover:underline"
           style={{ color: 'var(--primary)' }}
         >
@@ -315,7 +326,7 @@ export default function ContasPage() {
                     Editar
                   </button>
                   <button
-                    onClick={() => toggleActive(account)}
+                    onClick={() => handleToggleActive(account)}
                     className="text-xs px-2 py-1 rounded transition-colors"
                     style={{ color: 'var(--text-secondary)' }}
                     onMouseEnter={e => {
