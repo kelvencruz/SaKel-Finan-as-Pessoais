@@ -15,6 +15,7 @@ import {
   createTransaction,
   softDeleteTransactionsByRecurrence,
 } from '@/lib/financial/transactions'
+import { getOrCreateInvoice } from '@/lib/financial/invoices'
 import type { Account, Category, CreditCard, Recorrencia, Frequency } from '@/types'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -409,44 +410,13 @@ export default function RecorrenciasPage() {
       if (r.credit_card_id) {
         const card = creditCards.find(c => c.id === r.credit_card_id)
         if (card) {
-          const d = new Date(today + 'T12:00:00')
-          let month = d.getMonth() + 1
-          let year  = d.getFullYear()
-          if (d.getDate() > card.closing_day) {
-            month = month === 12 ? 1 : month + 1
-            year  = month === 1  ? year + 1 : year
-          }
-
-          const { data: existing } = await supabase
-            .from('credit_card_invoices').select('id')
-            .eq('credit_card_id', r.credit_card_id).eq('month', month).eq('year', year).single()
-
-          if (existing) {
-            invoiceId = existing.id
-          } else {
-            const dueMonth = month === 12 ? 1 : month + 1
-            const dueYear  = month === 12 ? year + 1 : year
-            const dueDate  = `${dueYear}-${String(dueMonth).padStart(2, '0')}-${String(card.due_day).padStart(2, '0')}`
-            const { data: created, error: invoiceErr } = await supabase
-              .from('credit_card_invoices')
-              .insert({
-                credit_card_id: r.credit_card_id,
-                user_id: user.id,
-                month, year,
-                total_amount: 0,
-                status: 'open',
-                due_date: dueDate,
-              })
-              .select('id').single()
-            if (invoiceErr) {
-              const { data: retry } = await supabase
-                .from('credit_card_invoices').select('id')
-                .eq('credit_card_id', r.credit_card_id).eq('month', month).eq('year', year).single()
-              invoiceId = retry?.id ?? null
-            } else {
-              invoiceId = created?.id ?? null
-            }
-          }
+          invoiceId = await getOrCreateInvoice({
+            cardId:     r.credit_card_id,
+            date:       today,
+            userId:     user.id,
+            closingDay: card.closing_day,
+            dueDay:     card.due_day,
+          })
         }
       }
 

@@ -34,6 +34,14 @@ import {
   Briefcase,
   Globe,
 } from '@phosphor-icons/react'
+import {
+  createInvestment,
+  updateInvestment,
+  toggleInvestment,
+  softDeleteInvestment,
+  type InvestmentPayload,
+  type InvestmentUpdatePayload,
+} from '@/lib/financial/investments'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -143,6 +151,8 @@ const fmtPct = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(2)}%`
 // ─── Componente ──────────────────────────────────────────────────────────────
 
 export default function InvestimentosPage() {
+  // supabase — READ ONLY nesta página. Writes passam pelo Mutation Layer.
+  // Exceção aceita: investment_goals (tabela fora do domínio financial).
   const supabase = createClient()
 
   // Estado principal
@@ -173,15 +183,16 @@ export default function InvestimentosPage() {
 
   // Toast
   const [toast, setToast] = useState<Toast | null>(null)
+  
   // ─── FAB → abre modal inline enquanto NovoInvestimentoModal canônico não existe ───
-const { pendingAction, clear } = useActionHubStore()
+  const { pendingAction, clear } = useActionHubStore()
 
-useEffect(() => {
-  if (pendingAction === 'novo-investimento') {
-    openCreate()
-    clear()
-  }
-}, [pendingAction])
+  useEffect(() => {
+    if (pendingAction === 'novo-investimento') {
+      openCreate()
+      clear()
+    }
+  }, [pendingAction])
 
   // ─── Toast helper ─────────────────────────────────────────────────────────
 
@@ -201,7 +212,6 @@ useEffect(() => {
         .from('investments')
         .select('*')
         .eq('user_id', user.id)
-        // Soft delete: excluir registros com deleted_at preenchido
         .is('deleted_at', null)
         .order('created_at', { ascending: false }),
       supabase
@@ -256,6 +266,7 @@ useEffect(() => {
   }
 
   // ─── Salvar objetivo inline ───────────────────────────────────────────────
+  // investment_goals: write direto aceito — tabela fora do domínio financial.
 
   async function handleSaveGoal() {
     if (!goalForm.name.trim()) return
@@ -299,29 +310,46 @@ useEffect(() => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setFormError('Não autenticado.'); setSaving(false); return }
 
-    const payload = {
-      user_id:        user.id,
-      name:           form.name.trim(),
-      type:           form.type,
-      goal_id:        form.goal_id || null,
-      institution:    form.institution.trim() || null,
-      // safeAdd: arredondamento seguro no parse
-      initial_amount: Math.round(parseFloat(form.initial_amount || '0') * 100) / 100,
-      current_amount: Math.round(current * 100) / 100,
-      profitability:  form.profitability.trim() || null,
-      liquidity_type: form.liquidity_type || null,
-      liquidity_date: form.liquidity_type === 'fixed_date' ? form.liquidity_date : null,
-      start_date:     form.start_date || null,
-      notes:          form.notes.trim() || null,
-    }
-
     if (editingId) {
-      const { error: err } = await supabase.from('investments').update(payload).eq('id', editingId)
-      if (err) { setFormError(err.message); setSaving(false); return }
+      // ── UPDATE via Mutation Layer ──────────────────────────────────────
+      const patch: InvestmentUpdatePayload = {
+        name:           form.name.trim(),
+        type:           form.type,
+        goal_id:        form.goal_id || null,
+        institution:    form.institution.trim() || null,
+        initial_amount: Math.round(parseFloat(form.initial_amount || '0') * 100) / 100,
+        current_amount: Math.round(current * 100) / 100,
+        profitability:  form.profitability.trim() || null,
+        liquidity_type: form.liquidity_type || null,
+        liquidity_date: form.liquidity_type === 'fixed_date' ? form.liquidity_date : null,
+        start_date:     form.start_date || null,
+        notes:          form.notes.trim() || null,
+      }
+
+      const { error } = await updateInvestment(editingId, user.id, patch)
+      if (error) { setFormError(error); setSaving(false); return }
       showToast('Investimento atualizado!')
+
     } else {
-      const { error: err } = await supabase.from('investments').insert(payload)
-      if (err) { setFormError(err.message); setSaving(false); return }
+      // ── INSERT via Mutation Layer ──────────────────────────────────────
+      const payload: InvestmentPayload = {
+        user_id:        user.id,
+        name:           form.name.trim(),
+        type:           form.type,
+        goal_id:        form.goal_id || null,
+        institution:    form.institution.trim() || null,
+        initial_amount: Math.round(parseFloat(form.initial_amount || '0') * 100) / 100,
+        current_amount: Math.round(current * 100) / 100,
+        profitability:  form.profitability.trim() || null,
+        liquidity_type: form.liquidity_type || null,
+        liquidity_date: form.liquidity_type === 'fixed_date' ? form.liquidity_date : null,
+        start_date:     form.start_date || null,
+        notes:          form.notes.trim() || null,
+      }
+
+      const { error } = await createInvestment(payload)
+      if (error) { setFormError(error); setSaving(false); return }
+
       const isFirstInvestment = investments.filter(i => i.is_active).length === 0
       if (isFirstInvestment) {
         await awardXP(user.id, 'first_investment', 'first_investment').catch(() => {})
@@ -337,24 +365,22 @@ useEffect(() => {
   // ─── Toggle ativo/inativo ─────────────────────────────────────────────────
 
   async function handleToggleActive(inv: Investment) {
-    await supabase.from('investments').update({ is_active: !inv.is_active }).eq('id', inv.id)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    await toggleInvestment(inv.id, user.id, !inv.is_active)
     await loadAll()
   }
 
   // ─── Soft delete ─────────────────────────────────────────────────────────
-  // CORREÇÃO AUDITORIA (CRÍTICO): substituído DELETE físico por soft delete.
-  // deleted_at timestamptz deve existir na tabela investments.
-  // Migration necessária: ALTER TABLE investments ADD COLUMN deleted_at timestamptz;
 
   async function handleDelete() {
     if (!deleteTarget) return
     setDeleting(true)
-    const { error: err } = await supabase
-      .from('investments')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', deleteTarget.id)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setDeleting(false); return }
 
-    if (err) {
+    const { error } = await softDeleteInvestment(deleteTarget.id, user.id)
+    if (error) {
       showToast('Erro ao excluir investimento.', 'error')
     } else {
       showToast('Investimento excluído.')
@@ -373,7 +399,7 @@ useEffect(() => {
   const totalInitial  = activeInvestments.reduce((s, i) => safeAdd(s, Number(i.initial_amount)), 0)
   const totalGain     = Math.round((totalInvested - totalInitial) * 100) / 100
   const gainPct       = totalInitial > 0
-    ? Math.round((totalGain / totalInitial) * 10000) / 100  // 4 casas para pct, mostra 2
+    ? Math.round((totalGain / totalInitial) * 10000) / 100
     : 0
 
   // ─── Filtros e memos ──────────────────────────────────────────────────────
@@ -452,100 +478,19 @@ useEffect(() => {
       )}
 
       {/* ── KPIs ── */}
-<div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
 
-  <div
-    className="sm:col-span-2 rounded-2xl p-4 sm:p-5 border transition-all duration-200"
-    style={{
-      background: 'var(--glass-bg)',
-      backdropFilter: 'blur(var(--glass-blur))',
-      WebkitBackdropFilter: 'blur(var(--glass-blur))',
-      border: '1px solid var(--glass-border)',
-      boxShadow: '0 0 0 0 transparent',
-    }}
-  >
-    <div className="w-8 h-1 rounded-full mb-3" style={{ background: 'var(--chart-line-start)' }} />
-    <p className="text-xs text-text-secondary mb-1">Patrimônio investido</p>
-    {loading ? (
-      <div className="h-8 w-36 rounded-lg animate-pulse bg-white/10 mb-1" />
-    ) : (
-      <AnimatedValue
-        value={totalInvested}
-        group="investments"
-        className="text-2xl sm:text-3xl font-bold"
-        style={{ color: 'var(--chart-line-start)' }}
-      />
-    )}
-    <p className="text-xs text-text-secondary mt-1">Não incluso no saldo disponível</p>
-  </div>
-
-  <div
-    className="rounded-2xl p-4 sm:p-5 border transition-all duration-200"
-    style={{
-      background: 'var(--glass-bg)',
-      backdropFilter: 'blur(var(--glass-blur))',
-      WebkitBackdropFilter: 'blur(var(--glass-blur))',
-      border: '1px solid var(--glass-border)',
-    }}
-  >
-    <div
-      className="w-8 h-1 rounded-full mb-3"
-      style={{ background: totalGain >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}
-    />
-    <p className="text-xs text-text-secondary mb-1">Rendimento</p>
-    {loading ? (
-      <div className="h-7 w-24 rounded-lg animate-pulse bg-white/10 mb-1" />
-    ) : (
-      <AnimatedValue
-        value={totalGain}
-        group="investments"
-        className={`text-xl font-bold ${totalGain >= 0 ? 'text-success' : 'text-danger'}`}
-      />
-    )}
-    <p className={`text-xs mt-1 ${gainPct >= 0 ? 'text-success' : 'text-danger'}`}>
-      {loading ? '...' : fmtPct(gainPct)}
-    </p>
-  </div>
-
-  <div
-    className="rounded-2xl p-4 sm:p-5 border transition-all duration-200"
-    style={{
-      background: 'var(--glass-bg)',
-      backdropFilter: 'blur(var(--glass-blur))',
-      WebkitBackdropFilter: 'blur(var(--glass-blur))',
-      border: '1px solid var(--glass-border)',
-    }}
-  >
-    <div className="w-8 h-1 rounded-full mb-3" style={{ background: 'var(--chart-line-mid)' }} />
-    <p className="text-xs text-text-secondary mb-1">Ativos</p>
-    {loading ? (
-      <div className="h-7 w-12 rounded-lg animate-pulse bg-white/10 mb-1" />
-    ) : (
-      <p className="text-xl font-bold text-text-primary">{activeInvestments.length}</p>
-    )}
-    <p className="text-xs text-text-secondary mt-1">investimentos</p>
-  </div>
-
-</div>
-        
-        
-
-        {/* Patrimônio investido */}
         <div
-          className="sm:col-span-2 rounded-2xl p-5 border transition-all duration-200"
+          className="sm:col-span-2 rounded-2xl p-4 sm:p-5 border transition-all duration-200"
           style={{
-            background:     'var(--glass-bg)',
+            background: 'var(--glass-bg)',
             backdropFilter: 'blur(var(--glass-blur))',
             WebkitBackdropFilter: 'blur(var(--glass-blur))',
-            border:         '1px solid var(--glass-border)',
-            boxShadow:      '0 0 0 0 transparent',
+            border: '1px solid var(--glass-border)',
+            boxShadow: '0 0 0 0 transparent',
           }}
         >
-          {/* Accent bar */}
-          <div
-            className="w-8 h-1 rounded-full mb-3"
-            style={{ background: 'var(--chart-line-start)' }}
-          />
+          <div className="w-8 h-1 rounded-full mb-3" style={{ background: 'var(--chart-line-start)' }} />
           <p className="text-xs text-text-secondary mb-1">Patrimônio investido</p>
           {loading ? (
             <div className="h-8 w-36 rounded-lg animate-pulse bg-white/10 mb-1" />
@@ -553,28 +498,27 @@ useEffect(() => {
             <AnimatedValue
               value={totalInvested}
               group="investments"
-              className="text-3xl font-bold"
+              className="text-2xl sm:text-3xl font-bold"
               style={{ color: 'var(--chart-line-start)' }}
             />
           )}
           <p className="text-xs text-text-secondary mt-1">Não incluso no saldo disponível</p>
         </div>
 
-        {/* Rendimento total */}
         <div
-          className="rounded-2xl p-5 border transition-all duration-200"
+          className="rounded-2xl p-4 sm:p-5 border transition-all duration-200"
           style={{
-            background:     'var(--glass-bg)',
+            background: 'var(--glass-bg)',
             backdropFilter: 'blur(var(--glass-blur))',
             WebkitBackdropFilter: 'blur(var(--glass-blur))',
-            border:         '1px solid var(--glass-border)',
+            border: '1px solid var(--glass-border)',
           }}
         >
           <div
             className="w-8 h-1 rounded-full mb-3"
             style={{ background: totalGain >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}
           />
-          <p className="text-xs text-text-secondary mb-1">Rendimento total</p>
+          <p className="text-xs text-text-secondary mb-1">Rendimento</p>
           {loading ? (
             <div className="h-7 w-24 rounded-lg animate-pulse bg-white/10 mb-1" />
           ) : (
@@ -589,20 +533,16 @@ useEffect(() => {
           </p>
         </div>
 
-        {/* Ativos */}
         <div
-          className="rounded-2xl p-5 border transition-all duration-200"
+          className="rounded-2xl p-4 sm:p-5 border transition-all duration-200"
           style={{
-            background:     'var(--glass-bg)',
+            background: 'var(--glass-bg)',
             backdropFilter: 'blur(var(--glass-blur))',
             WebkitBackdropFilter: 'blur(var(--glass-blur))',
-            border:         '1px solid var(--glass-border)',
+            border: '1px solid var(--glass-border)',
           }}
         >
-          <div
-            className="w-8 h-1 rounded-full mb-3"
-            style={{ background: 'var(--chart-line-mid)' }}
-          />
+          <div className="w-8 h-1 rounded-full mb-3" style={{ background: 'var(--chart-line-mid)' }} />
           <p className="text-xs text-text-secondary mb-1">Ativos</p>
           {loading ? (
             <div className="h-7 w-12 rounded-lg animate-pulse bg-white/10 mb-1" />
@@ -611,7 +551,8 @@ useEffect(() => {
           )}
           <p className="text-xs text-text-secondary mt-1">investimentos</p>
         </div>
-      
+
+      </div>
 
       {/* ── Distribuição ── */}
       {!loading && activeInvestments.length > 0 && (
@@ -691,42 +632,41 @@ useEffect(() => {
 
       {/* ── Filtros ── */}
       <div className="flex gap-2 mb-4 items-center overflow-x-auto pb-1 scrollbar-none">
-  <button
-    onClick={() => setFilterType('')}
-    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
-      !filterType ? 'bg-accent-primary text-white' : 'bg-bg-surface text-text-secondary hover:bg-white/10'
-    }`}
-  >
-    Todos
-  </button>
-  {TYPES.map(t => investments.some(i => i.type === t) && (
-    <button
-      key={t}
-      onClick={() => setFilterType(t)}
-      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0"
-      style={
-        filterType === t
-          ? { backgroundColor: TYPE_COLORS[t], color: '#fff' }
-          : { background: 'var(--glass-bg)', color: 'var(--color-text-secondary)', border: '1px solid var(--glass-border)' }
-      }
-    >
-      {t}
-    </button>
-  ))}
-  <label className="ml-auto flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer select-none shrink-0">
-    <input
-      type="checkbox"
-      checked={showInactive}
-      onChange={e => setShowInactive(e.target.checked)}
-      className="rounded"
-    />
-    Inativos
-  </label>
-</div>
+        <button
+          onClick={() => setFilterType('')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
+            !filterType ? 'bg-accent-primary text-white' : 'bg-bg-surface text-text-secondary hover:bg-white/10'
+          }`}
+        >
+          Todos
+        </button>
+        {TYPES.map(t => investments.some(i => i.type === t) && (
+          <button
+            key={t}
+            onClick={() => setFilterType(t)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0"
+            style={
+              filterType === t
+                ? { backgroundColor: TYPE_COLORS[t], color: '#fff' }
+                : { background: 'var(--glass-bg)', color: 'var(--color-text-secondary)', border: '1px solid var(--glass-border)' }
+            }
+          >
+            {t}
+          </button>
+        ))}
+        <label className="ml-auto flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer select-none shrink-0">
+          <input
+            type="checkbox"
+            checked={showInactive}
+            onChange={e => setShowInactive(e.target.checked)}
+            className="rounded"
+          />
+          Inativos
+        </label>
+      </div>
 
       {/* ── Lista de investimentos ── */}
       {loading ? (
-        /* Skeleton loading — sem flash de R$ 0,00 */
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {[1, 2, 3, 4].map(n => (
             <div
@@ -782,7 +722,6 @@ useEffect(() => {
                   WebkitBackdropFilter: 'blur(var(--glass-blur))',
                   border:         `1px solid var(--glass-border)`,
                   opacity:        inv.is_active ? 1 : 0.5,
-                  // glass-card hover: apenas border-color e box-shadow — sem transform (regra inviolável)
                   transition:     'border-color 200ms, box-shadow 200ms, opacity 200ms',
                 }}
                 onMouseEnter={e => {
@@ -796,7 +735,6 @@ useEffect(() => {
                   el.style.boxShadow   = 'none'
                 }}
               >
-                {/* Accent bar por tipo */}
                 <div
                   className="w-full h-0.5 rounded-full mb-4 opacity-60"
                   style={{ background: TYPE_COLORS[inv.type] ?? '#6b7280' }}
@@ -816,7 +754,6 @@ useEffect(() => {
                     </div>
                   </div>
 
-                  {/* Badge de objetivo — sem emoji, usa cor do goal */}
                   {goal && (
                     <span
                       className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0"
@@ -852,7 +789,6 @@ useEffect(() => {
                   </div>
                 </div>
 
-                {/* Chips de metadata */}
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   {inv.liquidity_type && (
                     <span
@@ -886,36 +822,34 @@ useEffect(() => {
                   )}
                 </div>
 
-                {/* Ações */}
-                {/* Ações */}
-<div
-  className="flex gap-1 pt-2"
-  style={{ borderTop: '1px solid var(--glass-border)' }}
->
-  <button
-    onClick={() => openEdit(inv)}
-    className="flex items-center gap-1 text-xs text-text-secondary hover:text-accent-primary px-2 py-2 rounded hover:bg-accent-primary/10 transition-colors min-h-[36px]"
-  >
-    <PencilSimple size={12} weight="duotone" />
-    Editar
-  </button>
-  <button
-    onClick={() => handleToggleActive(inv)}
-    className="flex items-center gap-1 text-xs text-text-secondary hover:text-warning px-2 py-2 rounded hover:bg-warning/10 transition-colors min-h-[36px]"
-  >
-    {inv.is_active
-      ? <><Pause size={12} weight="duotone" /> Desativar</>
-      : <><Play  size={12} weight="duotone" /> Ativar</>
-    }
-  </button>
-  <button
-    onClick={() => setDeleteTarget(inv)}
-    className="flex items-center gap-1 text-xs text-text-secondary hover:text-danger px-2 py-2 rounded hover:bg-danger/10 transition-colors min-h-[36px]"
-  >
-    <Trash size={12} weight="duotone" />
-    Excluir
-  </button>
-</div>
+                <div
+                  className="flex gap-1 pt-2"
+                  style={{ borderTop: '1px solid var(--glass-border)' }}
+                >
+                  <button
+                    onClick={() => openEdit(inv)}
+                    className="flex items-center gap-1 text-xs text-text-secondary hover:text-accent-primary px-2 py-2 rounded hover:bg-accent-primary/10 transition-colors min-h-[36px]"
+                  >
+                    <PencilSimple size={12} weight="duotone" />
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => handleToggleActive(inv)}
+                    className="flex items-center gap-1 text-xs text-text-secondary hover:text-warning px-2 py-2 rounded hover:bg-warning/10 transition-colors min-h-[36px]"
+                  >
+                    {inv.is_active
+                      ? <><Pause size={12} weight="duotone" /> Desativar</>
+                      : <><Play  size={12} weight="duotone" /> Ativar</>
+                    }
+                  </button>
+                  <button
+                    onClick={() => setDeleteTarget(inv)}
+                    className="flex items-center gap-1 text-xs text-text-secondary hover:text-danger px-2 py-2 rounded hover:bg-danger/10 transition-colors min-h-[36px]"
+                  >
+                    <Trash size={12} weight="duotone" />
+                    Excluir
+                  </button>
+                </div>
               </div>
             )
           })}
@@ -1039,7 +973,6 @@ useEffect(() => {
                 />
 
                 <div className="flex gap-3">
-                  {/* Ícone — Phosphor icons, sem emojis */}
                   <div className="flex-1">
                     <p className="text-xs mb-2 flex items-center gap-1" style={{ color: 'var(--color-text-secondary)' }}>
                       <Target size={10} weight="duotone" /> Ícone
@@ -1062,7 +995,6 @@ useEffect(() => {
                     </div>
                   </div>
 
-                  {/* Cor */}
                   <div>
                     <p className="text-xs mb-2 flex items-center gap-1" style={{ color: 'var(--color-text-secondary)' }}>
                       <Palette size={10} weight="duotone" /> Cor
@@ -1100,39 +1032,39 @@ useEffect(() => {
 
           {/* Valor inicial + Valor atual */}
           <div className="grid grid-cols-2 gap-3">
-  <div>
-    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-      Valor inicial (R$)
-    </label>
-    <input
-      type="number"
-      inputMode="decimal"
-      value={form.initial_amount}
-      onChange={e => setForm({ ...form, initial_amount: e.target.value })}
-      placeholder="0,00"
-      step="0.01"
-      min="0"
-      className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-      style={{ background: 'var(--glass-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--glass-border)' }}
-    />
-  </div>
-  <div>
-    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-      Valor atual (R$)
-    </label>
-    <input
-      type="number"
-      inputMode="decimal"
-      value={form.current_amount}
-      onChange={e => setForm({ ...form, current_amount: e.target.value })}
-      placeholder="0,00"
-      step="0.01"
-      min="0"
-      className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-      style={{ background: 'var(--glass-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--glass-border)' }}
-    />
-  </div>
-</div>
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+                Valor inicial (R$)
+              </label>
+              <input
+                type="number"
+                inputMode="decimal"
+                value={form.initial_amount}
+                onChange={e => setForm({ ...form, initial_amount: e.target.value })}
+                placeholder="0,00"
+                step="0.01"
+                min="0"
+                className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                style={{ background: 'var(--glass-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--glass-border)' }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+                Valor atual (R$)
+              </label>
+              <input
+                type="number"
+                inputMode="decimal"
+                value={form.current_amount}
+                onChange={e => setForm({ ...form, current_amount: e.target.value })}
+                placeholder="0,00"
+                step="0.01"
+                min="0"
+                className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                style={{ background: 'var(--glass-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--glass-border)' }}
+              />
+            </div>
+          </div>
 
           {/* Rentabilidade */}
           <div>
@@ -1211,9 +1143,7 @@ useEffect(() => {
       </AppModal>
 
       {/* ═══════════════════════════════════════════════════════════════════
-          Modal: Confirmação de exclusão (soft delete)
-          CORREÇÃO AUDITORIA (CRÍTICO): substitui confirm() nativo.
-          O botão confirmar executa UPDATE deleted_at em vez de DELETE.
+          Modal: Confirmação de exclusão (soft delete via Mutation Layer)
       ═══════════════════════════════════════════════════════════════════ */}
       <AppModal
         open={!!deleteTarget}
