@@ -32,12 +32,7 @@ export type MutationResult<T> = {
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
-/**
- * Janela máxima de start_date no passado.
- * Evita recurrence_stalled imediato — ruído criado pela própria aplicação.
- */
 const MAX_PAST_DAYS = 90
-
 const VALID_FREQUENCIES: RecurrenceFrequency[] = ['daily', 'weekly', 'monthly', 'yearly']
 
 // ─── Helpers de validação ─────────────────────────────────────────────────────
@@ -65,23 +60,17 @@ export async function createRecurrence(
   payload: RecurrencePayload
 ): Promise<MutationResult<{ id: string }>> {
   try {
-    // Invariantes
-    if (!payload.user_id) {
+    if (!payload.user_id)
       return { success: false, error: 'user_id obrigatório' }
-    }
-    if (!payload.amount || payload.amount <= 0) {
+    if (!payload.amount || payload.amount <= 0)
       return { success: false, error: 'amount deve ser maior que zero' }
-    }
-    if (!VALID_FREQUENCIES.includes(payload.frequency)) {
+    if (!VALID_FREQUENCIES.includes(payload.frequency))
       return { success: false, error: `frequency inválida: ${payload.frequency}` }
-    }
-    if (!payload.start_date) {
+    if (!payload.start_date)
       return { success: false, error: 'start_date obrigatório' }
-    }
     const dateError = validateDate(payload.start_date)
-    if (dateError) {
+    if (dateError)
       return { success: false, error: dateError }
-    }
 
     const supabase = createClient()
 
@@ -94,8 +83,8 @@ export async function createRecurrence(
         type:           payload.type,
         frequency:      payload.frequency,
         start_date:     payload.start_date,
-        end_date:       payload.end_date       ?? null,   // INC-S30-002 resolvido
-        next_due_date:  payload.start_date,               // engine começa pelo start_date
+        end_date:       payload.end_date       ?? null,
+        next_due_date:  payload.start_date,
         account_id:     payload.account_id     ?? null,
         credit_card_id: payload.credit_card_id ?? null,
         category_id:    payload.category_id    ?? null,
@@ -105,10 +94,7 @@ export async function createRecurrence(
       .select('id')
       .single()
 
-    if (error) {
-      return { success: false, error: error.message }
-    }
-
+    if (error) return { success: false, error: error.message }
     return { success: true, data: { id: data.id } }
   } catch (err) {
     return { success: false, error: String(err) }
@@ -127,27 +113,19 @@ export async function pauseRecurrence(
 
     const supabase = createClient()
 
-    // Lê estado atual — pré-condição: is_active === true
     const { data: current, error: fetchError } = await supabase
       .from('recurrences')
       .select('is_active, status')
       .eq('id', recurrenceId)
-      .eq('user_id', userId)         // boundary multi-usuário
+      .eq('user_id', userId)
       .single()
 
-    if (fetchError || !current) {
+    if (fetchError || !current)
       return { success: false, error: 'Recorrência não encontrada' }
-    }
-
-    // Idempotência: já pausada → success sem reescrita
-    if (!current.is_active && current.status === 'paused') {
+    if (!current.is_active && current.status === 'paused')
       return { success: true }
-    }
-
-    // Cancelada é imutável — não pode pausar
-    if (current.status === 'cancelled') {
+    if (current.status === 'cancelled')
       return { success: false, error: 'Recorrência cancelada não pode ser pausada' }
-    }
 
     const { error } = await supabase
       .from('recurrences')
@@ -155,10 +133,7 @@ export async function pauseRecurrence(
       .eq('id', recurrenceId)
       .eq('user_id', userId)
 
-    if (error) {
-      return { success: false, error: error.message }
-    }
-
+    if (error) return { success: false, error: error.message }
     return { success: true }
   } catch (err) {
     return { success: false, error: String(err) }
@@ -166,13 +141,6 @@ export async function pauseRecurrence(
 }
 
 // ─── reactivateRecurrence ─────────────────────────────────────────────────────
-//
-// Reativa uma recorrência pausada — retorna ao ciclo normal da engine.
-// Pré-condição esperada: status === 'paused' (is_active === false).
-// Cancelada é imutável — reativar cancelada é erro explícito.
-// Idempotência: já ativa → success sem reescrita.
-// user_id em todo .eq() — boundary multi-usuário.
-//
 // INC-002 resolvido — Sprint 3.5 D4.
 
 export async function reactivateRecurrence(
@@ -192,19 +160,12 @@ export async function reactivateRecurrence(
       .eq('user_id', userId)
       .single()
 
-    if (fetchError || !current) {
+    if (fetchError || !current)
       return { success: false, error: 'Recorrência não encontrada' }
-    }
-
-    // Idempotência: já ativa → success sem reescrita
-    if (current.is_active && current.status === 'active') {
+    if (current.is_active && current.status === 'active')
       return { success: true }
-    }
-
-    // Cancelada é imutável — não pode reativar
-    if (current.status === 'cancelled') {
+    if (current.status === 'cancelled')
       return { success: false, error: 'Recorrência cancelada não pode ser reativada' }
-    }
 
     const { error } = await supabase
       .from('recurrences')
@@ -212,10 +173,7 @@ export async function reactivateRecurrence(
       .eq('id', recurrenceId)
       .eq('user_id', userId)
 
-    if (error) {
-      return { success: false, error: error.message }
-    }
-
+    if (error) return { success: false, error: error.message }
     return { success: true }
   } catch (err) {
     return { success: false, error: String(err) }
@@ -223,13 +181,6 @@ export async function reactivateRecurrence(
 }
 
 // ─── cancelRecurrence ─────────────────────────────────────────────────────────
-//
-// Estratégia dupla intencional — cada campo tem papel distinto:
-//   is_active = false → para o process-recurrences (único filtro da engine)
-//   status = 'cancelled' → semântica para a UI
-//
-// Confirmado via leitura direta de process-recurrences/index.ts (sessão 22):
-// a engine filtra SOMENTE por is_active — status não é lido na query de seleção.
 
 export async function cancelRecurrence(
   recurrenceId: string,
@@ -245,31 +196,21 @@ export async function cancelRecurrence(
       .from('recurrences')
       .select('status')
       .eq('id', recurrenceId)
-      .eq('user_id', userId)         // boundary multi-usuário
+      .eq('user_id', userId)
       .single()
 
-    if (fetchError || !current) {
+    if (fetchError || !current)
       return { success: false, error: 'Recorrência não encontrada' }
-    }
-
-    // Idempotência: já cancelada → success sem reescrita
-    if (current.status === 'cancelled') {
+    if (current.status === 'cancelled')
       return { success: true }
-    }
 
     const { error } = await supabase
       .from('recurrences')
-      .update({
-        status:    'cancelled',
-        is_active: false,
-      })
+      .update({ status: 'cancelled', is_active: false })
       .eq('id', recurrenceId)
       .eq('user_id', userId)
 
-    if (error) {
-      return { success: false, error: error.message }
-    }
-
+    if (error) return { success: false, error: error.message }
     return { success: true }
   } catch (err) {
     return { success: false, error: String(err) }
@@ -287,10 +228,11 @@ export type RecurrenceUpdatePayload = Partial<{
   description:    string
   amount:         number
   frequency:      RecurrenceFrequency
+  end_date:       string | null        // INC-S31-001 resolvido Sprint 3.5 D5
   account_id:     string | null
   credit_card_id: string | null
   category_id:    string | null
-  next_due_date:  string   // YYYY-MM-DD — ex: corrigir data após edição
+  next_due_date:  string               // YYYY-MM-DD
 }>
 
 export async function updateRecurrence(
@@ -302,23 +244,17 @@ export async function updateRecurrence(
     if (!recurrenceId) return { success: false, error: 'recurrenceId obrigatório' }
     if (!userId)       return { success: false, error: 'userId obrigatório' }
 
-    // Invariantes do payload
-    if (payload.amount !== undefined && payload.amount <= 0) {
+    if (payload.amount !== undefined && payload.amount <= 0)
       return { success: false, error: 'amount deve ser maior que zero' }
-    }
-    if (payload.frequency !== undefined && !VALID_FREQUENCIES.includes(payload.frequency)) {
+    if (payload.frequency !== undefined && !VALID_FREQUENCIES.includes(payload.frequency))
       return { success: false, error: `frequency inválida: ${payload.frequency}` }
-    }
-    if (payload.next_due_date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(payload.next_due_date)) {
+    if (payload.next_due_date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(payload.next_due_date))
       return { success: false, error: 'next_due_date deve estar no formato YYYY-MM-DD' }
-    }
-    if (payload.description !== undefined && !payload.description.trim()) {
+    if (payload.description !== undefined && !payload.description.trim())
       return { success: false, error: 'description não pode ser vazia' }
-    }
 
     const supabase = createClient()
 
-    // Confirma existência + boundary antes de escrever
     const { data: current, error: fetchError } = await supabase
       .from('recurrences')
       .select('status')
@@ -326,14 +262,10 @@ export async function updateRecurrence(
       .eq('user_id', userId)
       .single()
 
-    if (fetchError || !current) {
+    if (fetchError || !current)
       return { success: false, error: 'Recorrência não encontrada' }
-    }
-
-    // Cancelada é imutável — não edita
-    if (current.status === 'cancelled') {
+    if (current.status === 'cancelled')
       return { success: false, error: 'Recorrência cancelada não pode ser editada' }
-    }
 
     const { error } = await supabase
       .from('recurrences')
@@ -342,10 +274,9 @@ export async function updateRecurrence(
         description: payload.description?.trim(),
       })
       .eq('id', recurrenceId)
-      .eq('user_id', userId)   // boundary multi-usuário
+      .eq('user_id', userId)
 
     if (error) return { success: false, error: error.message }
-
     return { success: true }
   } catch (err) {
     return { success: false, error: String(err) }

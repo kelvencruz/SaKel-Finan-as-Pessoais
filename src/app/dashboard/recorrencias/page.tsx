@@ -273,10 +273,12 @@ export default function RecorrenciasPage() {
 
       if (editingId) {
         // A2: updateRecurrence() — nunca .from().update() direto
+        // INC-S31-001 resolvido Sprint 3.5 D5 — end_date agora persiste na edição
         const result = await updateRecurrence(editingId, user.id, {
           description:    form.description.trim(),
           amount,
           frequency:      form.frequency,
+          end_date:       form.end_date || null,
           category_id:    form.category_id    || null,
           account_id:     form.use_credit_card ? null : (form.account_id || null),
           credit_card_id: form.use_credit_card ? form.credit_card_id : null,
