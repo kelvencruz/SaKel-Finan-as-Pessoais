@@ -10,6 +10,7 @@ import {
   updateRecurrence,
   pauseRecurrence,
   cancelRecurrence,
+  reactivateRecurrence,
 } from '@/lib/financial/recurrences'
 import {
   createTransaction,
@@ -283,7 +284,7 @@ export default function RecorrenciasPage() {
         if (!result.success) { setFormError(result.error ?? 'Erro ao atualizar.'); return }
         showToast('Recorrência atualizada!')
       } else {
-        // createRecurrence() já existia
+        // createRecurrence() — end_date agora persistido — INC-S30-002 resolvido
         const result = await createRecurrence({
           user_id:        user.id,
           type:           form.type,
@@ -291,6 +292,7 @@ export default function RecorrenciasPage() {
           amount,
           frequency:      form.frequency,
           start_date:     form.start_date,
+          end_date:       form.end_date || null,
           account_id:     form.use_credit_card ? null : (form.account_id || null),
           credit_card_id: form.use_credit_card ? form.credit_card_id : null,
           category_id:    form.category_id || null,
@@ -316,25 +318,16 @@ export default function RecorrenciasPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    // pauseRecurrence/cancelRecurrence — nunca toggle direto via .from().update()
-    // Lógica: is_active=true → pausar; is_active=false → reativar via updateRecurrence
     if (r.is_active) {
+      // pauseRecurrence() — layer gerencia is_active=false + status='paused'
       const result = await pauseRecurrence(r.id, user.id)
       if (!result.success) { showToast(result.error ?? 'Erro ao pausar.', 'error'); return }
       showToast('Recorrência pausada.')
     } else {
-      // Reativar: status volta para 'active', is_active=true
-      // updateRecurrence não altera status — precisamos de reactivateRecurrence ou update direto
-      // DECISÃO: reativação é update de is_active + status via updateRecurrence não cobre status.
-      // Solução correta: criar reactivateRecurrence() em recurrences.ts (Sprint 3.5).
-      // Por ora: updateRecurrence cobre apenas campos editáveis — reativação fica como
-      // write controlado inline até a função existir. Documentado para Sprint 3.5.
-      const { error } = await supabase
-        .from('recurrences')
-        .update({ is_active: true, status: 'active' })
-        .eq('id', r.id)
-        .eq('user_id', user.id)
-      if (error) { showToast(error.message, 'error'); return }
+      // reactivateRecurrence() — INC-002 resolvido Sprint 3.5 D4
+      // layer gerencia is_active=true + status='active' com pré-condições e idempotência
+      const result = await reactivateRecurrence(r.id, user.id)
+      if (!result.success) { showToast(result.error ?? 'Erro ao reativar.', 'error'); return }
       showToast('Recorrência reativada.')
     }
     await loadAll()
@@ -421,7 +414,6 @@ export default function RecorrenciasPage() {
       }
 
       // createTransaction() — syncInvoiceTotal é side-effect interno do layer
-      // linha 424 (syncInvoiceTotal manual) removida — desnecessária
       const result = await createTransaction({
         user_id:        user.id,
         type:           r.type,

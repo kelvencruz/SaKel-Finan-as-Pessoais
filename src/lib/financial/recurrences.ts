@@ -12,15 +12,16 @@ export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly'
 export type RecurrenceStatus    = 'active' | 'paused' | 'cancelled'
 
 export type RecurrencePayload = {
-  user_id:        string
-  description:    string
-  amount:         number
-  type:           'income' | 'expense'
-  frequency:      RecurrenceFrequency
-  start_date:     string          // YYYY-MM-DD
-  account_id?:    string | null
+  user_id:         string
+  description:     string
+  amount:          number
+  type:            'income' | 'expense'
+  frequency:       RecurrenceFrequency
+  start_date:      string           // YYYY-MM-DD
+  end_date?:       string | null    // YYYY-MM-DD — opcional — INC-S30-002 resolvido Sprint 3.5 D4
+  account_id?:     string | null
   credit_card_id?: string | null
-  category_id?:   string | null
+  category_id?:    string | null
 }
 
 export type MutationResult<T> = {
@@ -93,10 +94,11 @@ export async function createRecurrence(
         type:           payload.type,
         frequency:      payload.frequency,
         start_date:     payload.start_date,
-        next_due_date:  payload.start_date,   // engine começa pelo start_date
-        account_id:     payload.account_id    ?? null,
+        end_date:       payload.end_date       ?? null,   // INC-S30-002 resolvido
+        next_due_date:  payload.start_date,               // engine começa pelo start_date
+        account_id:     payload.account_id     ?? null,
         credit_card_id: payload.credit_card_id ?? null,
-        category_id:    payload.category_id   ?? null,
+        category_id:    payload.category_id    ?? null,
         status:         'active',
         is_active:      true,
       })
@@ -163,6 +165,63 @@ export async function pauseRecurrence(
   }
 }
 
+// ─── reactivateRecurrence ─────────────────────────────────────────────────────
+//
+// Reativa uma recorrência pausada — retorna ao ciclo normal da engine.
+// Pré-condição esperada: status === 'paused' (is_active === false).
+// Cancelada é imutável — reativar cancelada é erro explícito.
+// Idempotência: já ativa → success sem reescrita.
+// user_id em todo .eq() — boundary multi-usuário.
+//
+// INC-002 resolvido — Sprint 3.5 D4.
+
+export async function reactivateRecurrence(
+  recurrenceId: string,
+  userId: string
+): Promise<MutationResult<void>> {
+  try {
+    if (!recurrenceId) return { success: false, error: 'recurrenceId obrigatório' }
+    if (!userId)       return { success: false, error: 'userId obrigatório' }
+
+    const supabase = createClient()
+
+    const { data: current, error: fetchError } = await supabase
+      .from('recurrences')
+      .select('is_active, status')
+      .eq('id', recurrenceId)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchError || !current) {
+      return { success: false, error: 'Recorrência não encontrada' }
+    }
+
+    // Idempotência: já ativa → success sem reescrita
+    if (current.is_active && current.status === 'active') {
+      return { success: true }
+    }
+
+    // Cancelada é imutável — não pode reativar
+    if (current.status === 'cancelled') {
+      return { success: false, error: 'Recorrência cancelada não pode ser reativada' }
+    }
+
+    const { error } = await supabase
+      .from('recurrences')
+      .update({ status: 'active', is_active: true })
+      .eq('id', recurrenceId)
+      .eq('user_id', userId)
+
+    if (error) {
+      return { success: false, error: error.message }
+    }
+
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}
+
 // ─── cancelRecurrence ─────────────────────────────────────────────────────────
 //
 // Estratégia dupla intencional — cada campo tem papel distinto:
@@ -216,10 +275,11 @@ export async function cancelRecurrence(
     return { success: false, error: String(err) }
   }
 }
+
 // ─── updateRecurrence ─────────────────────────────────────────────────────────
 //
 // Atualiza campos editáveis de uma recorrência.
-// NÃO permite alterar status — usar pauseRecurrence() / cancelRecurrence().
+// NÃO permite alterar status — usar pauseRecurrence() / cancelRecurrence() / reactivateRecurrence().
 // NÃO permite alterar is_active diretamente — mesmo motivo.
 // user_id em todo .eq() — boundary multi-usuário.
 
