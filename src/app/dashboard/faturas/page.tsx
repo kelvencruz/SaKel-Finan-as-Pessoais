@@ -22,6 +22,7 @@ import {
   type ForecastItem,
   type RecurrenceForForecast,
 } from '@/lib/financialEngine'
+import { payInvoice } from '@/lib/financial/invoices'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -565,30 +566,24 @@ export default function FaturasPage() {
   }
 
   async function handlePayInvoice() {
-    const { invoice } = invoiceState
-    if (!invoice || !payAccountId) { setPayError('Selecione a conta para pagamento.'); return }
+    if (!invoice || !payAccountId) { setPayError('Selecione a conta.'); return }
     setPaying(true)
     setPayError(null)
 
-    const { error: err } = await supabase
-      .from('credit_card_invoices')
-      .update({ status: 'paid', paid_at: new Date().toISOString(), paid_account_id: payAccountId })
-      .eq('id', invoice.id)
-
-    if (err) { setPayError(err.message); setPaying(false); return }
-
     const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      await supabase.from('transactions').insert({
-        user_id:     user.id,
-        account_id:  payAccountId,
-        type:        'expense',
-        amount:      invoiceState.computedTotal,
-        description: `Pagamento fatura ${selectedCard?.name} ${MONTHS[invoice.month - 1]}/${invoice.year}`,
-        date:        new Date().toISOString().split('T')[0],
-        status:      'paid',
-      })
-    }
+    if (!user) { setPayError('Usuário não autenticado.'); setPaying(false); return }
+
+    const result = await payInvoice({
+      invoiceId:    invoice.id,
+      userId:       user.id,
+      accountId:    payAccountId,
+      amount:       computedTotal,
+      cardName:     selectedCard!.name,
+      invoiceMonth: invoice.month,
+      invoiceYear:  invoice.year,
+    })
+
+    if (result.error) { setPayError(result.error); setPaying(false); return }
 
     setInvoiceState(prev => ({
       ...prev,
