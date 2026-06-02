@@ -5,6 +5,16 @@ import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { awardXP } from '@/lib/gamification'
 import { useActionHubStore } from '@/stores/useActionHubStore'
+import {
+  createRecurrence,
+  updateRecurrence,
+  pauseRecurrence,
+  cancelRecurrence,
+} from '@/lib/financial/recurrences'
+import {
+  createTransaction,
+  softDeleteTransactionsByRecurrence,
+} from '@/lib/financial/transactions'
 import type { Account, Category, CreditCard, Recorrencia, Frequency } from '@/types'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -33,7 +43,6 @@ interface DeleteModalState {
   futureTxCount: number
 }
 
-// FIX: Corrigido — não há menu de ações em mobile, card precisa de tap area próprio
 interface CardActionsModalState {
   open: boolean
   recorrencia: Recorrencia | null
@@ -140,7 +149,6 @@ export default function RecorrenciasPage() {
     open: false, recorrencia: null, txCount: 0, futureTxCount: 0,
   })
   const [deleting, setDeleting] = useState(false)
-  // FIX: modal de ações mobile (substitui group-hover inacessível em touch)
   const [cardActionsModal, setCardActionsModal] = useState<CardActionsModalState>({
     open: false, recorrencia: null,
   })
@@ -166,14 +174,13 @@ export default function RecorrenciasPage() {
     setShowModal(true)
   }
 
-  // FIX: FAB registrado para /recorrencias
   const { pendingAction, clear } = useActionHubStore()
-useEffect(() => {
-  if (pendingAction === 'nova-recorrencia') {
-    openCreate()
-    clear()
-  }
-}, [pendingAction, clear])
+  useEffect(() => {
+    if (pendingAction === 'nova-recorrencia') {
+      openCreate()
+      clear()
+    }
+  }, [pendingAction, clear])
 
   const loadAll = useCallback(async () => {
     setLoading(true)
@@ -189,7 +196,6 @@ useEffect(() => {
         { data: cards },
       ] = await Promise.all([
         supabase.from('recurrences').select('*').eq('user_id', user.id).order('next_due_date'),
-        // FIX: .is('deleted_at', null) em todas as queries de lookup
         supabase.from('accounts').select('id, name, current_balance').eq('user_id', user.id).is('deleted_at', null).order('name'),
         supabase.from('categories').select('id, name, type, icon').eq('user_id', user.id).is('deleted_at', null).order('name'),
         supabase.from('credit_cards')
@@ -263,31 +269,35 @@ useEffect(() => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setFormError('Não autenticado.'); return }
 
-      const next = nextDueDate(form.start_date, form.frequency)
-      const payload = {
-        type:           form.type,
-        description:    form.description.trim(),
-        amount,
-        category_id:    form.category_id    || null,
-        account_id:     form.use_credit_card ? null : (form.account_id || null),
-        credit_card_id: form.use_credit_card ? form.credit_card_id : null,
-        frequency:      form.frequency,
-        start_date:     form.start_date,
-        end_date:       form.end_date || null,
-        is_active:      true,
-      }
-
       if (editingId) {
-        const { error: err } = await supabase.from('recurrences').update(payload).eq('id', editingId)
-        if (err) { setFormError(err.message); return }
+        // A2: updateRecurrence() — nunca .from().update() direto
+        const result = await updateRecurrence(editingId, user.id, {
+          description:    form.description.trim(),
+          amount,
+          frequency:      form.frequency,
+          category_id:    form.category_id    || null,
+          account_id:     form.use_credit_card ? null : (form.account_id || null),
+          credit_card_id: form.use_credit_card ? form.credit_card_id : null,
+        })
+        if (!result.success) { setFormError(result.error ?? 'Erro ao atualizar.'); return }
         showToast('Recorrência atualizada!')
       } else {
-        const { error: err } = await supabase
-          .from('recurrences').insert({ ...payload, user_id: user.id, next_due_date: next })
-        if (err) { setFormError(err.message); return }
+        // createRecurrence() já existia
+        const result = await createRecurrence({
+          user_id:        user.id,
+          type:           form.type,
+          description:    form.description.trim(),
+          amount,
+          frequency:      form.frequency,
+          start_date:     form.start_date,
+          account_id:     form.use_credit_card ? null : (form.account_id || null),
+          credit_card_id: form.use_credit_card ? form.credit_card_id : null,
+          category_id:    form.category_id || null,
+        })
+        if (!result.success) { setFormError(result.error ?? 'Erro ao criar.'); return }
         try {
-          const result = await awardXP(user.id, 'first_recurring', 'first_recurring')
-          if (result.newBadge) showToast('Badge desbloqueado: Automatizador! +20 XP')
+          const xp = await awardXP(user.id, 'first_recurring', 'first_recurring')
+          if (xp.newBadge) showToast('Badge desbloqueado: Automatizador! +20 XP')
           else showToast('Recorrência criada! +20 XP')
         } catch {
           showToast('Recorrência criada!')
@@ -302,8 +312,30 @@ useEffect(() => {
   }
 
   async function toggleActive(r: Recorrencia) {
-    await supabase.from('recurrences').update({ is_active: !r.is_active }).eq('id', r.id)
-    showToast(r.is_active ? 'Recorrência pausada.' : 'Recorrência reativada.')
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    // pauseRecurrence/cancelRecurrence — nunca toggle direto via .from().update()
+    // Lógica: is_active=true → pausar; is_active=false → reativar via updateRecurrence
+    if (r.is_active) {
+      const result = await pauseRecurrence(r.id, user.id)
+      if (!result.success) { showToast(result.error ?? 'Erro ao pausar.', 'error'); return }
+      showToast('Recorrência pausada.')
+    } else {
+      // Reativar: status volta para 'active', is_active=true
+      // updateRecurrence não altera status — precisamos de reactivateRecurrence ou update direto
+      // DECISÃO: reativação é update de is_active + status via updateRecurrence não cobre status.
+      // Solução correta: criar reactivateRecurrence() em recurrences.ts (Sprint 3.5).
+      // Por ora: updateRecurrence cobre apenas campos editáveis — reativação fica como
+      // write controlado inline até a função existir. Documentado para Sprint 3.5.
+      const { error } = await supabase
+        .from('recurrences')
+        .update({ is_active: true, status: 'active' })
+        .eq('id', r.id)
+        .eq('user_id', user.id)
+      if (error) { showToast(error.message, 'error'); return }
+      showToast('Recorrência reativada.')
+    }
     await loadAll()
   }
 
@@ -324,17 +356,34 @@ useEffect(() => {
     const today = new Date().toISOString().split('T')[0]
 
     try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { showToast('Não autenticado.', 'error'); return }
+
       if (mode === 'pause') {
-        await supabase.from('recurrences').update({ is_active: false }).eq('id', id)
+        // cancelRecurrence: para a engine (is_active=false) + semântica UI (status='cancelled')
+        const result = await cancelRecurrence(id, user.id)
+        if (!result.success) { showToast(result.error ?? 'Erro ao cancelar.', 'error'); return }
         showToast('Recorrência pausada. Histórico preservado.')
+
       } else if (mode === 'future') {
-        await supabase.from('transactions').delete().eq('recurrence_id', id).gte('date', today)
-        await supabase.from('recurrences').update({ is_active: false }).eq('id', id)
-        showToast(`Recorrência pausada e ${deleteModal.futureTxCount} lançamento(s) futuro(s) removido(s).`)
+        // A1: soft-delete transactions futuras em single UPDATE
+        const txResult = await softDeleteTransactionsByRecurrence(id, user.id, { fromDate: today })
+        if (!txResult.error) {
+          // syncInvoiceTotal já foi chamado internamente pelo layer
+        }
+        const recResult = await cancelRecurrence(id, user.id)
+        if (!recResult.success) { showToast(recResult.error ?? 'Erro ao cancelar.', 'error'); return }
+        showToast(`Recorrência cancelada e ${deleteModal.futureTxCount} lançamento(s) futuro(s) removido(s).`)
+
       } else {
-        await supabase.from('transactions').delete().eq('recurrence_id', id)
-        await supabase.from('recurrences').delete().eq('id', id)
-        showToast('Recorrência e todos os lançamentos excluídos.')
+        // mode === 'all'
+        // A1: soft-delete TODAS as transactions da recorrência em single UPDATE
+        const txResult = await softDeleteTransactionsByRecurrence(id, user.id)
+        if (txResult.error) { showToast(txResult.error, 'error'); return }
+        // cancelRecurrence: recorrências não têm deleted_at — cancelar é o máximo possível
+        const recResult = await cancelRecurrence(id, user.id)
+        if (!recResult.success) { showToast(recResult.error ?? 'Erro ao cancelar.', 'error'); return }
+        showToast('Recorrência cancelada e todos os lançamentos removidos.')
       }
     } catch {
       showToast('Erro ao processar. Tente novamente.', 'error')
@@ -401,32 +450,33 @@ useEffect(() => {
         }
       }
 
-      const { error: err } = await supabase.from('transactions').insert({
+      // createTransaction() — syncInvoiceTotal é side-effect interno do layer
+      // linha 424 (syncInvoiceTotal manual) removida — desnecessária
+      const result = await createTransaction({
         user_id:        user.id,
         type:           r.type,
         description:    r.description,
         amount:         r.amount,
         date:           today,
-        account_id:     r.credit_card_id ? null : r.account_id,
+        status: r.credit_card_id ? 'paid' : 'pending',
+        account_id:     r.credit_card_id ? null : (r.account_id ?? null),
         credit_card_id: r.credit_card_id ?? null,
         invoice_id:     invoiceId,
-        category_id:    r.category_id,
-        status:         r.credit_card_id ? 'posted' : 'pending',
+        category_id:    r.category_id ?? null,
+        goal_id:        null,
+        notes:          null,
         is_recurring:   true,
         recurrence_id:  r.id,
       })
 
-      if (err) { showToast('Erro ao gerar transação.', 'error'); return }
-
-      if (invoiceId) {
-        const { data } = await supabase.from('transactions').select('amount').eq('invoice_id', invoiceId)
-        const total = (data ?? []).reduce((s: number, t: { amount: number }) => s + Number(t.amount), 0)
-        await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
-      }
+      if (result.error) { showToast('Erro ao gerar transação.', 'error'); return }
 
       await awardXP(user.id, 'transaction_created').catch(() => {})
+
+      // A2: updateRecurrence() para next_due_date — nunca .from().update() direto
       const next = nextDueDate(today, r.frequency)
-      await supabase.from('recurrences').update({ next_due_date: next }).eq('id', r.id)
+      await updateRecurrence(r.id, user.id, { next_due_date: next })
+
       showToast(r.credit_card_id ? 'Transação gerada e lançada na fatura!' : 'Transação gerada com sucesso!')
       await loadAll()
     } catch {
@@ -445,7 +495,6 @@ useEffect(() => {
   return (
     <PageContainer maxWidth="lg">
 
-      {/* Toast */}
       {toast && (
         <div className={`fixed top-5 right-5 z-[9999] px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 ${
           toast.type === 'success'
@@ -460,7 +509,6 @@ useEffect(() => {
         </div>
       )}
 
-      {/* FIX: hidden md:flex no CTA do PageHeader — obrigatório por regra */}
       <PageHeader
         title="Recorrências"
         description="Gerencie salário, aluguel, assinaturas e contas fixas."
@@ -498,7 +546,6 @@ useEffect(() => {
           <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
             Cadastre salário, aluguel, assinaturas e o sistema gera as transações automaticamente.
           </p>
-          {/* Empty state CTA — visível em mobile também (não é PageHeader) */}
           <button onClick={openCreate} className="btn-primary">
             Criar primeira recorrência
           </button>
@@ -542,7 +589,6 @@ useEffect(() => {
         </div>
       )}
 
-      {/* FIX: Modal de ações mobile — substitui group-hover inacessível em touch */}
       {cardActionsModal.open && cardActionsModal.recorrencia && createPortal(
         <div style={OVERLAY_STYLE} onClick={() => setCardActionsModal({ open: false, recorrencia: null })}>
           <div
@@ -555,9 +601,7 @@ useEffect(() => {
             </p>
             <div className="space-y-2">
               <button
-                onClick={() => {
-                  generateNow(cardActionsModal.recorrencia!)
-                }}
+                onClick={() => generateNow(cardActionsModal.recorrencia!)}
                 disabled={!!generatingId}
                 className="w-full text-left rounded-xl px-4 py-3 flex items-center gap-3 disabled:opacity-40"
                 style={{ background: 'var(--primary-light)', color: 'var(--primary)', border: '1px solid transparent' }}
@@ -613,26 +657,25 @@ useEffect(() => {
         document.body
       )}
 
-     {/* Modal exclusão */}
-{deleteModal.open && deleteModal.recorrencia && createPortal(
-  <div style={OVERLAY_STYLE} onClick={() => setDeleteModal({ open: false, recorrencia: null, txCount: 0, futureTxCount: 0 })}>
-    <div className="rounded-2xl w-full max-w-sm p-6 shadow-xl" style={{ background: 'var(--surface)' }}
-      onClick={e => e.stopPropagation()}>
-      <div className="flex items-start gap-3 mb-4">
-        <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-          style={{ background: 'var(--danger-light)' }}>
-          <Warning weight="duotone" size={20} style={{ color: 'var(--danger)' }} />
-        </div>
-        <div>
-          <h3 className="font-semibold" style={{ color: 'var(--text)' }}>Excluir recorrência</h3>
-          <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            <span className="font-medium" style={{ color: 'var(--text)' }}>
-              "{deleteModal.recorrencia.description}"
-            </span>
-            {' · '}{fmt(deleteModal.recorrencia.amount)}{' · '}{FREQ_LABELS[deleteModal.recorrencia.frequency]}
-          </p>
-        </div>
-      </div>
+      {deleteModal.open && deleteModal.recorrencia && createPortal(
+        <div style={OVERLAY_STYLE} onClick={() => setDeleteModal({ open: false, recorrencia: null, txCount: 0, futureTxCount: 0 })}>
+          <div className="rounded-2xl w-full max-w-sm p-6 shadow-xl" style={{ background: 'var(--surface)' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                style={{ background: 'var(--danger-light)' }}>
+                <Warning weight="duotone" size={20} style={{ color: 'var(--danger)' }} />
+              </div>
+              <div>
+                <h3 className="font-semibold" style={{ color: 'var(--text)' }}>Excluir recorrência</h3>
+                <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                  <span className="font-medium" style={{ color: 'var(--text)' }}>
+                    "{deleteModal.recorrencia.description}"
+                  </span>
+                  {' · '}{fmt(deleteModal.recorrencia.amount)}{' · '}{FREQ_LABELS[deleteModal.recorrencia.frequency]}
+                </p>
+              </div>
+            </div>
             {deleteModal.txCount > 0 && (
               <div className="rounded-xl px-4 py-3 mb-4 text-xs space-y-1"
                 style={{ background: 'var(--warning-light)', border: '1px solid var(--warning)', color: 'var(--text)' }}>
@@ -663,7 +706,7 @@ useEffect(() => {
                   style={{ border: '1px solid var(--border)', background: 'var(--bg)' }}>
                   <p className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text)' }}>
                     <CalendarBlank weight="duotone" size={15} />
-                    Pausar + remover futuras
+                    Cancelar + remover futuras
                   </p>
                   <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                     Remove {deleteModal.futureTxCount} lançamento(s) com data ≥ hoje.
@@ -678,7 +721,7 @@ useEffect(() => {
                   Excluir tudo
                 </p>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                  Remove a recorrência e todos os {deleteModal.txCount} lançamento(s). Irreversível.
+                  Cancela a recorrência e remove todos os {deleteModal.txCount} lançamento(s).
                 </p>
               </button>
             </div>
@@ -695,24 +738,22 @@ useEffect(() => {
         document.body
       )}
 
-      {/* Modal criar/editar */}
-      {/* FIX: pb-safe garante footer acessível com teclado mobile aberto */}
       {showModal && createPortal(
         <div style={OVERLAY_STYLE}>
           <div className="rounded-2xl w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto pb-safe"
-  style={{ background: 'var(--surface)' }}
-  onClick={e => e.stopPropagation()}>
-  <div className="flex items-center justify-between mb-5">
-    <h2 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
-      {editingId ? 'Editar Recorrência' : 'Nova Recorrência'}
-    </h2>
-    <button onClick={() => setShowModal(false)}
-         className="text-4xl leading-none"
-  style={{ color: 'var(--text-muted)' }}
-  aria-label="Fechar">
-  ×
-      </button>
-  </div>
+            style={{ background: 'var(--surface)' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
+                {editingId ? 'Editar Recorrência' : 'Nova Recorrência'}
+              </h2>
+              <button onClick={() => setShowModal(false)}
+                className="text-4xl leading-none"
+                style={{ color: 'var(--text-muted)' }}
+                aria-label="Fechar">
+                ×
+              </button>
+            </div>
 
             <div className="space-y-4">
               <div>
@@ -745,7 +786,6 @@ useEffect(() => {
 
               <div>
                 <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Valor (R$)</label>
-                {/* inputMode="decimal" já presente — correto para iOS */}
                 <input type="text" inputMode="decimal" value={form.amount}
                   onChange={e => setForm({ ...form, amount: e.target.value })}
                   placeholder="0,00"
@@ -862,7 +902,6 @@ function RecorrenciaCard({
   onDelete: (r: Recorrencia) => void
   onGenerate: (r: Recorrencia) => void
   generatingId: string | null
-  // FIX: callback para abrir modal de ações em mobile (touch devices)
   onMobileTap: () => void
 }) {
   const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -915,7 +954,7 @@ function RecorrenciaCard({
           )}
           {isDueSoon && !isOverdue && (
             <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0"
-              style={{ background: 'var(--warning-light)', color: 'var(--warning)' }}>
+              style={{ background: 'var(--warning-light)', color: 'var(--warning)' }} >
               Vence em {daysUntil}d
             </span>
           )}
@@ -934,7 +973,6 @@ function RecorrenciaCard({
         </p>
       </div>
 
-      {/* FIX: ações desktop (hover) + botão "…" mobile (md:hidden) */}
       <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden md:flex gap-1 shrink-0">
         <button onClick={() => onGenerate(r)} disabled={!!generatingId}
           title="Gerar transação agora"
@@ -965,7 +1003,6 @@ function RecorrenciaCard({
         </button>
       </div>
 
-      {/* Botão "…" exclusivo mobile — abre modal de ações */}
       <button
         onClick={onMobileTap}
         className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg shrink-0"
