@@ -18,6 +18,8 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { toastManager } from '@/components/core/ToastManager'
 import { saveTransaction } from '@/features/financas/services/transactionService'
+import { createTransaction } from '@/lib/financial/transactions'
+import type { TransactionPayload } from '@/lib/financial/transactions'
 import { ModalShell } from '@/components/ui/ModalShell'
 
 type TxType = 'income' | 'expense' | 'transfer'
@@ -213,13 +215,9 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
   const selectedCategory     = categories.find(c => c.id === form.category_id)
   const isInvestmentCategory = selectedCategory?.type === 'investment'
 
-  // ─── FIN-002: getOrCreateInvoice com tratamento de race condition ────────────
-  // Cenário: duas abas criam despesa no mesmo cartão/mês simultaneamente.
-  // Ambas fazem SELECT → null, ambas tentam INSERT.
-  // O segundo INSERT falha com código 23505 (unique_violation).
-  // Fix: capturar o erro 23505 e re-buscar a fatura criada pela primeira aba.
-  // Requer migration: ALTER TABLE credit_card_invoices ADD CONSTRAINT
-  //   uq_invoice_card_month_year UNIQUE (credit_card_id, month, year);
+  // ─── FIN-002: getOrCreateInvoice com tratamento de race condition ─────────
+  // Responsabilidade do modal: resolver qual fatura antes de montar o payload.
+  // O syncInvoiceTotal pós-insert vive no Mutation Layer (transactions.ts).
   async function getOrCreateInvoice(cardId: string, date: string, userId: string): Promise<string | null> {
     const d    = new Date(date + 'T12:00:00')
     const card = creditCards.find(c => c.id === cardId)
@@ -232,13 +230,11 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       year  = month === 1  ? year + 1 : year
     }
 
-    // Tentativa 1: busca fatura existente
     const { data: existing } = await supabase
       .from('credit_card_invoices').select('id')
       .eq('credit_card_id', cardId).eq('month', month).eq('year', year).single()
     if (existing) return existing.id
 
-    // Tentativa 2: cria fatura
     const dueMonth = month === 12 ? 1 : month + 1
     const dueYear  = month === 12 ? year + 1 : year
     const dueDate  = `${dueYear}-${String(dueMonth).padStart(2,'0')}-${String(card.due_day).padStart(2,'0')}`
@@ -248,35 +244,18 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       .insert({ credit_card_id: cardId, user_id: userId, month, year, total_amount: 0, status: 'open', due_date: dueDate })
       .select('id').single()
 
-    // FIX FIN-002: se outro processo criou a fatura no mesmo instante (race condition),
-    // o INSERT falha com 23505 (unique_violation). Buscamos a fatura existente e retornamos.
     if (insertErr) {
       if (insertErr.code === '23505') {
-        // Unique violation — fatura já existe (criada por outra aba/request)
         const { data: fallback } = await supabase
           .from('credit_card_invoices').select('id')
           .eq('credit_card_id', cardId).eq('month', month).eq('year', year).single()
         return fallback?.id ?? null
       }
-      // Erro inesperado — propaga null para interromper o save
       console.error('[getOrCreateInvoice] erro inesperado:', insertErr)
       return null
     }
 
     return created?.id ?? null
-  }
-
-  // ─── updateInvoiceTotal com filtro deleted_at ────────────────────────────────
-  // Sem o filtro, transações soft-deleted inflam o total da fatura.
-  // Alinhado com FIN-001 aplicado em faturas-page.tsx.
-  async function updateInvoiceTotal(invoiceId: string) {
-    const { data } = await supabase
-      .from('transactions')
-      .select('amount')
-      .eq('invoice_id', invoiceId)
-      .is('deleted_at', null)           // ← consistência com FIN-001
-    const total = (data ?? []).reduce((s: number, t: any) => s + Number(t.amount), 0)
-    await supabase.from('credit_card_invoices').update({ total_amount: total }).eq('id', invoiceId)
   }
 
   function getInstallmentDates(): string[] {
@@ -318,7 +297,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
 
     const goalId = isInvestmentCategory && form.goal_id ? form.goal_id : null
 
-    // ─── RECORRENCIA ────────────────────────────────────────────────────────
+    // ─── RECORRÊNCIA ──────────────────────────────────────────────────────────
     if (form.is_recurring) {
       function calcNextDue(startDate: string, frequency: string): string {
         const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -330,8 +309,6 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
           else if (frequency === 'yearly')  d.setFullYear(d.getFullYear() + 1)
         }
         return d.toISOString().split('T')[0]
-        // TODO FIN-004: mover para RPC Supabase com NOW() server-side
-        // calcNextDue client-side pode gerar D-1 para usuários em UTC-3
       }
 
       const recPayload = {
@@ -362,37 +339,40 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       const accountId = form.use_credit_card ? null : (form.account_id || null)
       if (form.use_credit_card && form.type === 'expense') {
         invoiceId = await getOrCreateInvoice(form.credit_card_id, form.date, user.id)
-        if (invoiceId === null && form.use_credit_card) {
+        if (invoiceId === null) {
           setError('Erro ao obter fatura do cartão. Tente novamente.')
           setSaving(false)
           return
         }
       }
 
-      await supabase.from('transactions').insert({
+      // Mutation Layer — syncInvoiceTotal executado automaticamente dentro de createTransaction
+      const txPayload: TransactionPayload = {
         user_id:        user.id,
         type:           form.type,
         description:    form.description.trim(),
         amount,
         date:           form.date,
+        status:         (form.use_credit_card ? 'pending' : form.status) as TransactionPayload['status'],
         account_id:     accountId,
         category_id:    form.category_id || null,
         goal_id:        goalId,
         notes:          form.notes?.trim() || null,
-        status:         form.use_credit_card ? 'posted' : form.status,
         credit_card_id: form.use_credit_card ? form.credit_card_id : null,
         invoice_id:     invoiceId,
         is_recurring:   true,
         recurrence_id:  recData.id,
-      })
+        destination_account_id: null,
+      }
 
-      if (invoiceId) await updateInvoiceTotal(invoiceId)
+      const { error: txErr } = await createTransaction(txPayload)
+      if (txErr) { setError(txErr); setSaving(false); return }
 
       await finish('Recorrencia salva')
       return
     }
 
-    // ─── PARCELAMENTO ────────────────────────────────────────────────────────
+    // ─── PARCELAMENTO ─────────────────────────────────────────────────────────
     if (form.is_installment) {
       const dates   = getInstallmentDates()
       const groupId = crypto.randomUUID()
@@ -412,41 +392,42 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
           accountId = null
         }
 
-        const txPayload = {
+        // Mutation Layer — todas as parcelas pelo mesmo caminho, syncInvoiceTotal automático
+        const txPayload: TransactionPayload = {
           user_id:             user.id,
           type:                form.type,
           description:         `${form.description.trim()} (${i + 1}/${form.installment_count})`,
           amount:              parcela,
           date:                dates[i],
+          status:              (i === 0 ? (form.use_credit_card ? 'pending' : form.status) : 'pending') as TransactionPayload['status'],
           account_id:          accountId,
           category_id:         form.category_id || null,
           goal_id:             goalId,
           notes:               form.notes?.trim() || null,
-          status:              i === 0 ? form.status : 'pending',
           credit_card_id:      form.use_credit_card ? form.credit_card_id : null,
           invoice_id:          invoiceId,
           is_installment:      true,
           installment_group:   groupId,
           installment_current: i + 1,
           installment_total:   form.installment_count,
+          destination_account_id: null,
         }
 
         if (i === 0) {
+          // Parcela 1 passa por saveTransaction para emitir transaction.created (isFirstTx)
           const { error: txErr } = await saveTransaction({ userId: user.id, payload: txPayload })
           if (txErr) { setError(`Erro na parcela 1: ${txErr}`); setSaving(false); return }
         } else {
-          const { error: txErr } = await supabase.from('transactions').insert(txPayload)
-          if (txErr) { setError(`Erro na parcela ${i + 1}: ${txErr.message}`); setSaving(false); return }
+          const { error: txErr } = await createTransaction(txPayload)
+          if (txErr) { setError(`Erro na parcela ${i + 1}: ${txErr}`); setSaving(false); return }
         }
-
-        if (invoiceId) await updateInvoiceTotal(invoiceId)
       }
 
       await finish(`${form.installment_count}x parcelas salvas`)
       return
     }
 
-    // ─── TRANSACAO SIMPLES ───────────────────────────────────────────────────
+    // ─── TRANSAÇÃO SIMPLES ────────────────────────────────────────────────────
     let invoiceId: string | null = null
     let accountId = form.account_id || null
     if (form.use_credit_card && form.type === 'expense') {
@@ -459,26 +440,25 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
       accountId = null
     }
 
-    const payload: Record<string, unknown> = {
+    const payload: TransactionPayload = {
       user_id:                user.id,
       type:                   form.type,
       description:            form.description.trim(),
       amount,
       date:                   form.date,
+      status:                 (form.use_credit_card ? 'pending' : form.status) as TransactionPayload['status'],
       account_id:             accountId,
       destination_account_id: form.type === 'transfer' ? form.destination_account_id : null,
       category_id:            form.category_id || null,
       goal_id:                goalId,
       notes:                  form.notes?.trim() || null,
-      status:                 form.use_credit_card ? 'posted' : form.status,
       credit_card_id:         form.use_credit_card ? form.credit_card_id : null,
       invoice_id:             invoiceId,
     }
 
+    // saveTransaction emite transaction.created — manter aqui (DT-003)
     const { error: txErr } = await saveTransaction({ userId: user.id, payload })
     if (txErr) { setError(txErr); setSaving(false); return }
-
-    if (invoiceId) await updateInvoiceTotal(invoiceId)
 
     await finish('Transacao salva')
   }
@@ -511,7 +491,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     opacity:   0.6,
   }
 
-  // ─── RENDER ──────────────────────────────────────────────────────────────────
+  // ─── RENDER ───────────────────────────────────────────────────────────────────
   return (
     <ModalShell open={open} onClose={onClose} title="Nova Transacao">
 

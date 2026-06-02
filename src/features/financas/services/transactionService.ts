@@ -1,14 +1,16 @@
 // src/features/financas/services/transactionService.ts
-// Responsável por gravar transações no Supabase e emitir eventos financeiros.
+// Adaptador sobre o Mutation Layer — não grava diretamente no Supabase.
 // REGRA CRÍTICA (DT-003): o evento só é emitido APÓS commit confirmado sem erro.
 // Nunca emitir antes — risco de XP creditado sem transação real (viola Regra #15).
 
 import { createClient } from '@/lib/supabase/client'
 import { eventBus } from '@/lib/events/eventBus'
+import { createTransaction } from '@/lib/financial/transactions'
+import type { TransactionPayload } from '@/lib/financial/transactions'
 
 interface SaveTransactionParams {
   userId: string
-  payload: Record<string, unknown>
+  payload: TransactionPayload
 }
 
 interface SaveTransactionResult {
@@ -27,14 +29,15 @@ export async function saveTransaction({
     .from('transactions')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
+    .is('deleted_at', null)
 
   const isFirstTx = (count ?? 0) === 0
 
-  // Grava no Supabase — para aqui se houver erro
-  const { error } = await supabase.from('transactions').insert(payload)
+  // Grava via Mutation Layer — nunca .from('transactions').insert() direto
+  const result = await createTransaction(payload)
 
-  if (error) {
-    return { error: error.message, isFirstTx }
+  if (result.error) {
+    return { error: result.error, isFirstTx }
   }
 
   // ✅ Só emite depois do commit confirmado — nunca antes
