@@ -2,6 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import {
+  createCategory,
+  updateCategory,
+  softDeleteCategory,
+} from '@/lib/financial/categories'
 import { Category, CategoryType, InvestmentGoal } from '@/types'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -83,14 +88,14 @@ export default function CategoriasPage() {
   }
 
   async function loadAll() {
-    const [{ data: cats }, { data: gls }] = await Promise.all([
-      supabase.from('categories').select('*').order('name'),
-      supabase.from('investment_goals').select('*').order('name'),
-    ])
-    setCategories(cats ?? [])
-    setGoals((gls ?? []) as InvestmentGoal[])
-    setLoading(false)
-  }
+  const [{ data: cats }, { data: gls }] = await Promise.all([
+    supabase.from('categories').select('*').is('deleted_at', null).order('name'),
+    supabase.from('investment_goals').select('*').order('name'),
+  ])
+  setCategories(cats ?? [])
+  setGoals((gls ?? []) as InvestmentGoal[])
+  setLoading(false)
+}
 
   useEffect(() => { loadAll() }, [])
 
@@ -114,29 +119,36 @@ export default function CategoriasPage() {
   }
 
   async function handleSave() {
-    setError(null)
-    if (!form.name.trim()) { setError('Nome é obrigatório.'); return }
-    const finalIcon = form.customIcon.trim() || form.icon
-    setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setError('Não autenticado.'); setSaving(false); return }
+  setError(null)
+  if (!form.name.trim()) { setError('Nome é obrigatório.'); return }
+  const finalIcon = form.customIcon.trim() || form.icon
+  setSaving(true)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) { setError('Não autenticado.'); setSaving(false); return }
 
-    if (editingId) {
-      const { error: err } = await supabase
-        .from('categories')
-        .update({ name: form.name.trim(), type: form.type, color: form.color, icon: finalIcon })
-        .eq('id', editingId)
-      if (err) { setError(err.message); setSaving(false); return }
-      showToast('Categoria atualizada!')
-    } else {
-      const { error: err } = await supabase
-        .from('categories')
-        .insert({ name: form.name.trim(), type: form.type, color: form.color, icon: finalIcon, user_id: user.id })
-      if (err) { setError(err.message); setSaving(false); return }
-      showToast('Categoria criada!')
-    }
-    await loadAll(); setShowModal(false); setSaving(false)
+  if (editingId) {
+    const { error: err } = await updateCategory(editingId, user.id, {
+      name:  form.name.trim(),
+      type:  form.type,
+      color: form.color,
+      icon:  finalIcon,
+    })
+    if (err) { setError(err); setSaving(false); return }
+    showToast('Categoria atualizada!')
+  } else {
+    const { error: err } = await createCategory({
+      user_id:   user.id,
+      name:      form.name.trim(),
+      type:      form.type,
+      color:     form.color,
+      icon:      finalIcon,
+      parent_id: null,
+    })
+    if (err) { setError(err); setSaving(false); return }
+    showToast('Categoria criada!')
   }
+  await loadAll(); setShowModal(false); setSaving(false)
+}
 
   // Exclusão com modal — sem confirm() nativo
   async function requestDeleteCat(cat: Category) {
@@ -150,15 +162,17 @@ export default function CategoriasPage() {
   }
 
   async function executeDeleteCat() {
-    if (!confirmDeleteCat) return
-    setDeletingId(confirmDeleteCat.id)
-    setConfirmDeleteCat(null)
-    const { error: err } = await supabase.from('categories').delete().eq('id', confirmDeleteCat.id)
-    if (err) showToast('Erro ao excluir categoria.', 'error')
-    else showToast('Categoria excluída.')
-    await loadAll()
-    setDeletingId(null)
-  }
+  if (!confirmDeleteCat) return
+  setDeletingId(confirmDeleteCat.id)
+  setConfirmDeleteCat(null)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) { setDeletingId(null); return }
+  const { error: err } = await softDeleteCategory(confirmDeleteCat.id, user.id)
+  if (err) showToast('Erro ao excluir categoria.', 'error')
+  else showToast('Categoria excluída.')
+  await loadAll()
+  setDeletingId(null)
+}
 
   // ─── Goal modal ───────────────────────────────────────────────────────────
 

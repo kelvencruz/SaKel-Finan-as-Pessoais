@@ -22,6 +22,10 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import {
+  createCategory,
+  updateCategory,
+} from '@/lib/financial/categories'
 import { Category, CategoryType, InvestmentGoal } from '@/types'
 import { AppModal } from '@/components/AppModal'
 import { ArrowDown, ArrowUp, TrendUp } from '@phosphor-icons/react'
@@ -122,50 +126,42 @@ export default function NovaCategoriaModal({
 
   // ── Save: categoria ───────────────────────────────────────────────────────
 
-  async function saveCategoriaOrGoal() {
-    if (isGoalMode) {
-      await saveGoal()
-    } else {
-      await saveCategoria()
-    }
-  }
-
   async function saveCategoria() {
-    setError(null)
-    if (!catForm.name.trim()) { setError('Nome é obrigatório.'); return }
+  setError(null)
+  if (!catForm.name.trim()) { setError('Nome é obrigatório.'); return }
 
-    const finalIcon = catForm.customIcon.trim() || catForm.icon
-    setSaving(true)
+  const finalIcon = catForm.customIcon.trim() || catForm.icon
+  setSaving(true)
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setError('Não autenticado.'); setSaving(false); return }
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) { setError('Não autenticado.'); setSaving(false); return }
 
-    if (isEditing && category) {
-      const { error: err } = await supabase
-        .from('categories')
-        .update({
-          name:  catForm.name.trim(),
-          type:  catForm.type,
-          color: catForm.color,
-          icon:  finalIcon,
-        })
-        .eq('id', category.id)
-      if (err) { setError(err.message); setSaving(false); return }
-    } else {
-      const { error: err } = await supabase.from('categories').insert({
-        name:    catForm.name.trim(),
-        type:    catForm.type,
-        color:   catForm.color,
-        icon:    finalIcon,
-        user_id: user.id,
-      })
-      if (err) { setError(err.message); setSaving(false); return }
-    }
-
-    setSaving(false)
-    onSaved()
-    onClose()
+  if (isEditing && category) {
+    const { error: err } = await updateCategory(category.id, user.id, {
+      name:  catForm.name.trim(),
+      type:  catForm.type,
+      color: catForm.color,
+      icon:  finalIcon,
+    })
+    if (err) { setError(err); setSaving(false); return }
+  } else {
+    const { error: err } = await createCategory({
+      user_id:   user.id,
+      name:      catForm.name.trim(),
+      type:      catForm.type,
+      color:     catForm.color,
+      icon:      finalIcon,
+      parent_id: null,
+    })
+    if (err) { setError(err); setSaving(false); return }
   }
+
+  setSaving(false)
+  onSaved()
+  onClose()
+}
+
+ 
 
   // ── Save: objetivo ────────────────────────────────────────────────────────
 
@@ -246,7 +242,7 @@ export default function NovaCategoriaModal({
             Cancelar
           </button>
           <button
-            onClick={saveCategoriaOrGoal}
+            onClick={isGoalMode ? saveGoal : saveCategoria}
             disabled={saving}
             className="flex-1 btn-primary rounded-lg py-2 text-sm font-medium disabled:opacity-50"
           >
