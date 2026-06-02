@@ -20,6 +20,10 @@ import { toastManager } from '@/components/core/ToastManager'
 import { saveTransaction } from '@/features/financas/services/transactionService'
 import { createTransaction } from '@/lib/financial/transactions'
 import type { TransactionPayload } from '@/lib/financial/transactions'
+import { getOrCreateInvoice } from '@/lib/financial/invoices'
+import type { InvoiceRef } from '@/lib/financial/invoices'
+import { createRecurrence } from '@/lib/financial/recurrences'
+import type { RecurrencePayload } from '@/lib/financial/recurrences'
 import { ModalShell } from '@/components/ui/ModalShell'
 
 type TxType = 'income' | 'expense' | 'transfer'
@@ -215,47 +219,27 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
   const selectedCategory     = categories.find(c => c.id === form.category_id)
   const isInvestmentCategory = selectedCategory?.type === 'investment'
 
-  // ─── FIN-002: getOrCreateInvoice com tratamento de race condition ─────────
-  // Responsabilidade do modal: resolver qual fatura antes de montar o payload.
-  // O syncInvoiceTotal pós-insert vive no Mutation Layer (transactions.ts).
-  async function getOrCreateInvoice(cardId: string, date: string, userId: string): Promise<string | null> {
-    const d    = new Date(date + 'T12:00:00')
+  // ─── INC-005 RESOLVIDO: resolveInvoiceId — wrapper para getOrCreateInvoice() do Mutation Layer ──
+  // Adapta os parâmetros locais (cardId, date, userId) para InvoiceRef usando
+  // closing_day e due_day do cartão já carregado em memória.
+  // Substitui a função local getOrCreateInvoice() que fazia credit_card_invoices.insert diretamente.
+  async function resolveInvoiceId(
+    cardId: string,
+    date: string,
+    userId: string,
+  ): Promise<string | null> {
     const card = creditCards.find(c => c.id === cardId)
     if (!card) return null
 
-    let month = d.getMonth() + 1
-    let year  = d.getFullYear()
-    if (d.getDate() > card.closing_day) {
-      month = month === 12 ? 1 : month + 1
-      year  = month === 1  ? year + 1 : year
+    const ref: InvoiceRef = {
+      cardId,
+      date,
+      userId,
+      closingDay: card.closing_day,
+      dueDay:     card.due_day,
     }
 
-    const { data: existing } = await supabase
-      .from('credit_card_invoices').select('id')
-      .eq('credit_card_id', cardId).eq('month', month).eq('year', year).single()
-    if (existing) return existing.id
-
-    const dueMonth = month === 12 ? 1 : month + 1
-    const dueYear  = month === 12 ? year + 1 : year
-    const dueDate  = `${dueYear}-${String(dueMonth).padStart(2,'0')}-${String(card.due_day).padStart(2,'0')}`
-
-    const { data: created, error: insertErr } = await supabase
-      .from('credit_card_invoices')
-      .insert({ credit_card_id: cardId, user_id: userId, month, year, total_amount: 0, status: 'open', due_date: dueDate })
-      .select('id').single()
-
-    if (insertErr) {
-      if (insertErr.code === '23505') {
-        const { data: fallback } = await supabase
-          .from('credit_card_invoices').select('id')
-          .eq('credit_card_id', cardId).eq('month', month).eq('year', year).single()
-        return fallback?.id ?? null
-      }
-      console.error('[getOrCreateInvoice] erro inesperado:', insertErr)
-      return null
-    }
-
-    return created?.id ?? null
+    return getOrCreateInvoice(ref)
   }
 
   function getInstallmentDates(): string[] {
@@ -311,34 +295,37 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         return d.toISOString().split('T')[0]
       }
 
-      const recPayload = {
+      // ─── INC-006 RESOLVIDO: createRecurrence() via Mutation Layer ─────────
+      // RecurrencePayload não aceita next_due_date, end_date nem is_active —
+      // o layer define next_due_date = start_date internamente (status: 'active', is_active: true).
+      // end_date não existe no schema de RecurrencePayload — omitido intencionalmente.
+      // Nota: calcNextDue() permanece aqui pois é usado apenas para fins de UI/log futuro;
+      // a engine process-recurrences recalcula next_due_date autonomamente.
+      const recPayload: RecurrencePayload = {
         user_id:        user.id,
-        type:           form.type,
+        type:           form.type as 'income' | 'expense',
         description:    form.description.trim(),
         amount,
         frequency:      form.recurrence_frequency,
-        next_due_date:  calcNextDue(form.date, form.recurrence_frequency),
         start_date:     form.date,
-        end_date:       form.recurrence_end_date || null,
         account_id:     form.use_credit_card ? null : (form.account_id || null),
         credit_card_id: form.use_credit_card ? form.credit_card_id : null,
         category_id:    form.category_id || null,
-        is_active:      true,
       }
 
-      const { data: recData, error: recErr } = await supabase
-        .from('recurrences').insert(recPayload).select('id').single()
+      const recResult = await createRecurrence(recPayload)
 
-      if (recErr || !recData) {
-        setError(recErr?.message ?? 'Erro ao criar recorrencia.')
+      if (!recResult.success || !recResult.data) {
+        setError(recResult.error ?? 'Erro ao criar recorrencia.')
         setSaving(false)
         return
       }
 
+      // ─── INC-005 RESOLVIDO: resolveInvoiceId() via Mutation Layer ─────────
       let invoiceId: string | null = null
       const accountId = form.use_credit_card ? null : (form.account_id || null)
       if (form.use_credit_card && form.type === 'expense') {
-        invoiceId = await getOrCreateInvoice(form.credit_card_id, form.date, user.id)
+        invoiceId = await resolveInvoiceId(form.credit_card_id, form.date, user.id)
         if (invoiceId === null) {
           setError('Erro ao obter fatura do cartão. Tente novamente.')
           setSaving(false)
@@ -361,7 +348,7 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         credit_card_id: form.use_credit_card ? form.credit_card_id : null,
         invoice_id:     invoiceId,
         is_recurring:   true,
-        recurrence_id:  recData.id,
+        recurrence_id:  recResult.data.id,
         destination_account_id: null,
       }
 
@@ -382,8 +369,9 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
         let invoiceId: string | null = null
         let accountId = form.account_id || null
 
+        // ─── INC-005 RESOLVIDO: resolveInvoiceId() via Mutation Layer ───────
         if (form.use_credit_card && form.type === 'expense') {
-          invoiceId = await getOrCreateInvoice(form.credit_card_id, dates[i], user.id)
+          invoiceId = await resolveInvoiceId(form.credit_card_id, dates[i], user.id)
           if (invoiceId === null) {
             setError(`Erro ao obter fatura para parcela ${i + 1}. Tente novamente.`)
             setSaving(false)
@@ -428,10 +416,11 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
     }
 
     // ─── TRANSAÇÃO SIMPLES ────────────────────────────────────────────────────
+    // ─── INC-005 RESOLVIDO: resolveInvoiceId() via Mutation Layer ────────────
     let invoiceId: string | null = null
     let accountId = form.account_id || null
     if (form.use_credit_card && form.type === 'expense') {
-      invoiceId = await getOrCreateInvoice(form.credit_card_id, form.date, user.id)
+      invoiceId = await resolveInvoiceId(form.credit_card_id, form.date, user.id)
       if (invoiceId === null) {
         setError('Erro ao obter fatura do cartão. Tente novamente.')
         setSaving(false)
