@@ -349,7 +349,9 @@ export async function restoreTransaction(
   }
 
   return { data: null, error: null }
-}// ─────────────────────────────────────────────────────────────────────────────
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // softDeleteTransactionsByRecurrence
 // Soft-deleta em batch todas as transactions de uma recorrência.
 // Single UPDATE com WHERE recurrence_id — evita N round-trips em loop.
@@ -416,4 +418,71 @@ export async function softDeleteTransactionsByRecurrence(
   }
 
   return { data: null, error: null }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// bulkImportTransactions
+// Insert em lote para importação de CSV — boundary único para esse caso de uso.
+//
+// Diferente de createTransaction():
+//   • Não valida invariantes de cartão/fatura — importações CSV nunca têm
+//     invoice_id, credit_card_id ou recurrence_id.
+//   • Não chama syncInvoiceTotal() — sem invoice_id, não há fatura a sincronizar.
+//   • Faz insert de array único (um round-trip), não loop — necessário por
+//     performance com lotes de centenas de rows.
+//   • Injeta user_id e status='paid' — responsabilidade do layer, nunca da UI.
+//
+// A deduplicação (existingSet) permanece em importar/page.tsx — é
+// responsabilidade da UI, não do layer.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface BulkImportRow {
+  account_id:  string | null
+  type:        'income' | 'expense'
+  description: string
+  amount:      number
+  date:        string            // YYYY-MM-DD
+  category_id: string | null
+}
+
+export async function bulkImportTransactions(
+  rows: BulkImportRow[],
+  userId: string
+): Promise<MutationResult<{ imported: number }>> {
+  if (!userId?.trim()) return { data: null, error: 'INV-008: user_id é obrigatório.' }
+  if (!rows.length)    return { data: { imported: 0 }, error: null }
+
+  // Validações mínimas — falha ruidosa no primeiro problema encontrado
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]
+    if (!r.description?.trim())                         return { data: null, error: `Linha ${i + 1}: descrição vazia.` }
+    if (!isFinite(r.amount) || r.amount <= 0)           return { data: null, error: `Linha ${i + 1}: valor inválido.` }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date))           return { data: null, error: `Linha ${i + 1}: data inválida (esperado YYYY-MM-DD).` }
+    if (r.type !== 'income' && r.type !== 'expense')    return { data: null, error: `Linha ${i + 1}: type deve ser 'income' ou 'expense'.` }
+  }
+
+  const supabase = createClient()
+
+  // Insert em array único — um único round-trip ao banco
+  const { error } = await supabase
+    .from('transactions')
+    .insert(
+      rows.map(r => ({
+        user_id:     userId,          // injetado pelo layer
+        status:      'paid' as const, // injetado pelo layer
+        account_id:  r.account_id,
+        type:        r.type,
+        description: r.description.trim(),
+        amount:      r.amount,
+        date:        r.date,
+        category_id: r.category_id,
+        // Campos ausentes intencionalmente:
+        // invoice_id, credit_card_id, recurrence_id — CSV nunca os tem
+        // is_recurring: false implícito pelo banco
+      }))
+    )
+
+  if (error) return { data: null, error: error.message }
+
+  return { data: { imported: rows.length }, error: null }
 }

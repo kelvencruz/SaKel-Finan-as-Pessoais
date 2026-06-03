@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react'
 import Papa from 'papaparse'
 import { createClient } from '@/lib/supabase/client'
+import { bulkImportTransactions } from '@/lib/financial/transactions'
+import type { BulkImportRow } from '@/lib/financial/transactions'
 import type { ReportData } from '@/components/RelatorioFinanceiroPDF'
 import {
   ChartBar,
@@ -271,7 +273,7 @@ function ExportTab() {
             </div>
           )}
 
-          {/* Banner informativo — sem referência ao Kal */}
+          {/* Banner informativo */}
           <div className="rounded-xl p-4 flex gap-3 items-start"
             style={{ background: '#f5f3ff', border: '1px solid #ede9fe' }}>
             <FileText size={20} weight="duotone" style={{ color: '#4f46e5', flexShrink: 0, marginTop: 1 }} />
@@ -393,20 +395,46 @@ export default function ImportarPage() {
     setImporting(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { window.location.href = '/auth/login'; return }
-    const { data: existing } = await supabase.from('transactions').select('date,description,amount').eq('user_id', user.id)
-    const existingSet = new Set((existing??[]).map((t:any) => `${t.date}|${t.description}|${t.amount}`))
-    let imported=0, duplicates=0, errors=0; const toInsert: any[] = []
+
+    // Deduplicação — responsabilidade da UI
+    const { data: existing } = await supabase
+      .from('transactions')
+      .select('date,description,amount')
+      .eq('user_id', user.id)
+    const existingSet = new Set((existing ?? []).map((t: any) => `${t.date}|${t.description}|${t.amount}`))
+
+    let duplicates = 0
+    let errors = 0
+    const toInsert: BulkImportRow[] = []
+
     for (const row of parsed) {
-      if (row.status==='error') { errors++; continue }
+      if (row.status === 'error') { errors++; continue }
       if (existingSet.has(`${row.date}|${row.description}|${row.amount}`)) { duplicates++; continue }
-      const cat = categories.find(c => c.name===row.category_suggestion && c.type===row.type)
-      toInsert.push({ user_id:user.id, account_id:selectedAcc||null, type:row.type, description:row.description, amount:row.amount, date:row.date, status:'paid', category_id:cat?.id??null })
+      const cat = categories.find(c => c.name === row.category_suggestion && c.type === row.type)
+      toInsert.push({
+        account_id:  selectedAcc || null,
+        type:        row.type,
+        description: row.description,
+        amount:      row.amount,
+        date:        row.date,
+        category_id: cat?.id ?? null,
+        // user_id e status='paid' são injetados pelo layer
+      })
     }
-    for (let i=0; i<toInsert.length; i+=100) {
-      const { error } = await supabase.from('transactions').insert(toInsert.slice(i,i+100))
-      if (error) errors+=Math.min(100,toInsert.length-i); else imported+=Math.min(100,toInsert.length-i)
+
+    let imported = 0
+    if (toInsert.length > 0) {
+      const result = await bulkImportTransactions(toInsert, user.id)
+      if (result.error) {
+        errors += toInsert.length
+      } else {
+        imported = result.data?.imported ?? 0
+      }
     }
-    setResult({ imported, duplicates, errors }); setStep('done'); setImporting(false)
+
+    setResult({ imported, duplicates, errors })
+    setStep('done')
+    setImporting(false)
   }
 
   function reset() {
