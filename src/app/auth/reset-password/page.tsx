@@ -24,24 +24,32 @@ export default function ResetPasswordPage() {
   const [fieldError, setFieldError]         = useState<string | null>(null);
 
   useEffect(() => {
-    const hash = window.location.hash.substring(1);
-    const params = new URLSearchParams(hash);
-    const accessToken  = params.get("access_token");
-    const refreshToken = params.get("refresh_token") ?? "";
-    const type = params.get("type");
+  // Com PKCE, o callback já trocou o code pela sessão
+  // Só precisamos verificar se há uma sessão ativa de recovery
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    if (session) {
+      setPageState({ status: "ready" });
+    } else {
+      // Fallback: tenta ler hash (fluxo legado)
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+      const accessToken = params.get("access_token");
+      const refreshToken = params.get("refresh_token") ?? "";
+      const type = params.get("type");
 
-    if (!accessToken || type !== "recovery") {
-      setPageState({ status: "invalid_token" });
-      return;
+      if (!accessToken || type !== "recovery") {
+        setPageState({ status: "invalid_token" });
+        return;
+      }
+
+      supabase.auth
+        .setSession({ access_token: accessToken, refresh_token: refreshToken })
+        .then(({ error }) => {
+          setPageState(error ? { status: "invalid_token" } : { status: "ready" });
+        });
     }
-
-    supabase.auth
-      .setSession({ access_token: accessToken, refresh_token: refreshToken })
-      .then(({ error }) => {
-        setPageState(error ? { status: "invalid_token" } : { status: "ready" });
-      });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
+  });
+}, []); // eslint-disable-line react-hooks/exhaustive-deps
   const validate = useCallback((): string | null => {
     if (getPasswordStrength(password) < 3)
       return "Escolha uma senha mais forte. Use maiúsculas, números ou símbolos.";
