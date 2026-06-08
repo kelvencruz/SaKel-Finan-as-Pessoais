@@ -315,8 +315,8 @@ export default function NovaTransacaoModal({ open, onClose, onSaved }: Props) {
 
       const recResult = await createRecurrence(recPayload)
 
-      if (!recResult.success || !recResult.data) {
-        setError(recResult.error ?? 'Erro ao criar recorrencia.')
+      if (recResult.error || !recResult.data) {
+  setError(recResult.error ?? 'Erro ao criar recorrencia.')
         setSaving(false)
         return
       }
