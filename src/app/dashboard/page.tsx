@@ -10,7 +10,7 @@ import {
 import {
   Bank, CreditCard, Tag, ListBullets, Receipt, TrendUp,
   Wallet, Warning, ArrowClockwise,
-  ArrowUp, ArrowDown, ArrowUpRight, CalendarCheck, Eye, EyeSlash,
+  ArrowUp, ArrowDown, ArrowUpRight, CalendarCheck, Eye, EyeSlash, Lightbulb,
 } from '@phosphor-icons/react'
 
 import { PageContainer }      from '@/components/layout/PageContainer'
@@ -201,7 +201,8 @@ export default function DashboardPage() {
     toggleInvestments,
   } = usePrivacyStore()
 
-  const { preferences, loadPreferences } = usePreferencesStore()
+  // ETAPA-G.1: togglePreference adicionado ao destructuring — TD-023
+  const { preferences, loadPreferences, togglePreference } = usePreferencesStore()
 
   // ── Estado ──────────────────────────────────────────────────────────────────
   const [loading,             setLoading]             = useState(true)
@@ -294,11 +295,11 @@ export default function DashboardPage() {
     { label: 'Faturas em aberto',          value: totalFaturas,                     color: 'var(--danger, #DC2626)',        sign: '−' },
   ]
 
-  // ── KPIs ──────────────────────────────────────────────────────────────────────
+  // ── KPIs — ETAPA-I: labels alinhados ao manifesto — TD-016 ───────────────────
 
   const kpis = [
     {
-      label:       'Saldo Total',
+      label:       'Posição Total',
       value:       saldoContas,
       sub:         'Excluindo cartões',
       delta:       deltas.deltaSaldo,
@@ -309,7 +310,7 @@ export default function DashboardPage() {
       group:       'financial' as const,
     },
     {
-      label:       'Receitas',
+      label:       'Entradas',
       value:       recMes,
       sub:         'Este mês',
       delta:       deltas.deltaRec,
@@ -320,7 +321,7 @@ export default function DashboardPage() {
       group:       'financial' as const,
     },
     {
-      label:       'Despesas',
+      label:       'Compromissos',
       value:       despMes,
       sub:         'Este mês',
       delta:       deltas.deltaDesp,
@@ -331,7 +332,7 @@ export default function DashboardPage() {
       group:       'financial' as const,
     },
     {
-      label:       'Investimentos',
+      label:       'Patrimônio Investido',
       value:       patrimonioInvestido,
       sub:         'Total investido',
       delta:       0,
@@ -397,6 +398,16 @@ export default function DashboardPage() {
           >
             {investmentsVisible ? <Eye weight="duotone" size={14} /> : <EyeSlash weight="duotone" size={14} />}
             Investimentos
+          </button>
+          {/* ETAPA-G.1 — toggle show_insights — TD-023 — INC-S42-001 */}
+          <button
+            onClick={() => togglePreference('show_insights')}
+            className="flex items-center gap-1.5 text-xs min-h-[44px] px-2 transition-opacity hover:opacity-70"
+            style={{ color: 'var(--text-secondary)', opacity: insightsVisible ? 1 : 0.4 }}
+            aria-label={insightsVisible ? 'Ocultar insights' : 'Mostrar insights'}
+          >
+            <Lightbulb weight="duotone" size={14} />
+            Insights
           </button>
         </div>
       </div>
