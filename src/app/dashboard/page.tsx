@@ -1,3 +1,4 @@
+// src/app/dashboard/page.tsx
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
@@ -12,45 +13,22 @@ import {
   ArrowUp, ArrowDown, ArrowUpRight, CalendarCheck, Eye, EyeSlash,
 } from '@phosphor-icons/react'
 
-import { PageContainer }   from '@/components/layout/PageContainer'
-import { usePrivacyStore } from '@/stores/usePrivacyStore'
-import { PrivateValue }    from '@/components/ui/PrivateValue'
-import { AnimatedValue }   from '@/components/ui/AnimatedValue'
+import { PageContainer }    from '@/components/layout/PageContainer'
+import { usePrivacyStore }  from '@/stores/usePrivacyStore'
+import { PrivateValue }     from '@/components/ui/PrivateValue'
+import { AnimatedValue }    from '@/components/ui/AnimatedValue'
 import {
-  getMonthRange,
-  getCurrentMonthKey,
-  getLedgerStatuses,
-  calcAccountsBalance,
-  daysUntil,
-  getForecastSummary,
-  UNCATEGORIZED_LABEL,
-  occurrencesInWindow,
-  type CatSlice,
-  type ForecastSummary,
-} from '@/lib/financialEngine'
+  fetchDashboard,
+  type FinancialDeltas,
+  type FinancialTrends,
+  type InvoiceDue,
+  type RecentTx,
+  type MonthLine,
+  type SyncStatus,
+} from '@/lib/dashboard/dashboardService'
+import { type ForecastSummary } from '@/lib/financialEngine'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface MonthLine  { mes: string; saldo: number }
-interface InvoiceDue {
-  id:             string
-  card_name:      string
-  card_color:     string
-  due_date:       string
-  total_amount:   number
-  days_until_due: number
-}
-interface RecentTx {
-  id:            string
-  description:   string
-  amount:        number
-  type:          'income' | 'expense' | 'transfer'
-  category_name?: string
-  category_icon?: string
-  date:          string
-}
-
-// ─── UI: itens de projeção (representação visual — não pertence ao engine) ────
+// ─── Types locais (apenas UI — sem overlap com dashboardService) ──────────────
 
 interface ProjecaoItem {
   label: string
@@ -62,7 +40,6 @@ interface ProjecaoItem {
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const SLICE_COLORS = ['#7C3AED', '#f97316', '#22c55e', '#f59e0b', '#3b82f6', '#ec4899']
-const MONTH_NAMES  = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 
 const fmt  = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtK = (v: number) => v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v.toFixed(0)}`
@@ -111,7 +88,7 @@ function DashboardSkeleton() {
           </div>
           <div className="space-y-5">
             <div className="h-64 rounded-xl opacity-60" style={{ background: 'var(--surface-raised, var(--surface))' }} />
-            <div className="h-40 rounded-xl opacity-60"  style={{ background: 'var(--surface-raised, var(--surface))' }} />
+            <div className="h-40 rounded-xl opacity-60" style={{ background: 'var(--surface-raised, var(--surface))' }} />
           </div>
         </div>
       </div>
@@ -192,6 +169,22 @@ function InvoiceBadge({ days }: { days: number }) {
   return               <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-[var(--text-secondary)]">{days}d</span>
 }
 
+// ─── Delta badge — novo ETAPA-D ───────────────────────────────────────────────
+
+function DeltaBadge({ delta }: { delta: number }) {
+  if (delta === 0) return null
+  const positive = delta > 0
+  const color    = positive ? 'var(--success, #16A34A)' : 'var(--danger, #DC2626)'
+  const bg       = positive ? 'rgba(22,163,74,0.10)'    : 'rgba(220,38,38,0.10)'
+  return (
+    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
+      style={{ color, background: bg }}>
+      {positive ? <ArrowUp size={9} weight="bold" /> : <ArrowDown size={9} weight="bold" />}
+      {fmt(Math.abs(delta))}
+    </span>
+  )
+}
+
 // ─── Dashboard principal ──────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -205,22 +198,24 @@ export default function DashboardPage() {
     toggleInvestments,
   } = usePrivacyStore()
 
-  const [syncStatus,          setSyncStatus]          = useState<{ ran_at: string; processed: number; failed: number } | null>(null)
+  // ── Estado ──────────────────────────────────────────────────────────────────
+  const [loading,             setLoading]             = useState(true)
+  const [loadError,           setLoadError]           = useState<string | null>(null)
+  const [hasAccounts,         setHasAccounts]         = useState(true)
+  const [syncStatus,          setSyncStatus]          = useState<SyncStatus | null>(null)
+
+  // KPIs
   const [saldoContas,         setSaldoContas]         = useState(0)
   const [totalFaturas,        setTotalFaturas]        = useState(0)
   const [patrimonioInvestido, setPatrimonioInvestido] = useState(0)
   const [recMes,              setRecMes]              = useState(0)
   const [despMes,             setDespMes]             = useState(0)
-  const [monthLine,           setMonthLine]           = useState<MonthLine[]>([])
-  const [catSlices,           setCatSlices]           = useState<CatSlice[]>([])
-  const [invoicesDue,         setInvoicesDue]         = useState<InvoiceDue[]>([])
-  const [recentTxs,           setRecentTxs]           = useState<RecentTx[]>([])
-  const [loading,             setLoading]             = useState(true)
-  const [loadError,           setLoadError]           = useState<string | null>(null)
-  const [hasAccounts,         setHasAccounts]         = useState(true)
-  const [instCount,           setInstCount]           = useState(0)
 
-  // ForecastSummary — dados canônicos do engine (sem lógica UI)
+  // Deltas e trends — ETAPA-D
+  const [deltas, setDeltas] = useState<FinancialDeltas>({ deltaRec: 0, deltaDesp: 0, deltaSaldo: 0 })
+  const [trends, setTrends] = useState<FinancialTrends>({ currentMonthlyAporte: 0, avgMonthlyExpense: 0 })
+
+  // Projeção
   const [forecastSummary, setForecastSummary] = useState<ForecastSummary>({
     projectedIncome:  0,
     projectedExpense: 0,
@@ -228,6 +223,15 @@ export default function DashboardPage() {
     recurrenceCount:  0,
     items:            [],
   })
+  const [instCount, setInstCount] = useState(0)
+
+  // Listas
+  const [monthLine,   setMonthLine]   = useState<MonthLine[]>([])
+  const [catSlices,   setCatSlices]   = useState<{ categoryId: string | null; name: string; value: number }[]>([])
+  const [invoicesDue, setInvoicesDue] = useState<InvoiceDue[]>([])
+  const [recentTxs,   setRecentTxs]   = useState<RecentTx[]>([])
+
+  // ── Load ─────────────────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
     setLoadError(null)
@@ -237,193 +241,23 @@ export default function DashboardPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/auth/login'; return }
 
-      const now   = new Date()
-      const year  = now.getFullYear()
-      const month = now.getMonth()
+      const vm = await fetchDashboard(user.id)
 
-      const { inicioMes, fimMes } = getMonthRange(year, month)
-      const monthKey              = getCurrentMonthKey()
-      const hoje                  = now.toISOString().split('T')[0]
-
-      const limit30 = new Date(now); limit30.setDate(limit30.getDate() + 30)
-      const horizon30 = limit30.toISOString().split('T')[0]
-
-      // ── Contas ────────────────────────────────────────────────────────────
-      const { data: acc, error: accErr } = await supabase
-        .from('accounts').select('current_balance')
-        .eq('user_id', user.id).eq('is_active', true).neq('type', 'credit')
-      if (accErr) throw accErr
-
-      const accList = (acc ?? []) as { current_balance: number }[]
-      if (accList.length === 0) { setHasAccounts(false); setLoading(false); return }
-      setHasAccounts(true)
-
-      // calcAccountsBalance — engine é a única fonte de verdade para saldo
-      const saldo = calcAccountsBalance(accList)
-      setSaldoContas(saldo)
-
-      // ── Faturas abertas ───────────────────────────────────────────────────
-      const { data: openInv } = await supabase
-        .from('credit_card_invoices').select('total_amount')
-        .eq('user_id', user.id).in('status', ['open', 'overdue'])
-      const faturas = ((openInv ?? []) as { total_amount: number }[])
-        .reduce((s, i) => s + Number(i.total_amount), 0)
-      setTotalFaturas(faturas)
-
-      // ── Investimentos ─────────────────────────────────────────────────────
-      const { data: invData } = await supabase
-        .from('investments').select('current_amount')
-        .eq('user_id', user.id).eq('is_active', true)
-      const totalInv = ((invData ?? []) as { current_amount: number }[])
-        .reduce((s, i) => s + Number(i.current_amount), 0)
-      setPatrimonioInvestido(totalInv)
-
-      // ── Faturas próximas ──────────────────────────────────────────────────
-      const { data: dueInv } = await supabase
-        .from('credit_card_invoices').select('id, total_amount, status, due_date, credit_card_id')
-        .eq('user_id', user.id).in('status', ['open', 'overdue'])
-        .lte('due_date', horizon30).order('due_date')
-      const { data: cards } = await supabase
-        .from('credit_cards').select('id, name, color').eq('user_id', user.id)
-      const cardMap = Object.fromEntries(
-        ((cards ?? []) as { id: string; name: string; color: string }[]).map(c => [c.id, c])
-      )
-
-      // daysUntil — engine é a única fonte de verdade para dias até vencimento
-      setInvoicesDue(
-        ((dueInv ?? []) as { id: string; total_amount: number; due_date: string; credit_card_id: string }[])
-          .map(inv => ({
-            id:             inv.id,
-            card_name:      cardMap[inv.credit_card_id]?.name  ?? 'Cartão',
-            card_color:     cardMap[inv.credit_card_id]?.color ?? '#7C3AED',
-            due_date:       inv.due_date,
-            total_amount:   Number(inv.total_amount),
-            days_until_due: daysUntil(inv.due_date),
-          }))
-      )
-
-      // ── Transações do mês ─────────────────────────────────────────────────
-      const { data: txMes, error: txErr } = await supabase
-        .from('transactions')
-        .select('type, amount')
-        .eq('user_id', user.id)
-        .gte('date', inicioMes).lte('date', fimMes)
-        .in('lifecycle_status', getLedgerStatuses())
-        .in('type', ['income', 'expense'])
-      if (txErr) throw txErr
-
-      const txArr      = (txMes ?? []) as { type: string; amount: number }[]
-      const recMesVal  = txArr.filter(t => t.type === 'income').reduce((s, t)  => s + Number(t.amount), 0)
-      const despMesVal = txArr.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
-      setRecMes(recMesVal)
-      setDespMes(despMesVal)
-
-      // ── Histórico 6 meses ─────────────────────────────────────────────────
-      const meses = Array.from({ length: 6 }, (_, i) => {
-        const d = new Date(year, month - (5 - i), 1)
-        return { key: d.toISOString().slice(0, 7), label: MONTH_NAMES[d.getMonth()] }
-      })
-      const { data: txHist } = await supabase
-        .from('transactions')
-        .select('type, amount, date')
-        .eq('user_id', user.id)
-        .gte('date', meses[0].key + '-01')
-        .in('lifecycle_status', getLedgerStatuses())
-        .in('type', ['income', 'expense'])
-      const histArr = (txHist ?? []) as { type: string; amount: number; date: string }[]
-
-      setMonthLine(meses.map(({ key, label }) => {
-        const txs  = histArr.filter(t => t.date.startsWith(key))
-        const rec  = txs.filter(t => t.type === 'income').reduce((s,  t) => s + Number(t.amount), 0)
-        const desp = txs.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
-        return { mes: label, saldo: rec - desp }
-      }))
-
-      // ── Categorias ────────────────────────────────────────────────────────
-      const { data: cats } = await supabase
-        .from('categories').select('id, name, icon').eq('user_id', user.id)
-      const catNameMap = Object.fromEntries(
-        ((cats ?? []) as { id: string; name: string }[]).map(c => [c.id, c.name])
-      )
-      const catIconMap = Object.fromEntries(
-        ((cats ?? []) as { id: string; icon?: string }[]).map(c => [c.id, c])
-      )
-
-      const { data: catData } = await supabase
-        .from('expenses_by_category')
-        .select('category_id, category_name, total_amount')
-        .eq('user_id', user.id)
-        .eq('month_key', monthKey)
-        .order('total_amount', { ascending: false })
-        .limit(6)
-      setCatSlices(
-        ((catData ?? []) as { category_id: string | null; category_name: string | null; total_amount: number }[])
-          .map(row => ({
-            categoryId: row.category_id,
-            name:       row.category_name ?? UNCATEGORIZED_LABEL,
-            value:      Number(row.total_amount),
-          }))
-      )
-
-      // ── Últimas transações ────────────────────────────────────────────────
-      const { data: recentData } = await supabase
-        .from('transactions')
-        .select('id, type, description, amount, date, category_id')
-        .eq('user_id', user.id)
-        .is('deleted_at', null)  
-        .in('lifecycle_status', getLedgerStatuses())
-        .order('date', { ascending: false })
-        .limit(5)
-      setRecentTxs(
-        ((recentData ?? []) as { id: string; type: string; description: string; amount: number; date: string; category_id: string | null }[])
-          .map(t => ({
-            id:            t.id,
-            type:          t.type as 'income' | 'expense' | 'transfer',
-            description:   t.description,
-            amount:        Number(t.amount),
-            date:          t.date,
-            category_name: t.category_id ? catNameMap[t.category_id] : undefined,
-            category_icon: t.category_id ? (catIconMap[t.category_id] as any)?.icon : undefined,
-          }))
-      )
-
-      // ── Recorrências — getForecastSummary ─────────────────────────────────
-      // Engine calcula projeção 30d. Dashboard só renderiza.
-      const { data: recRules } = await supabase
-        .from('recurrences')
-        .select('id, type, amount, frequency, next_due_date, end_date, is_active, description')
-        .eq('user_id', user.id).eq('is_active', true)
-        .or(`next_due_date.lte.${horizon30},end_date.is.null,end_date.gte.${hoje}`)
-
-      const summary = getForecastSummary({
-        recurrences:       (recRules ?? []) as any[],
-        horizonDays:       30,
-        currentBalance:    saldo,
-        openInvoicesTotal: faturas,
-      })
-      setForecastSummary(summary)
-
-      // ── Parcelas (installments — domínio separado de forecast) ────────────
-      // TD: extrair para getInstallmentProjection() quando sprint de infra chegar
-      const { data: instData } = await supabase
-        .from('transactions').select('type, amount')
-        .eq('user_id', user.id)
-        .is('deleted_at', null) 
-        .not('installment_total', 'is', null)
-        .in('lifecycle_status', getLedgerStatuses())
-        .gte('date', hoje).lte('date', horizon30)
-        .in('type', ['income', 'expense'])
-      const instArr = (instData ?? []) as { type: string; amount: number }[]
-      setInstCount(instArr.length)
-
-      // ── Última sincronização do engine ────────────────────────────────────
-      const { data: syncLog } = await supabase
-        .from('lifecycle_engine_logs')
-        .select('ran_at, processed, failed')
-        .order('ran_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      if (syncLog) setSyncStatus(syncLog)
+      setHasAccounts(vm.hasAccounts)
+      setSaldoContas(vm.saldoContas)
+      setTotalFaturas(vm.totalFaturas)
+      setPatrimonioInvestido(vm.patrimonioInvestido)
+      setRecMes(vm.recMes)
+      setDespMes(vm.despMes)
+      setDeltas(vm.deltas)
+      setTrends(vm.trends)
+      setForecastSummary(vm.forecastSummary)
+      setInstCount(vm.instCount)
+      setInvoicesDue(vm.invoicesDue)
+      setRecentTxs(vm.recentTxs)
+      setCatSlices(vm.catSlices)
+      setMonthLine(vm.monthLine)
+      setSyncStatus(vm.syncStatus)
 
     } catch (err: unknown) {
       setLoadError(err instanceof Error ? err.message : 'Falha ao carregar dados financeiros.')
@@ -439,21 +273,23 @@ export default function DashboardPage() {
   if (loadError)    return <DashboardError message={loadError} onRetry={load} />
   if (!hasAccounts) return <EmptyDashboard />
 
-  // ── Representação visual da projeção — responsabilidade da UI, não do engine ──
-  // O engine retorna números. O dashboard decide label, cor e sinal.
+  // ── Projeção — responsabilidade da UI, não do engine ─────────────────────────
+
   const projecaoItens: ProjecaoItem[] = [
-    { label: 'Saldo atual em contas',      value: saldoContas,                       color: 'var(--primary)',                sign: ''  },
-    { label: 'Receitas recorrentes (30d)', value: forecastSummary.projectedIncome,   color: 'var(--success, #16A34A)',       sign: '+' },
-    { label: 'Despesas recorrentes (30d)', value: forecastSummary.projectedExpense,  color: 'var(--danger, #DC2626)',        sign: '−' },
-    { label: 'Faturas em aberto',          value: totalFaturas,                      color: 'var(--danger, #DC2626)',        sign: '−' },
+    { label: 'Saldo atual em contas',      value: saldoContas,                      color: 'var(--primary)',                sign: ''  },
+    { label: 'Receitas recorrentes (30d)', value: forecastSummary.projectedIncome,  color: 'var(--success, #16A34A)',       sign: '+' },
+    { label: 'Despesas recorrentes (30d)', value: forecastSummary.projectedExpense, color: 'var(--danger, #DC2626)',        sign: '−' },
+    { label: 'Faturas em aberto',          value: totalFaturas,                     color: 'var(--danger, #DC2626)',        sign: '−' },
   ]
 
   // ── KPIs ──────────────────────────────────────────────────────────────────────
+
   const kpis = [
     {
       label:       'Saldo Total',
       value:       saldoContas,
       sub:         'Excluindo cartões',
+      delta:       deltas.deltaSaldo,
       icon:        Wallet,
       color:       saldoContas >= 0 ? 'var(--primary)' : 'var(--danger, #DC2626)',
       iconBg:      'var(--primary-glow)',
@@ -464,6 +300,7 @@ export default function DashboardPage() {
       label:       'Receitas',
       value:       recMes,
       sub:         'Este mês',
+      delta:       deltas.deltaRec,
       icon:        ArrowUp,
       color:       'var(--success, #16A34A)',
       iconBg:      'rgba(22,163,74,0.12)',
@@ -474,6 +311,7 @@ export default function DashboardPage() {
       label:       'Despesas',
       value:       despMes,
       sub:         'Este mês',
+      delta:       deltas.deltaDesp,
       icon:        ArrowDown,
       color:       'var(--danger, #DC2626)',
       iconBg:      'rgba(220,38,38,0.12)',
@@ -484,6 +322,7 @@ export default function DashboardPage() {
       label:       'Investimentos',
       value:       patrimonioInvestido,
       sub:         'Total investido',
+      delta:       0,
       icon:        TrendUp,
       color:       '#a78bfa',
       iconBg:      'rgba(167,139,250,0.12)',
@@ -547,7 +386,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards — com DeltaBadge ETAPA-D */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-7">
         {kpis.map((kpi, idx) => (
           <div
@@ -580,9 +419,12 @@ export default function DashboardPage() {
                 style={{ color: kpi.color } as React.CSSProperties}
               />
             )}
-            <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-              {kpi.sub}
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                {kpi.sub}
+              </p>
+              {kpi.delta !== 0 && <DeltaBadge delta={kpi.delta} />}
+            </div>
           </div>
         ))}
       </div>
@@ -691,12 +533,45 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+
+          {/* Tendências — ETAPA-D */}
+          <div className="glass-card rounded-xl p-5 cursor-default">
+            <p className="text-sm font-semibold mb-4" style={{ color: 'var(--text)' }}>
+              Tendências
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="rounded-xl p-4" style={{ background: 'var(--surface-raised, var(--surface))' }}>
+                <p className="text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-secondary)' }}>
+                  Aporte mensal
+                </p>
+                <p className="text-lg font-bold"
+                  style={{ color: trends.currentMonthlyAporte >= 0 ? 'var(--success, #16A34A)' : 'var(--danger, #DC2626)' }}>
+                  <PrivateValue value={fmt(trends.currentMonthlyAporte)} group="financial" />
+                </p>
+                <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
+                  Receitas − Despesas este mês
+                </p>
+              </div>
+              <div className="rounded-xl p-4" style={{ background: 'var(--surface-raised, var(--surface))' }}>
+                <p className="text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-secondary)' }}>
+                  Média de despesas
+                </p>
+                <p className="text-lg font-bold" style={{ color: 'var(--text)' }}>
+                  <PrivateValue value={fmt(trends.avgMonthlyExpense)} group="financial" />
+                </p>
+                <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
+                  Últimos 6 meses
+                </p>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         {/* Coluna lateral */}
         <div className="space-y-5">
 
-          {/* Saldo Previsto — dados do engine, visual do dashboard */}
+          {/* Saldo Previsto */}
           <div className="glass-card rounded-xl p-5 cursor-default">
             <div className="flex items-center justify-between mb-1">
               <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
@@ -848,7 +723,6 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      {/* daysUntil já foi chamado no load — dashboard só renderiza */}
                       <InvoiceBadge days={inv.days_until_due} />
                       <p className="text-xs font-semibold" style={{ color: 'var(--primary)' }}>
                         <PrivateValue value={fmt(inv.total_amount)} group="financial" />
