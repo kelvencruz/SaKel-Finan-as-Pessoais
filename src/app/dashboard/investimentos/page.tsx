@@ -1,12 +1,21 @@
 'use client'
 import { useActionHubStore } from '@/stores/useActionHubStore'
+import { usePrivacyStore } from '@/stores/usePrivacyStore'
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { awardXP } from '@/lib/gamification'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AppModal } from '@/components/AppModal'
-import { AnimatedValue } from '@/components/ui/AnimatedValue'
+import {
+  AnimatedValue,
+  PremiumCard,
+  EmptyState,
+  PrivateValue,
+} from '@/components/ui'
+
+// fmt local — usado para passar string para PrivateValue
+const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 import {
   TrendUp,
   Plus,
@@ -20,7 +29,8 @@ import {
   Target,
   Palette,
   Siren,
-  // Phosphor icons substituindo emojis dos GOAL_ICONS
+  Eye,
+  EyeSlash,
   Crosshair,
   Shield,
   Umbrella,
@@ -98,7 +108,6 @@ const LIQUIDITY_LABELS: Record<string, string> = {
   none:       'Sem liquidez',
 }
 
-// Phosphor icons no lugar de emojis — regra inviolável do design system
 const GOAL_ICONS: { key: string; icon: React.ElementType }[] = [
   { key: 'crosshair', icon: Crosshair },
   { key: 'shield',    icon: Shield },
@@ -132,28 +141,21 @@ const emptyGoalForm = { name: '', icon: 'crosshair', color: '#6366f1' }
 
 // ─── Helpers financeiros ──────────────────────────────────────────────────────
 
-/**
- * Arredondamento seguro para 2 casas decimais.
- * Proxy para bigint até a migration investment_transactions.
- * Evita floating point drift acumulativo (ex: 100.10 + 200.20 = 300.30000000000003).
- */
 function safeAdd(a: number, b: number): number {
   return Math.round((a + b) * 100) / 100
 }
 
-function safeMul(a: number, b: number): number {
-  return Math.round(a * b * 100) / 100
-}
-
-const fmt    = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtPct = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(2)}%`
 
 // ─── Componente ──────────────────────────────────────────────────────────────
 
 export default function InvestimentosPage() {
-  // supabase — READ ONLY nesta página. Writes passam pelo Mutation Layer.
-  // Exceção aceita: investment_goals (tabela fora do domínio financial).
   const supabase = createClient()
+
+  // Privacy store — INC-S45-001
+  // Contrato real: investmentsVisible + toggleInvestments
+  const investmentsVisible = usePrivacyStore(s => s.investmentsVisible)
+  const toggleInvestments  = usePrivacyStore(s => s.toggleInvestments)
 
   // Estado principal
   const [investments, setInvestments] = useState<Investment[]>([])
@@ -168,7 +170,7 @@ export default function InvestimentosPage() {
   const [saving,      setSaving]      = useState(false)
   const [formError,   setFormError]   = useState<string | null>(null)
 
-  // Confirmação de exclusão (modal próprio — sem confirm() nativo)
+  // Confirmação de exclusão
   const [deleteTarget, setDeleteTarget] = useState<Investment | null>(null)
   const [deleting,     setDeleting]     = useState(false)
 
@@ -183,10 +185,9 @@ export default function InvestimentosPage() {
 
   // Toast
   const [toast, setToast] = useState<Toast | null>(null)
-  
-  // ─── FAB → abre modal inline enquanto NovoInvestimentoModal canônico não existe ───
-  const { pendingAction, clear } = useActionHubStore()
 
+  // FAB
+  const { pendingAction, clear } = useActionHubStore()
   useEffect(() => {
     if (pendingAction === 'novo-investimento') {
       openCreate()
@@ -266,7 +267,6 @@ export default function InvestimentosPage() {
   }
 
   // ─── Salvar objetivo inline ───────────────────────────────────────────────
-  // investment_goals: write direto aceito — tabela fora do domínio financial.
 
   async function handleSaveGoal() {
     if (!goalForm.name.trim()) return
@@ -311,7 +311,6 @@ export default function InvestimentosPage() {
     if (!user) { setFormError('Não autenticado.'); setSaving(false); return }
 
     if (editingId) {
-      // ── UPDATE via Mutation Layer ──────────────────────────────────────
       const patch: InvestmentUpdatePayload = {
         name:           form.name.trim(),
         type:           form.type,
@@ -325,13 +324,10 @@ export default function InvestimentosPage() {
         start_date:     form.start_date || null,
         notes:          form.notes.trim() || null,
       }
-
       const { error } = await updateInvestment(editingId, user.id, patch)
       if (error) { setFormError(error); setSaving(false); return }
       showToast('Investimento atualizado!')
-
     } else {
-      // ── INSERT via Mutation Layer ──────────────────────────────────────
       const payload: InvestmentPayload = {
         user_id:        user.id,
         name:           form.name.trim(),
@@ -346,7 +342,6 @@ export default function InvestimentosPage() {
         start_date:     form.start_date || null,
         notes:          form.notes.trim() || null,
       }
-
       const { error } = await createInvestment(payload)
       if (error) { setFormError(error); setSaving(false); return }
 
@@ -390,8 +385,10 @@ export default function InvestimentosPage() {
     setDeleting(false)
   }
 
-  // ─── Cálculos ─────────────────────────────────────────────────────────────
-  // CORREÇÃO AUDITORIA (ALTO): usando safeAdd para evitar floating point drift.
+  // ─── Cálculos — TD-022 Opção C ────────────────────────────────────────────
+  // KPI principal:   patrimônio total (current_amount somado)
+  // KPI secundário:  rendimento total + percentual (initial vs current)
+  // KPI terciário:   diversificação — implícito em byType
 
   const activeInvestments = investments.filter(i => i.is_active)
 
@@ -401,6 +398,11 @@ export default function InvestimentosPage() {
   const gainPct       = totalInitial > 0
     ? Math.round((totalGain / totalInitial) * 10000) / 100
     : 0
+
+  // Diversificação: quantidade de tipos únicos com valor > 0
+  const uniqueTypes = useMemo(() =>
+    new Set(activeInvestments.map(i => i.type)).size
+  , [investments])
 
   // ─── Filtros e memos ──────────────────────────────────────────────────────
 
@@ -448,18 +450,41 @@ export default function InvestimentosPage() {
         </div>
       )}
 
-      {/* Header */}
+      {/* Header — INC-S45-001: privacy toggle integrado na action */}
       <PageHeader
         title="Investimentos"
         description="Patrimônio separado do saldo operacional"
         action={
-          <button
-            onClick={openCreate}
-            className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium"
-          >
-            <Plus size={16} weight="bold" />
-            Novo Investimento
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Privacy toggle — mesmo padrão visual do dashboard */}
+            <button
+              onClick={toggleInvestments}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
+              style={{
+                background: 'var(--glass-bg)',
+                border: '1px solid var(--glass-border)',
+                color: 'var(--color-text-secondary)',
+              }}
+              aria-label={investmentsVisible ? 'Ocultar valores' : 'Exibir valores'}
+              title={investmentsVisible ? 'Ocultar valores' : 'Exibir valores'}
+            >
+              {investmentsVisible
+                ? <EyeSlash size={14} weight="duotone" />
+                : <Eye      size={14} weight="duotone" />
+              }
+              <span className="hidden sm:inline">
+                {investmentsVisible ? 'Ocultar' : 'Exibir'}
+              </span>
+            </button>
+
+            <button
+              onClick={openCreate}
+              className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium"
+            >
+              <Plus size={16} weight="bold" />
+              Novo Investimento
+            </button>
+          </div>
         }
       />
 
@@ -477,71 +502,67 @@ export default function InvestimentosPage() {
         </div>
       )}
 
-      {/* ── KPIs ── */}
+      {/* ── KPIs — TD-022 Opção C: hierarquia visual clara ── */}
+      {/* KPI principal: patrimônio — col-span-2, visualmente dominante        */}
+      {/* KPI secundário: rendimento total + % — peso médio                    */}
+      {/* KPI terciário: diversificação (ativos + tipos) — peso menor          */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
 
-        <div
-          className="sm:col-span-2 rounded-2xl p-4 sm:p-5 border transition-all duration-200"
-          style={{
-            background: 'var(--glass-bg)',
-            backdropFilter: 'blur(var(--glass-blur))',
-            WebkitBackdropFilter: 'blur(var(--glass-blur))',
-            border: '1px solid var(--glass-border)',
-            boxShadow: '0 0 0 0 transparent',
-          }}
-        >
+        {/* KPI PRINCIPAL — Patrimônio investido */}
+        <PremiumCard glass className="sm:col-span-2">
           <div className="w-8 h-1 rounded-full mb-3" style={{ background: 'var(--chart-line-start)' }} />
           <p className="text-xs text-text-secondary mb-1">Patrimônio investido</p>
           {loading ? (
             <div className="h-8 w-36 rounded-lg animate-pulse bg-white/10 mb-1" />
-          ) : (
+          ) : investmentsVisible ? (
             <AnimatedValue
               value={totalInvested}
+              group="investments"
+              colorize={false}
+              className="text-2xl sm:text-3xl font-bold"
+              style={{ color: 'var(--chart-line-start)' }}
+            />
+          ) : (
+            <PrivateValue
+              value={fmt(totalInvested)}
               group="investments"
               className="text-2xl sm:text-3xl font-bold"
               style={{ color: 'var(--chart-line-start)' }}
             />
           )}
           <p className="text-xs text-text-secondary mt-1">Não incluso no saldo disponível</p>
-        </div>
+        </PremiumCard>
 
-        <div
-          className="rounded-2xl p-4 sm:p-5 border transition-all duration-200"
-          style={{
-            background: 'var(--glass-bg)',
-            backdropFilter: 'blur(var(--glass-blur))',
-            WebkitBackdropFilter: 'blur(var(--glass-blur))',
-            border: '1px solid var(--glass-border)',
-          }}
-        >
+        {/* KPI SECUNDÁRIO — Rendimento total */}
+        <PremiumCard className="sm:col-span-2">
           <div
             className="w-8 h-1 rounded-full mb-3"
             style={{ background: totalGain >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}
           />
-          <p className="text-xs text-text-secondary mb-1">Rendimento</p>
+          <p className="text-xs text-text-secondary mb-1">Rendimento total</p>
           {loading ? (
             <div className="h-7 w-24 rounded-lg animate-pulse bg-white/10 mb-1" />
-          ) : (
+          ) : investmentsVisible ? (
             <AnimatedValue
               value={totalGain}
+              group="investments"
+              colorize={false}
+              className={`text-xl font-bold ${totalGain >= 0 ? 'text-success' : 'text-danger'}`}
+            />
+          ) : (
+            <PrivateValue
+              value={fmt(totalGain)}
               group="investments"
               className={`text-xl font-bold ${totalGain >= 0 ? 'text-success' : 'text-danger'}`}
             />
           )}
-          <p className={`text-xs mt-1 ${gainPct >= 0 ? 'text-success' : 'text-danger'}`}>
+          <p className={`text-xs mt-1 font-medium ${gainPct >= 0 ? 'text-success' : 'text-danger'}`}>
             {loading ? '...' : fmtPct(gainPct)}
           </p>
-        </div>
+        </PremiumCard>
 
-        <div
-          className="rounded-2xl p-4 sm:p-5 border transition-all duration-200"
-          style={{
-            background: 'var(--glass-bg)',
-            backdropFilter: 'blur(var(--glass-blur))',
-            WebkitBackdropFilter: 'blur(var(--glass-blur))',
-            border: '1px solid var(--glass-border)',
-          }}
-        >
+        {/* KPI TERCIÁRIO — Ativos */}
+        <PremiumCard>
           <div className="w-8 h-1 rounded-full mb-3" style={{ background: 'var(--chart-line-mid)' }} />
           <p className="text-xs text-text-secondary mb-1">Ativos</p>
           {loading ? (
@@ -550,7 +571,21 @@ export default function InvestimentosPage() {
             <p className="text-xl font-bold text-text-primary">{activeInvestments.length}</p>
           )}
           <p className="text-xs text-text-secondary mt-1">investimentos</p>
-        </div>
+        </PremiumCard>
+
+        {/* KPI TERCIÁRIO — Diversificação */}
+        <PremiumCard>
+          <div className="w-8 h-1 rounded-full mb-3" style={{ background: 'var(--accent-primary, #6366f1)' }} />
+          <p className="text-xs text-text-secondary mb-1">Tipos</p>
+          {loading ? (
+            <div className="h-7 w-12 rounded-lg animate-pulse bg-white/10 mb-1" />
+          ) : (
+            <p className="text-xl font-bold text-text-primary">{uniqueTypes}</p>
+          )}
+          <p className="text-xs text-text-secondary mt-1">
+            {uniqueTypes === 1 ? 'classe de ativo' : 'classes de ativos'}
+          </p>
+        </PremiumCard>
 
       </div>
 
@@ -559,15 +594,7 @@ export default function InvestimentosPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
 
           {/* Por tipo */}
-          <div
-            className="rounded-2xl p-5 border"
-            style={{
-              background:     'var(--glass-bg)',
-              backdropFilter: 'blur(var(--glass-blur))',
-              WebkitBackdropFilter: 'blur(var(--glass-blur))',
-              border:         '1px solid var(--glass-border)',
-            }}
-          >
+          <PremiumCard>
             <p className="text-sm font-medium text-text-primary mb-4">Por tipo</p>
             <div className="space-y-3">
               {byType.map(([type, amount]) => {
@@ -578,7 +605,13 @@ export default function InvestimentosPage() {
                   <div key={type}>
                     <div className="flex justify-between text-xs mb-1.5">
                       <span className="text-text-secondary font-medium">{type}</span>
-                      <span className="text-text-secondary">{fmt(amount)} · {pct.toFixed(0)}%</span>
+                      <span className="text-text-secondary">
+                        {investmentsVisible
+                          ? fmt(amount)
+                          : <PrivateValue value={fmt(amount)} group="investments" />
+                        }
+                        {' '}· {pct.toFixed(0)}%
+                      </span>
                     </div>
                     <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--glass-border)' }}>
                       <div
@@ -590,19 +623,11 @@ export default function InvestimentosPage() {
                 )
               })}
             </div>
-          </div>
+          </PremiumCard>
 
           {/* Por objetivo */}
           {byGoal.length > 0 && (
-            <div
-              className="rounded-2xl p-5 border"
-              style={{
-                background:     'var(--glass-bg)',
-                backdropFilter: 'blur(var(--glass-blur))',
-                WebkitBackdropFilter: 'blur(var(--glass-blur))',
-                border:         '1px solid var(--glass-border)',
-              }}
-            >
+            <PremiumCard>
               <p className="text-sm font-medium text-text-primary mb-4">Por objetivo</p>
               <div className="space-y-3">
                 {byGoal.map(({ goal, amount }) => {
@@ -625,7 +650,7 @@ export default function InvestimentosPage() {
                   )
                 })}
               </div>
-            </div>
+            </PremiumCard>
           )}
         </div>
       )}
@@ -687,22 +712,12 @@ export default function InvestimentosPage() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div
-          className="rounded-2xl p-10 text-center border border-dashed"
-          style={{ background: 'var(--glass-bg)', borderColor: 'var(--glass-border)' }}
-        >
-          <TrendUp size={40} weight="duotone" className="text-text-secondary mx-auto mb-3" />
-          <p className="text-text-primary text-sm font-medium">Nenhum investimento cadastrado</p>
-          <p className="text-text-secondary text-xs mt-1 mb-4">
-            Cadastre seus investimentos para acompanhar seu patrimônio separado do saldo operacional.
-          </p>
-          <button
-            onClick={openCreate}
-            className="bg-accent-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
-          >
-            Novo Investimento
-          </button>
-        </div>
+        <EmptyState
+          icon={<TrendUp size={40} weight="duotone" />}
+          title="Nenhum investimento cadastrado"
+          description="Cadastre seus investimentos para acompanhar seu patrimônio separado do saldo operacional."
+          action={{ label: 'Novo Investimento', onClick: openCreate }}
+        />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {filtered.map(inv => {
@@ -720,7 +735,7 @@ export default function InvestimentosPage() {
                   background:     'var(--glass-bg)',
                   backdropFilter: 'blur(var(--glass-blur))',
                   WebkitBackdropFilter: 'blur(var(--glass-blur))',
-                  border:         `1px solid var(--glass-border)`,
+                  border:         '1px solid var(--glass-border)',
                   opacity:        inv.is_active ? 1 : 0.5,
                   transition:     'border-color 200ms, box-shadow 200ms, opacity 200ms',
                 }}
@@ -771,18 +786,36 @@ export default function InvestimentosPage() {
                 <div className="flex items-end justify-between mb-3">
                   <div>
                     <p className="text-xs text-text-secondary">Valor atual</p>
-                    <AnimatedValue
-                      value={Number(inv.current_amount)}
-                      group="investments"
-                      className="text-xl font-bold text-text-primary"
-                    />
+                    {investmentsVisible ? (
+                      <AnimatedValue
+                        value={Number(inv.current_amount)}
+                        group="investments"
+                        colorize={false}
+                        className="text-xl font-bold text-text-primary"
+                      />
+                    ) : (
+                      <PrivateValue
+                        value={fmt(Number(inv.current_amount))}
+                        group="investments"
+                        className="text-xl font-bold text-text-primary"
+                      />
+                    )}
                   </div>
                   <div className="text-right">
-                    <AnimatedValue
-                      value={gain}
-                      group="investments"
-                      className={`text-sm font-semibold ${gain >= 0 ? 'text-success' : 'text-danger'}`}
-                    />
+                    {investmentsVisible ? (
+                      <AnimatedValue
+                        value={gain}
+                        group="investments"
+                        colorize={false}
+                        className={`text-sm font-semibold ${gain >= 0 ? 'text-success' : 'text-danger'}`}
+                      />
+                    ) : (
+                      <PrivateValue
+                        value={fmt(gain)}
+                        group="investments"
+                        className={`text-sm font-semibold ${gain >= 0 ? 'text-success' : 'text-danger'}`}
+                      />
+                    )}
                     <p className={`text-xs ${gainPct >= 0 ? 'text-success' : 'text-danger'}`}>
                       {fmtPct(gainPct)}
                     </p>
@@ -886,7 +919,6 @@ export default function InvestimentosPage() {
       >
         <div className="space-y-4">
 
-          {/* Nome */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
               Nome
@@ -901,7 +933,6 @@ export default function InvestimentosPage() {
             />
           </div>
 
-          {/* Tipo + Instituição */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
@@ -931,7 +962,6 @@ export default function InvestimentosPage() {
             </div>
           </div>
 
-          {/* Objetivo */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
               Objetivo
@@ -971,7 +1001,6 @@ export default function InvestimentosPage() {
                   className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   style={{ background: 'var(--glass-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--glass-border)' }}
                 />
-
                 <div className="flex gap-3">
                   <div className="flex-1">
                     <p className="text-xs mb-2 flex items-center gap-1" style={{ color: 'var(--color-text-secondary)' }}>
@@ -994,7 +1023,6 @@ export default function InvestimentosPage() {
                       ))}
                     </div>
                   </div>
-
                   <div>
                     <p className="text-xs mb-2 flex items-center gap-1" style={{ color: 'var(--color-text-secondary)' }}>
                       <Palette size={10} weight="duotone" /> Cor
@@ -1008,7 +1036,6 @@ export default function InvestimentosPage() {
                     />
                   </div>
                 </div>
-
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShowNewGoal(false)}
@@ -1030,7 +1057,6 @@ export default function InvestimentosPage() {
             )}
           </div>
 
-          {/* Valor inicial + Valor atual */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
@@ -1066,7 +1092,6 @@ export default function InvestimentosPage() {
             </div>
           </div>
 
-          {/* Rentabilidade */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
               Rentabilidade <span style={{ opacity: 0.5 }}>(opcional)</span>
@@ -1081,7 +1106,6 @@ export default function InvestimentosPage() {
             />
           </div>
 
-          {/* Liquidez */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
               Liquidez
@@ -1107,7 +1131,6 @@ export default function InvestimentosPage() {
             )}
           </div>
 
-          {/* Data de início */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
               Data de início
@@ -1121,7 +1144,6 @@ export default function InvestimentosPage() {
             />
           </div>
 
-          {/* Observações */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
               Observações <span style={{ opacity: 0.5 }}>(opcional)</span>
@@ -1143,7 +1165,7 @@ export default function InvestimentosPage() {
       </AppModal>
 
       {/* ═══════════════════════════════════════════════════════════════════
-          Modal: Confirmação de exclusão (soft delete via Mutation Layer)
+          Modal: Confirmação de exclusão
       ═══════════════════════════════════════════════════════════════════ */}
       <AppModal
         open={!!deleteTarget}
