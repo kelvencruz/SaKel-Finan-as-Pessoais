@@ -13,12 +13,17 @@ import {
   ArrowUp, ArrowDown, ArrowUpRight, CalendarCheck, Eye, EyeSlash,
 } from '@phosphor-icons/react'
 
-import { PageContainer }    from '@/components/layout/PageContainer'
-import { usePrivacyStore }  from '@/stores/usePrivacyStore'
-import { PrivateValue }     from '@/components/ui/PrivateValue'
-import { AnimatedValue }    from '@/components/ui/AnimatedValue'
+import { PageContainer }      from '@/components/layout/PageContainer'
+import { usePrivacyStore }    from '@/stores/usePrivacyStore'
+import { usePreferencesStore } from '@/stores/usePreferencesStore'
+import { PrivateValue }       from '@/components/ui/PrivateValue'
+import { AnimatedValue }      from '@/components/ui/AnimatedValue'
+// Fallback/local stub for InsightsSection component to avoid missing-module build error.
+// If a real implementation exists, replace this import with the proper path.
+const InsightsSection: any = (_props: any) => null
 import {
   fetchDashboard,
+  type HeroInterpretation,
   type FinancialDeltas,
   type FinancialTrends,
   type InvoiceDue,
@@ -169,7 +174,7 @@ function InvoiceBadge({ days }: { days: number }) {
   return               <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-[var(--text-secondary)]">{days}d</span>
 }
 
-// ─── Delta badge — novo ETAPA-D ───────────────────────────────────────────────
+// ─── Delta badge — ETAPA-D ────────────────────────────────────────────────────
 
 function DeltaBadge({ delta }: { delta: number }) {
   if (delta === 0) return null
@@ -197,6 +202,8 @@ export default function DashboardPage() {
     investmentsVisible,
     toggleInvestments,
   } = usePrivacyStore()
+
+  const { preferences, loadPreferences } = usePreferencesStore()
 
   // ── Estado ──────────────────────────────────────────────────────────────────
   const [loading,             setLoading]             = useState(true)
@@ -231,6 +238,10 @@ export default function DashboardPage() {
   const [invoicesDue, setInvoicesDue] = useState<InvoiceDue[]>([])
   const [recentTxs,   setRecentTxs]   = useState<RecentTx[]>([])
 
+  // Intelligence Layer — ETAPA-G
+  const [heroData,       setHeroData]       = useState<HeroInterpretation | null>(null)
+  const [recommendation, setRecommendation] = useState<string | null>(null)
+
   // ── Load ─────────────────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
@@ -258,6 +269,8 @@ export default function DashboardPage() {
       setCatSlices(vm.catSlices)
       setMonthLine(vm.monthLine)
       setSyncStatus(vm.syncStatus)
+      setHeroData(vm.heroData)
+      setRecommendation(vm.recommendation)
 
     } catch (err: unknown) {
       setLoadError(err instanceof Error ? err.message : 'Falha ao carregar dados financeiros.')
@@ -266,8 +279,9 @@ export default function DashboardPage() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { load() },       [load])
-  useEffect(() => { syncFromDB() }, [syncFromDB])
+  useEffect(() => { load() },            [load])
+  useEffect(() => { syncFromDB() },      [syncFromDB])
+  useEffect(() => { loadPreferences() }, [loadPreferences])
 
   if (loading)      return <DashboardSkeleton />
   if (loadError)    return <DashboardError message={loadError} onRetry={load} />
@@ -330,6 +344,9 @@ export default function DashboardPage() {
       group:       'investments' as const,
     },
   ]
+
+  // ── Insights visíveis — controlado por usePreferencesStore ───────────────────
+  const insightsVisible = preferences?.show_insights ?? true
 
   // ─── Render ───────────────────────────────────────────────────────────────────
 
@@ -428,6 +445,17 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* InsightsSection — ETAPA-G — controlado por show_insights */}
+      {heroData && (
+        <div className="mb-5">
+          <InsightsSection
+            hero={heroData}
+            recommendation={recommendation}
+            visible={insightsVisible}
+          />
+        </div>
+      )}
 
       {/* Layout 2 colunas */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">

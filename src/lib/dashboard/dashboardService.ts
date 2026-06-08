@@ -1,6 +1,6 @@
 // src/lib/dashboard/dashboardService.ts
 //
-// Pipeline de leitura do Dashboard — ETAPA-F + ETAPA-D
+// Pipeline de leitura do Dashboard — ETAPA-F + ETAPA-D + ETAPA-G
 // Responsabilidade: buscar, agregar e retornar DashboardViewModel.
 // Zero UI. Zero estado React. Consumido por dashboard/page.tsx.
 //
@@ -21,8 +21,19 @@ import {
   type CatSlice,
   type ForecastSummary,
 } from '@/lib/financialEngine'
+import {
+  mapHealthChecksToHeroState,
+  generateRecommendation,
+  type HeroInterpretation,
+  type HeroInterpretationContext,
+  type RecommendationContext,
+  type FinancialTrends as HeroFinancialTrends,
+} from '@/lib/financial/heroInterpretation'
+import { runFinancialHealthChecks } from '@/lib/financial/healthChecks'
 
 // ─── Tipos públicos ───────────────────────────────────────────────────────────
+
+export type { HeroInterpretation }
 
 export interface InvoiceDue {
   id:             string
@@ -86,6 +97,10 @@ export interface DashboardViewModel {
   recentTxs:            RecentTx[]
   catSlices:            CatSlice[]
   monthLine:            MonthLine[]
+
+  // Intelligence Layer — ETAPA-G
+  heroData:             HeroInterpretation
+  recommendation:       string | null
 
   // Meta
   syncStatus:           SyncStatus | null
@@ -304,6 +319,44 @@ export async function fetchDashboard(userId: string): Promise<DashboardViewModel
     .select('ran_at, processed, failed')
     .order('ran_at', { ascending: false }).limit(1).maybeSingle()
 
+  // ── Intelligence Layer — ETAPA-G ────────────────────────────────────────────
+  const checks = await runFinancialHealthChecks(userId)
+
+  const heroTrends: HeroFinancialTrends = {
+    patrimonioVariation30d: trends.currentMonthlyAporte,
+    patrimonioGrowing:      trends.currentMonthlyAporte > 0,
+    expenseVariationPct:    trends.avgMonthlyExpense > 0
+      ? ((despMes - trends.avgMonthlyExpense) / trends.avgMonthlyExpense) * 100
+      : 0,
+  }
+
+  const patrimonioTotal = saldoContas + patrimonioInvestido - totalFaturas
+
+  const heroCtx: HeroInterpretationContext = {
+    checks,
+    patrimonioTotal,
+    liquidez:        saldoContas,
+    totalFaturas,
+    projectedBalance: forecastSummary.projectedBalance,
+    trends:           heroTrends,
+    daysTracked:      180,
+    transactionCount: histArr.length,
+  }
+
+  const heroData = mapHealthChecksToHeroState(heroCtx)
+
+  const recCtx: RecommendationContext = {
+    forecastSummary,
+    liquidez:             saldoContas,
+    patrimonioTotal,
+    heroState:            heroData.state,
+    currentMonthlyAporte: trends.currentMonthlyAporte,
+    reservaTargetMonths:  6,
+    avgMonthlyExpense:    trends.avgMonthlyExpense,
+  }
+
+  const recommendation = generateRecommendation(recCtx)
+
   return {
     saldoContas,
     totalFaturas,
@@ -318,6 +371,8 @@ export async function fetchDashboard(userId: string): Promise<DashboardViewModel
     recentTxs,
     catSlices,
     monthLine,
+    heroData,
+    recommendation,
     syncStatus: syncLog ?? null,
     hasAccounts: true,
   }
@@ -326,6 +381,17 @@ export async function fetchDashboard(userId: string): Promise<DashboardViewModel
 // ─── ViewModel vazio — sem contas cadastradas ─────────────────────────────────
 
 function emptyViewModel(): DashboardViewModel {
+  const emptyHeroCtx: HeroInterpretationContext = {
+    checks:           [],
+    patrimonioTotal:  0,
+    liquidez:         0,
+    totalFaturas:     0,
+    projectedBalance: 0,
+    trends:           { patrimonioVariation30d: 0, patrimonioGrowing: false, expenseVariationPct: 0 },
+    daysTracked:      0,
+    transactionCount: 0,
+  }
+
   return {
     saldoContas:         0,
     totalFaturas:        0,
@@ -340,6 +406,8 @@ function emptyViewModel(): DashboardViewModel {
     recentTxs:           [],
     catSlices:           [],
     monthLine:           [],
+    heroData:            mapHealthChecksToHeroState(emptyHeroCtx),
+    recommendation:      null,
     syncStatus:          null,
     hasAccounts:         false,
   }
