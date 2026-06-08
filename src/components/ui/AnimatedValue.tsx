@@ -1,87 +1,65 @@
-'use client'
+'use client';
 
-import { type CSSProperties } from 'react'
-import { useCountUp } from '@/hooks/useCountUp'
-import { usePrivacyStore } from '@/stores/usePrivacyStore'
-
-// ─── Tipos ────────────────────────────────────────────────────────────────────
-
-type Group  = 'financial' | 'investments'
-type Format = 'currency' | 'percent' | 'number'
+import React, { useEffect, useRef, useState } from 'react';
 
 interface AnimatedValueProps {
-  value:      number
-  trigger?:   boolean
-  group?:     Group
-  format?:    Format   // ← novo (default: 'currency')
-  duration?:  number
-  delay?:     number
-  className?: string
-  style?:     CSSProperties
-  colorize?:  boolean
+  value: number;
+  prefix?: string;
+  suffix?: string;
+  decimals?: number;
+  duration?: number;
+  glow?: boolean;
+  className?: string;
+  style?: React.CSSProperties;
+  trigger?: boolean;
+  group?: string;
+  delay?: number;
+  colorize?: boolean;
 }
 
-// ─── Helpers de formatação ────────────────────────────────────────────────────
-
-const BRL = new Intl.NumberFormat('pt-BR', {
-  style:                 'currency',
-  currency:              'BRL',
-  minimumFractionDigits: 2,
-})
-
-const NUM = new Intl.NumberFormat('pt-BR')
-
-function fmt(value: number, format: Format = 'currency'): string {
-  if (format === 'percent') return `${value.toFixed(1)}%`
-  if (format === 'number')  return NUM.format(value)
-  return BRL.format(value)
+function easeOutExpo(t: number): number {
+  return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
 }
 
-// ─── Componente ───────────────────────────────────────────────────────────────
+function fmt(val: number, dec: number, pre: string, suf: string): string {
+  return `${pre}${new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: dec,
+    maximumFractionDigits: dec,
+  }).format(val)}${suf}`;
+}
 
 export function AnimatedValue({
-  value,
-  trigger   = true,
-  group     = 'financial',
-  format    = 'currency',
-  duration  = 2000,
-  delay     = 0,
-  className = '',
-  style,
-  colorize  = true,
+  value, prefix = '', suffix = '', decimals = 2,
+  duration = 800, glow = false, className = '', style,
+  trigger = true, delay = 0,
 }: AnimatedValueProps) {
-  const financialVisible   = usePrivacyStore(s => s.financialVisible)
-  const investmentsVisible = usePrivacyStore(s => s.investmentsVisible)
-  const visible = group === 'financial' ? financialVisible : investmentsVisible
+  const [display, setDisplay] = useState(fmt(0, decimals, prefix, suffix));
+  const prev = useRef(0);
+  const frame = useRef<number | null>(null);
 
-  const animated = useCountUp({ target: value, duration, delay, trigger })
-
-  if (!visible) {
-    return (
-      <span
-        className={`text-glow-value ${className}`}
-        style={style}
-        aria-label="Valor oculto"
-        data-private="true"
-      >
-        R$&nbsp;••••••
-      </span>
-    )
-  }
-
-  const colorClass =
-    colorize && value < 0 ? 'text-danger'
-    : colorize && value > 0 ? 'text-success'
-    : ''
+  useEffect(() => {
+    if (!trigger) return;
+    const run = () => {
+      const s = prev.current, e = value, t0 = performance.now();
+      if (frame.current) cancelAnimationFrame(frame.current);
+      const tick = (now: number) => {
+        const p = Math.min((now - t0) / duration, 1);
+        setDisplay(fmt(s + (e - s) * easeOutExpo(p), decimals, prefix, suffix));
+        if (p < 1) frame.current = requestAnimationFrame(tick);
+        else prev.current = e;
+      };
+      frame.current = requestAnimationFrame(tick);
+    };
+    const t = delay > 0 ? setTimeout(run, delay) : null;
+    if (!t) run();
+    return () => { if (t) clearTimeout(t); if (frame.current) cancelAnimationFrame(frame.current); };
+  }, [value, duration, decimals, prefix, suffix, trigger, delay]);
 
   return (
-    <span
-      className={`text-glow-value tabular-nums ${colorClass} ${className}`.trim()}
-      style={style}
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      {fmt(animated, format)}
+    <span className={`${glow ? 'text-glow-value' : ''} ${className}`} style={style}>
+      {display}
     </span>
-  )
+  );
 }
+
+export default AnimatedValue;
