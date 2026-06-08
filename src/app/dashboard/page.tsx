@@ -18,9 +18,7 @@ import { usePrivacyStore }    from '@/stores/usePrivacyStore'
 import { usePreferencesStore } from '@/stores/usePreferencesStore'
 import { PrivateValue }       from '@/components/ui/PrivateValue'
 import { AnimatedValue }      from '@/components/ui/AnimatedValue'
-// Fallback/local stub for InsightsSection component to avoid missing-module build error.
-// If a real implementation exists, replace this import with the proper path.
-const InsightsSection: any = (_props: any) => null
+import { InsightsSection }    from '@/components/dashboard/InsightsSection'
 import {
   fetchDashboard,
   type HeroInterpretation,
