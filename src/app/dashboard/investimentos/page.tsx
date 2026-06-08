@@ -15,7 +15,9 @@ import {
 } from '@/components/ui'
 
 // fmt local — usado para passar string para PrivateValue
+// MEL-017: remover após criar src/lib/format.ts (TD-026)
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
 import {
   TrendUp,
   Plus,
@@ -152,8 +154,7 @@ const fmtPct = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(2)}%`
 export default function InvestimentosPage() {
   const supabase = createClient()
 
-  // Privacy store — INC-S45-001
-  // Contrato real: investmentsVisible + toggleInvestments
+  // Privacy store — contrato real: investmentsVisible + toggleInvestments
   const investmentsVisible = usePrivacyStore(s => s.investmentsVisible)
   const toggleInvestments  = usePrivacyStore(s => s.toggleInvestments)
 
@@ -450,13 +451,13 @@ export default function InvestimentosPage() {
         </div>
       )}
 
-      {/* Header — INC-S45-001: privacy toggle integrado na action */}
+      {/* Header */}
       <PageHeader
         title="Investimentos"
         description="Patrimônio separado do saldo operacional"
         action={
           <div className="flex items-center gap-2">
-            {/* Privacy toggle — mesmo padrão visual do dashboard */}
+            {/* Privacy toggle — INC-S45-001 */}
             <button
               onClick={toggleInvestments}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
@@ -506,11 +507,12 @@ export default function InvestimentosPage() {
           Padrão visual idêntico ao dashboard:
           4 cards iguais em grid, hierarquia por tipografia e ordem — não por tamanho.
           Label caps → valor grande → contexto pequeno + ícone colorido no canto.
+          INC-S47-001: p-4 explícito em cada card para garantir respiro interno.
       ─────────────────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
 
-        {/* 1 — PATRIMÔNIO INVESTIDO — KPI principal, primeira posição */}
-        <PremiumCard>
+        {/* 1 — PATRIMÔNIO INVESTIDO */}
+        <PremiumCard className="p-4">
           <div className="flex items-start justify-between mb-3">
             <p className="text-[10px] font-semibold tracking-widest uppercase text-text-secondary">
               Patrimônio investido
@@ -544,7 +546,7 @@ export default function InvestimentosPage() {
         </PremiumCard>
 
         {/* 2 — RENDIMENTO TOTAL */}
-        <PremiumCard>
+        <PremiumCard className="p-4">
           <div className="flex items-start justify-between mb-3">
             <p className="text-[10px] font-semibold tracking-widest uppercase text-text-secondary">
               Rendimento
@@ -581,7 +583,7 @@ export default function InvestimentosPage() {
         </PremiumCard>
 
         {/* 3 — ATIVOS */}
-        <PremiumCard>
+        <PremiumCard className="p-4">
           <div className="flex items-start justify-between mb-3">
             <p className="text-[10px] font-semibold tracking-widest uppercase text-text-secondary">
               Ativos
@@ -602,7 +604,7 @@ export default function InvestimentosPage() {
         </PremiumCard>
 
         {/* 4 — DIVERSIFICAÇÃO */}
-        <PremiumCard>
+        <PremiumCard className="p-4">
           <div className="flex items-start justify-between mb-3">
             <p className="text-[10px] font-semibold tracking-widest uppercase text-text-secondary">
               Tipos

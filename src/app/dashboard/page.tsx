@@ -383,13 +383,16 @@ export default function DashboardPage() {
         )}
 
         <div className="flex items-center gap-4 ml-auto">
+          {/* INC-S47-002 — ícones corrigidos: EyeSlash quando visível, Eye quando oculto */}
           <button
             onClick={toggleFinancial}
             className="flex items-center gap-1.5 text-xs min-h-[44px] px-2 transition-opacity hover:opacity-70"
             style={{ color: 'var(--text-secondary)' }}
             aria-label={financialVisible ? 'Ocultar valores financeiros' : 'Mostrar valores financeiros'}
           >
-            {financialVisible ? <Eye weight="duotone" size={14} /> : <EyeSlash weight="duotone" size={14} />}
+            {financialVisible
+              ? <EyeSlash weight="duotone" size={14} />
+              : <Eye      weight="duotone" size={14} />}
             Financeiro
           </button>
           <button
@@ -398,7 +401,9 @@ export default function DashboardPage() {
             style={{ color: 'var(--text-secondary)' }}
             aria-label={investmentsVisible ? 'Ocultar investimentos' : 'Mostrar investimentos'}
           >
-            {investmentsVisible ? <Eye weight="duotone" size={14} /> : <EyeSlash weight="duotone" size={14} />}
+            {investmentsVisible
+              ? <EyeSlash weight="duotone" size={14} />
+              : <Eye      weight="duotone" size={14} />}
             Investimentos
           </button>
           {/* ETAPA-G.1 — toggle show_insights — TD-023 — INC-S42-001 */}
@@ -791,6 +796,7 @@ export default function DashboardPage() {
                     Patrimônio investido
                   </p>
                 </div>
+                {/* INC-S47-002 — ícone corrigido no card lateral também */}
                 <button
                   onClick={toggleInvestments}
                   className="transition-opacity hover:opacity-70"
@@ -798,8 +804,8 @@ export default function DashboardPage() {
                   aria-label={investmentsVisible ? 'Ocultar investimentos' : 'Mostrar investimentos'}
                 >
                   {investmentsVisible
-                    ? <Eye weight="duotone" size={14} />
-                    : <EyeSlash weight="duotone" size={14} />}
+                    ? <EyeSlash weight="duotone" size={14} />
+                    : <Eye      weight="duotone" size={14} />}
                 </button>
               </div>
               <AnimatedValue
