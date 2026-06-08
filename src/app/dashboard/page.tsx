@@ -421,53 +421,61 @@ export default function DashboardPage() {
 
       {/* KPI Cards — DASH-002 glow hover + DASH-005 cascade entrance */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-7">
-        {kpis.map((kpi, idx) => (
-          <div
-            key={kpi.label}
-            className="glass-card rounded-2xl p-6 flex flex-col gap-4 cursor-default kpi-enter transition-shadow duration-300"
-            style={{
-              '--accent-color': kpi.accentColor,
-              animationDelay:   `${idx * 90}ms`,
-              boxShadow: hoveredKpi === kpi.label
-                ? `0 0 0 1px ${kpi.accentColor}, 0 4px 24px 0 ${kpi.accentColor}`
-                : undefined,
-            } as React.CSSProperties}
-            onMouseEnter={() => setHoveredKpi(kpi.label)}
-            onMouseLeave={() => setHoveredKpi(null)}
-          >
-            <div className="flex items-start justify-between">
-              <p className="text-xs font-semibold uppercase tracking-widest"
-                style={{ color: 'var(--text-secondary)' }}>
-                {kpi.label}
-              </p>
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: kpi.iconBg }}>
-                <kpi.icon size={20} weight="duotone" style={{ color: kpi.color }} />
+        {kpis.map((kpi, idx) => {
+          const isVisible = kpi.group === 'investments' ? investmentsVisible : financialVisible
+          return (
+            <div
+              key={kpi.label}
+              className="glass-card rounded-2xl p-4 flex flex-col gap-4 cursor-default kpi-enter transition-shadow duration-300"
+              style={{
+                '--accent-color': kpi.accentColor,
+                animationDelay:   `${idx * 90}ms`,
+                boxShadow: hoveredKpi === kpi.label
+                  ? `0 0 0 1px ${kpi.accentColor}, 0 4px 24px 0 ${kpi.accentColor}`
+                  : undefined,
+              } as React.CSSProperties}
+              onMouseEnter={() => setHoveredKpi(kpi.label)}
+              onMouseLeave={() => setHoveredKpi(null)}
+            >
+              <div className="flex items-start justify-between">
+                <p className="text-xs font-semibold uppercase tracking-widest"
+                  style={{ color: 'var(--text-secondary)' }}>
+                  {kpi.label}
+                </p>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ background: kpi.iconBg }}>
+                  <kpi.icon size={16} weight="duotone" style={{ color: kpi.color }} />
+                </div>
+              </div>
+
+              {/* FIX INC-S48-001: conectar AnimatedValue/PrivateValue ao estado de privacidade */}
+              {isVisible ? (
+                <AnimatedValue
+                  value={kpi.value}
+                  trigger={!loading}
+                  group={kpi.group}
+                  delay={idx * 80}
+                  colorize={false}
+                  className="text-2xl font-bold tracking-tight"
+                  style={{ color: kpi.color } as React.CSSProperties}
+                />
+              ) : (
+                <PrivateValue
+                  value={fmt(kpi.value)}
+                  group={kpi.group}
+                  className="text-2xl font-bold tracking-tight"
+                />
+              )}
+
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                  {kpi.sub}
+                </p>
+                {kpi.delta !== 0 && <DeltaBadge delta={kpi.delta} />}
               </div>
             </div>
-            {kpi.group === 'investments' ? (
-              <AnimatedValue
-                value={kpi.value} trigger={!loading} group="investments"
-                delay={idx * 80} colorize={false}
-                className="text-2xl font-bold tracking-tight"
-                style={{ color: kpi.color } as React.CSSProperties}
-              />
-            ) : (
-              <AnimatedValue
-                value={kpi.value} trigger={!loading} group="financial"
-                delay={idx * 80} colorize={false}
-                className="text-2xl font-bold tracking-tight"
-                style={{ color: kpi.color } as React.CSSProperties}
-              />
-            )}
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-                {kpi.sub}
-              </p>
-              {kpi.delta !== 0 && <DeltaBadge delta={kpi.delta} />}
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* InsightsSection — ETAPA-G — controlado por show_insights */}
@@ -638,13 +646,22 @@ export default function DashboardPage() {
               Projeção para os próximos 30 dias
             </p>
 
-            <AnimatedValue
-              value={forecastSummary.projectedBalance}
-              trigger={!loading}
-              group="financial"
-              colorize={true}
-              className="text-3xl font-bold mb-5"
-            />
+            {/* FIX INC-S48-001: saldo previsto hero também responde ao toggle */}
+            {financialVisible ? (
+              <AnimatedValue
+                value={forecastSummary.projectedBalance}
+                trigger={!loading}
+                group="financial"
+                colorize={true}
+                className="text-3xl font-bold mb-5"
+              />
+            ) : (
+              <PrivateValue
+                value={fmt(forecastSummary.projectedBalance)}
+                group="financial"
+                className="text-3xl font-bold mb-5"
+              />
+            )}
 
             <div className="space-y-0">
               {projecaoItens.map(item => (
@@ -786,7 +803,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Investimentos */}
+          {/* Card lateral — Patrimônio investido */}
           {patrimonioInvestido > 0 && (
             <div className="glass-card rounded-xl px-5 py-4 cursor-default">
               <div className="flex items-center justify-between mb-3">
@@ -808,11 +825,25 @@ export default function DashboardPage() {
                     : <Eye      weight="duotone" size={14} />}
                 </button>
               </div>
-              <AnimatedValue
-                value={patrimonioInvestido} trigger={!loading} group="investments"
-                colorize={false} className="text-xl font-bold mb-2"
-                style={{ color: '#a78bfa' } as React.CSSProperties}
-              />
+
+              {/* FIX INC-S48-001: card lateral também responde ao toggle */}
+              {investmentsVisible ? (
+                <AnimatedValue
+                  value={patrimonioInvestido}
+                  trigger={!loading}
+                  group="investments"
+                  colorize={false}
+                  className="text-xl font-bold mb-2"
+                  style={{ color: '#a78bfa' } as React.CSSProperties}
+                />
+              ) : (
+                <PrivateValue
+                  value={fmt(patrimonioInvestido)}
+                  group="investments"
+                  className="text-xl font-bold mb-2"
+                />
+              )}
+
               <a href="/dashboard/investimentos"
                 className="text-[11px] flex items-center gap-1 transition-opacity hover:opacity-70"
                 style={{ color: '#a78bfa' }}>
