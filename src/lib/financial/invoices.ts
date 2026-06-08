@@ -1,5 +1,6 @@
 // src/lib/financial/invoices.ts
 // Mutation Layer — faturas (credit_card_invoices)
+// TD-003 RESOLVIDO — getOrCreateInvoice() trata erro Postgres 23505 — sessão 39
 //
 // REGRAS INVIOLÁVEIS:
 //   - Toda escrita em credit_card_invoices passa por aqui — páginas não chamam .from() para escrita
@@ -200,7 +201,9 @@ export async function payInvoice(
 // Resolve a fatura de cartão para um dado (credit_card_id, date).
 // Cria a fatura se ainda não existir para o mês/ano calculado a partir do
 // closing_day do cartão. Retorna o invoice_id ou null em caso de falha.
-// Segue o padrão do layer: createClient() interno — não recebe supabase externo.
+// TD-003: trata Postgres 23505 (unique_violation) — race condition entre duas
+// requisições criando a mesma fatura simultaneamente. Nesse caso, faz um segundo
+// select para retornar a fatura que já existe em vez de propagar o erro.
 
 export async function getOrCreateInvoice(
   ref: InvoiceRef,
@@ -233,7 +236,7 @@ export async function getOrCreateInvoice(
   const dueYear  = month === 12 ? year + 1 : year
   const dueDate  = `${dueYear}-${String(dueMonth).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`
 
-  const { data: created } = await supabase
+  const { data: created, error: insertError } = await supabase
     .from('credit_card_invoices')
     .insert({
       credit_card_id: cardId,
@@ -246,6 +249,23 @@ export async function getOrCreateInvoice(
     })
     .select('id')
     .single()
+
+  // Race condition: outra requisição criou a fatura entre o select e o insert.
+  // Postgres 23505 = unique_violation — retorna a fatura existente em vez de propagar erro.
+  if (insertError) {
+    if (insertError.code === '23505') {
+      const { data: existing2 } = await supabase
+        .from('credit_card_invoices')
+        .select('id')
+        .eq('credit_card_id', cardId)
+        .eq('user_id', userId)
+        .eq('month', month)
+        .eq('year', year)
+        .maybeSingle()
+      return existing2?.id ?? null
+    }
+    return null
+  }
 
   return created?.id ?? null
 }

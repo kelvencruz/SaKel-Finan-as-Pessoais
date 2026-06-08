@@ -2,9 +2,11 @@
 // Mutation Layer — Sakel Finanças Sprint 3
 // Boundary de segurança para escrita em recurrences
 // CRÍTICO: tabela recurrences NÃO tem deleted_at — nunca usar soft delete aqui
+// TD-002 RESOLVIDO — MutationResult unificado com transactions.ts — sessão 39
 
 import { createClient } from '@/lib/supabase/client'
 import { parseISO, isValid, differenceInDays } from 'date-fns'
+import type { MutationResult } from '@/lib/financial/transactions'
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -22,12 +24,6 @@ export type RecurrencePayload = {
   account_id?:     string | null
   credit_card_id?: string | null
   category_id?:    string | null
-}
-
-export type MutationResult<T> = {
-  success: boolean
-  data?:   T
-  error?:  string
 }
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
@@ -61,16 +57,16 @@ export async function createRecurrence(
 ): Promise<MutationResult<{ id: string }>> {
   try {
     if (!payload.user_id)
-      return { success: false, error: 'user_id obrigatório' }
+      return { data: null, error: 'user_id obrigatório' }
     if (!payload.amount || payload.amount <= 0)
-      return { success: false, error: 'amount deve ser maior que zero' }
+      return { data: null, error: 'amount deve ser maior que zero' }
     if (!VALID_FREQUENCIES.includes(payload.frequency))
-      return { success: false, error: `frequency inválida: ${payload.frequency}` }
+      return { data: null, error: `frequency inválida: ${payload.frequency}` }
     if (!payload.start_date)
-      return { success: false, error: 'start_date obrigatório' }
+      return { data: null, error: 'start_date obrigatório' }
     const dateError = validateDate(payload.start_date)
     if (dateError)
-      return { success: false, error: dateError }
+      return { data: null, error: dateError }
 
     const supabase = createClient()
 
@@ -94,10 +90,10 @@ export async function createRecurrence(
       .select('id')
       .single()
 
-    if (error) return { success: false, error: error.message }
-    return { success: true, data: { id: data.id } }
+    if (error) return { data: null, error: error.message }
+    return { data: { id: data.id }, error: null }
   } catch (err) {
-    return { success: false, error: String(err) }
+    return { data: null, error: String(err) }
   }
 }
 
@@ -108,8 +104,8 @@ export async function pauseRecurrence(
   userId: string
 ): Promise<MutationResult<void>> {
   try {
-    if (!recurrenceId) return { success: false, error: 'recurrenceId obrigatório' }
-    if (!userId)       return { success: false, error: 'userId obrigatório' }
+    if (!recurrenceId) return { data: null, error: 'recurrenceId obrigatório' }
+    if (!userId)       return { data: null, error: 'userId obrigatório' }
 
     const supabase = createClient()
 
@@ -121,11 +117,11 @@ export async function pauseRecurrence(
       .single()
 
     if (fetchError || !current)
-      return { success: false, error: 'Recorrência não encontrada' }
+      return { data: null, error: 'Recorrência não encontrada' }
     if (!current.is_active && current.status === 'paused')
-      return { success: true }
+      return { data: null, error: null }
     if (current.status === 'cancelled')
-      return { success: false, error: 'Recorrência cancelada não pode ser pausada' }
+      return { data: null, error: 'Recorrência cancelada não pode ser pausada' }
 
     const { error } = await supabase
       .from('recurrences')
@@ -133,10 +129,10 @@ export async function pauseRecurrence(
       .eq('id', recurrenceId)
       .eq('user_id', userId)
 
-    if (error) return { success: false, error: error.message }
-    return { success: true }
+    if (error) return { data: null, error: error.message }
+    return { data: null, error: null }
   } catch (err) {
-    return { success: false, error: String(err) }
+    return { data: null, error: String(err) }
   }
 }
 
@@ -148,8 +144,8 @@ export async function reactivateRecurrence(
   userId: string
 ): Promise<MutationResult<void>> {
   try {
-    if (!recurrenceId) return { success: false, error: 'recurrenceId obrigatório' }
-    if (!userId)       return { success: false, error: 'userId obrigatório' }
+    if (!recurrenceId) return { data: null, error: 'recurrenceId obrigatório' }
+    if (!userId)       return { data: null, error: 'userId obrigatório' }
 
     const supabase = createClient()
 
@@ -161,11 +157,11 @@ export async function reactivateRecurrence(
       .single()
 
     if (fetchError || !current)
-      return { success: false, error: 'Recorrência não encontrada' }
+      return { data: null, error: 'Recorrência não encontrada' }
     if (current.is_active && current.status === 'active')
-      return { success: true }
+      return { data: null, error: null }
     if (current.status === 'cancelled')
-      return { success: false, error: 'Recorrência cancelada não pode ser reativada' }
+      return { data: null, error: 'Recorrência cancelada não pode ser reativada' }
 
     const { error } = await supabase
       .from('recurrences')
@@ -173,10 +169,10 @@ export async function reactivateRecurrence(
       .eq('id', recurrenceId)
       .eq('user_id', userId)
 
-    if (error) return { success: false, error: error.message }
-    return { success: true }
+    if (error) return { data: null, error: error.message }
+    return { data: null, error: null }
   } catch (err) {
-    return { success: false, error: String(err) }
+    return { data: null, error: String(err) }
   }
 }
 
@@ -187,8 +183,8 @@ export async function cancelRecurrence(
   userId: string
 ): Promise<MutationResult<void>> {
   try {
-    if (!recurrenceId) return { success: false, error: 'recurrenceId obrigatório' }
-    if (!userId)       return { success: false, error: 'userId obrigatório' }
+    if (!recurrenceId) return { data: null, error: 'recurrenceId obrigatório' }
+    if (!userId)       return { data: null, error: 'userId obrigatório' }
 
     const supabase = createClient()
 
@@ -200,9 +196,9 @@ export async function cancelRecurrence(
       .single()
 
     if (fetchError || !current)
-      return { success: false, error: 'Recorrência não encontrada' }
+      return { data: null, error: 'Recorrência não encontrada' }
     if (current.status === 'cancelled')
-      return { success: true }
+      return { data: null, error: null }
 
     const { error } = await supabase
       .from('recurrences')
@@ -210,10 +206,10 @@ export async function cancelRecurrence(
       .eq('id', recurrenceId)
       .eq('user_id', userId)
 
-    if (error) return { success: false, error: error.message }
-    return { success: true }
+    if (error) return { data: null, error: error.message }
+    return { data: null, error: null }
   } catch (err) {
-    return { success: false, error: String(err) }
+    return { data: null, error: String(err) }
   }
 }
 
@@ -241,17 +237,17 @@ export async function updateRecurrence(
   payload: RecurrenceUpdatePayload
 ): Promise<MutationResult<void>> {
   try {
-    if (!recurrenceId) return { success: false, error: 'recurrenceId obrigatório' }
-    if (!userId)       return { success: false, error: 'userId obrigatório' }
+    if (!recurrenceId) return { data: null, error: 'recurrenceId obrigatório' }
+    if (!userId)       return { data: null, error: 'userId obrigatório' }
 
     if (payload.amount !== undefined && payload.amount <= 0)
-      return { success: false, error: 'amount deve ser maior que zero' }
+      return { data: null, error: 'amount deve ser maior que zero' }
     if (payload.frequency !== undefined && !VALID_FREQUENCIES.includes(payload.frequency))
-      return { success: false, error: `frequency inválida: ${payload.frequency}` }
+      return { data: null, error: `frequency inválida: ${payload.frequency}` }
     if (payload.next_due_date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(payload.next_due_date))
-      return { success: false, error: 'next_due_date deve estar no formato YYYY-MM-DD' }
+      return { data: null, error: 'next_due_date deve estar no formato YYYY-MM-DD' }
     if (payload.description !== undefined && !payload.description.trim())
-      return { success: false, error: 'description não pode ser vazia' }
+      return { data: null, error: 'description não pode ser vazia' }
 
     const supabase = createClient()
 
@@ -263,9 +259,9 @@ export async function updateRecurrence(
       .single()
 
     if (fetchError || !current)
-      return { success: false, error: 'Recorrência não encontrada' }
+      return { data: null, error: 'Recorrência não encontrada' }
     if (current.status === 'cancelled')
-      return { success: false, error: 'Recorrência cancelada não pode ser editada' }
+      return { data: null, error: 'Recorrência cancelada não pode ser editada' }
 
     const { error } = await supabase
       .from('recurrences')
@@ -276,9 +272,9 @@ export async function updateRecurrence(
       .eq('id', recurrenceId)
       .eq('user_id', userId)
 
-    if (error) return { success: false, error: error.message }
-    return { success: true }
+    if (error) return { data: null, error: error.message }
+    return { data: null, error: null }
   } catch (err) {
-    return { success: false, error: String(err) }
+    return { data: null, error: String(err) }
   }
 }

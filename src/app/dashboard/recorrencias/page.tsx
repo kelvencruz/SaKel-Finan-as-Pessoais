@@ -283,7 +283,7 @@ export default function RecorrenciasPage() {
           account_id:     form.use_credit_card ? null : (form.account_id || null),
           credit_card_id: form.use_credit_card ? form.credit_card_id : null,
         })
-        if (!result.success) { setFormError(result.error ?? 'Erro ao atualizar.'); return }
+        if (result.error) { setFormError(result.error); return }
         showToast('Recorrência atualizada!')
       } else {
         // createRecurrence() — end_date agora persistido — INC-S30-002 resolvido
@@ -299,7 +299,7 @@ export default function RecorrenciasPage() {
           credit_card_id: form.use_credit_card ? form.credit_card_id : null,
           category_id:    form.category_id || null,
         })
-        if (!result.success) { setFormError(result.error ?? 'Erro ao criar.'); return }
+        if (result.error) { setFormError(result.error); return }
         try {
           const xp = await awardXP(user.id, 'first_recurring', 'first_recurring')
           if (xp.newBadge) showToast('Badge desbloqueado: Automatizador! +20 XP')
@@ -323,13 +323,13 @@ export default function RecorrenciasPage() {
     if (r.is_active) {
       // pauseRecurrence() — layer gerencia is_active=false + status='paused'
       const result = await pauseRecurrence(r.id, user.id)
-      if (!result.success) { showToast(result.error ?? 'Erro ao pausar.', 'error'); return }
+      if (result.error) { showToast(result.error, 'error'); return }
       showToast('Recorrência pausada.')
     } else {
       // reactivateRecurrence() — INC-002 resolvido Sprint 3.5 D4
       // layer gerencia is_active=true + status='active' com pré-condições e idempotência
       const result = await reactivateRecurrence(r.id, user.id)
-      if (!result.success) { showToast(result.error ?? 'Erro ao reativar.', 'error'); return }
+      if (result.error) { showToast(result.error, 'error'); return }
       showToast('Recorrência reativada.')
     }
     await loadAll()
@@ -358,7 +358,7 @@ export default function RecorrenciasPage() {
       if (mode === 'pause') {
         // cancelRecurrence: para a engine (is_active=false) + semântica UI (status='cancelled')
         const result = await cancelRecurrence(id, user.id)
-        if (!result.success) { showToast(result.error ?? 'Erro ao cancelar.', 'error'); return }
+        if (result.error) { showToast(result.error, 'error'); return }
         showToast('Recorrência pausada. Histórico preservado.')
 
       } else if (mode === 'future') {
@@ -368,7 +368,7 @@ export default function RecorrenciasPage() {
           // syncInvoiceTotal já foi chamado internamente pelo layer
         }
         const recResult = await cancelRecurrence(id, user.id)
-        if (!recResult.success) { showToast(recResult.error ?? 'Erro ao cancelar.', 'error'); return }
+        if (recResult.error) { showToast(recResult.error, 'error'); return }
         showToast(`Recorrência cancelada e ${deleteModal.futureTxCount} lançamento(s) futuro(s) removido(s).`)
 
       } else {
@@ -378,7 +378,7 @@ export default function RecorrenciasPage() {
         if (txResult.error) { showToast(txResult.error, 'error'); return }
         // cancelRecurrence: recorrências não têm deleted_at — cancelar é o máximo possível
         const recResult = await cancelRecurrence(id, user.id)
-        if (!recResult.success) { showToast(recResult.error ?? 'Erro ao cancelar.', 'error'); return }
+        if (recResult.error) { showToast(recResult.error, 'error'); return }
         showToast('Recorrência cancelada e todos os lançamentos removidos.')
       }
     } catch {

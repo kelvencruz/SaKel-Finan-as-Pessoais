@@ -2,9 +2,31 @@
 // Health Checks — Sakel Finanças Sprint 3
 // Detecta inconsistências financeiras antes do usuário
 // Retorno sempre compatível com Operational Inbox — nunca só log de desenvolvedor
+// TD-005 RESOLVIDO — HEALTH_CHECK_IDS exportado — sessão 39 — desbloqueia heroInterpretation.ts
 
 import { createClient } from '@/lib/supabase/client'
 import { subDays, differenceInDays, parseISO } from 'date-fns'
+
+// ─── HEALTH_CHECK_IDS ─────────────────────────────────────────────────────────
+// Fonte canônica de IDs dos health checks.
+// heroInterpretation.ts importa daqui — NUNCA define IDs próprios.
+// IDs marcados como pendentes têm check ainda não implementado mas precisam
+// existir para garantir o contrato de import sem quebrar o módulo.
+
+export const HEALTH_CHECK_IDS = {
+  // ✅ Implementados
+  INVOICE_MISMATCH:        'invoice_mismatch',
+  RECURRENCE_STALLED:      'recurrence_stalled',
+  DUPLICATE_CANDIDATE:     'duplicate_candidate',
+  // 🔴 Pendentes — check a implementar Sprint 4
+  INVOICE_OVERDUE:         'invoice_overdue',
+  INVOICE_DUE_SOON:        'invoice_due_soon',
+  NEGATIVE_FORECAST:       'negative_forecast',
+  // 🔴 Pendentes — check a implementar Sprint 5
+  CATEGORY_OVER_BUDGET:    'category_over_budget',
+  RECURRING_WITHOUT_ACCT:  'recurring_without_acct',
+  EMERGENCY_RESERVE:       'emergency_reserve',
+} as const
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
