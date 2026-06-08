@@ -201,7 +201,6 @@ export default function DashboardPage() {
     toggleInvestments,
   } = usePrivacyStore()
 
-  // ETAPA-G.1: togglePreference adicionado ao destructuring — TD-023
   const { preferences, loadPreferences, togglePreference } = usePreferencesStore()
 
   // ── Estado ──────────────────────────────────────────────────────────────────
@@ -240,6 +239,9 @@ export default function DashboardPage() {
   // Intelligence Layer — ETAPA-G
   const [heroData,       setHeroData]       = useState<HeroInterpretation | null>(null)
   const [recommendation, setRecommendation] = useState<string | null>(null)
+
+  // DASH-002 — glow hover nos KPI cards
+  const [hoveredKpi, setHoveredKpi] = useState<string | null>(null)
 
   // ── Load ─────────────────────────────────────────────────────────────────────
 
@@ -339,7 +341,7 @@ export default function DashboardPage() {
       icon:        TrendUp,
       color:       '#a78bfa',
       iconBg:      'rgba(167,139,250,0.12)',
-      accentColor: 'rgba(56,189,248,0.4)',
+      accentColor: 'rgba(167,139,250,0.5)',
       group:       'investments' as const,
     },
   ]
@@ -412,13 +414,21 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* KPI Cards — com DeltaBadge ETAPA-D */}
+      {/* KPI Cards — DASH-002 glow hover + DASH-005 cascade entrance */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-7">
         {kpis.map((kpi, idx) => (
           <div
             key={kpi.label}
-            className="glass-card rounded-2xl p-6 flex flex-col gap-4 cursor-default"
-            style={{ '--accent-color': kpi.accentColor } as React.CSSProperties}
+            className="glass-card rounded-2xl p-6 flex flex-col gap-4 cursor-default kpi-enter transition-shadow duration-300"
+            style={{
+              '--accent-color': kpi.accentColor,
+              animationDelay:   `${idx * 90}ms`,
+              boxShadow: hoveredKpi === kpi.label
+                ? `0 0 0 1px ${kpi.accentColor}, 0 4px 24px 0 ${kpi.accentColor}`
+                : undefined,
+            } as React.CSSProperties}
+            onMouseEnter={() => setHoveredKpi(kpi.label)}
+            onMouseLeave={() => setHoveredKpi(null)}
           >
             <div className="flex items-start justify-between">
               <p className="text-xs font-semibold uppercase tracking-widest"

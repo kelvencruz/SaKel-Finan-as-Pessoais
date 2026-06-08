@@ -677,3 +677,11 @@ a, button {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
+/* DASH-005 — KPI cards cascade entrance */
+@keyframes kpi-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+.kpi-enter {
+  animation: kpi-enter 0.35s ease both;
+}
