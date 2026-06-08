@@ -502,87 +502,124 @@ export default function InvestimentosPage() {
         </div>
       )}
 
-      {/* ── KPIs — TD-022 Opção C: hierarquia visual clara ── */}
-      {/* KPI principal: patrimônio — col-span-2, visualmente dominante        */}
-      {/* KPI secundário: rendimento total + % — peso médio                    */}
-      {/* KPI terciário: diversificação (ativos + tipos) — peso menor          */}
+      {/* ── KPIs — TD-022 Opção C ──────────────────────────────────────────────
+          Padrão visual idêntico ao dashboard:
+          4 cards iguais em grid, hierarquia por tipografia e ordem — não por tamanho.
+          Label caps → valor grande → contexto pequeno + ícone colorido no canto.
+      ─────────────────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
 
-        {/* KPI PRINCIPAL — Patrimônio investido */}
-        <PremiumCard glass className="sm:col-span-2">
-          <div className="w-8 h-1 rounded-full mb-3" style={{ background: 'var(--chart-line-start)' }} />
-          <p className="text-xs text-text-secondary mb-1">Patrimônio investido</p>
+        {/* 1 — PATRIMÔNIO INVESTIDO — KPI principal, primeira posição */}
+        <PremiumCard>
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-[10px] font-semibold tracking-widest uppercase text-text-secondary">
+              Patrimônio investido
+            </p>
+            <span
+              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ background: 'var(--chart-line-start, #6366f1)22', color: 'var(--chart-line-start, #6366f1)' }}
+            >
+              <TrendUp size={16} weight="duotone" />
+            </span>
+          </div>
           {loading ? (
-            <div className="h-8 w-36 rounded-lg animate-pulse bg-white/10 mb-1" />
+            <div className="h-8 w-32 rounded-lg animate-pulse bg-white/10 mb-2" />
           ) : investmentsVisible ? (
             <AnimatedValue
               value={totalInvested}
               group="investments"
               colorize={false}
-              className="text-2xl sm:text-3xl font-bold"
-              style={{ color: 'var(--chart-line-start)' }}
+              className="text-2xl font-bold"
+              style={{ color: 'var(--chart-line-start, #6366f1)' }}
             />
           ) : (
             <PrivateValue
               value={fmt(totalInvested)}
               group="investments"
-              className="text-2xl sm:text-3xl font-bold"
-              style={{ color: 'var(--chart-line-start)' }}
+              className="text-2xl font-bold"
+              style={{ color: 'var(--chart-line-start, #6366f1)' }}
             />
           )}
-          <p className="text-xs text-text-secondary mt-1">Não incluso no saldo disponível</p>
+          <p className="text-xs text-text-secondary mt-2">Total investido</p>
         </PremiumCard>
 
-        {/* KPI SECUNDÁRIO — Rendimento total */}
-        <PremiumCard className="sm:col-span-2">
-          <div
-            className="w-8 h-1 rounded-full mb-3"
-            style={{ background: totalGain >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}
-          />
-          <p className="text-xs text-text-secondary mb-1">Rendimento total</p>
+        {/* 2 — RENDIMENTO TOTAL */}
+        <PremiumCard>
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-[10px] font-semibold tracking-widest uppercase text-text-secondary">
+              Rendimento
+            </p>
+            <span
+              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{
+                background: `${totalGain >= 0 ? 'var(--color-success)' : 'var(--color-danger)'}22`,
+                color: totalGain >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
+              }}
+            >
+              <ChartBar size={16} weight="duotone" />
+            </span>
+          </div>
           {loading ? (
-            <div className="h-7 w-24 rounded-lg animate-pulse bg-white/10 mb-1" />
+            <div className="h-8 w-28 rounded-lg animate-pulse bg-white/10 mb-2" />
           ) : investmentsVisible ? (
             <AnimatedValue
               value={totalGain}
               group="investments"
               colorize={false}
-              className={`text-xl font-bold ${totalGain >= 0 ? 'text-success' : 'text-danger'}`}
+              className={`text-2xl font-bold ${totalGain >= 0 ? 'text-success' : 'text-danger'}`}
             />
           ) : (
             <PrivateValue
               value={fmt(totalGain)}
               group="investments"
-              className={`text-xl font-bold ${totalGain >= 0 ? 'text-success' : 'text-danger'}`}
+              className={`text-2xl font-bold ${totalGain >= 0 ? 'text-success' : 'text-danger'}`}
             />
           )}
-          <p className={`text-xs mt-1 font-medium ${gainPct >= 0 ? 'text-success' : 'text-danger'}`}>
+          <p className={`text-xs mt-2 font-medium ${gainPct >= 0 ? 'text-success' : 'text-danger'}`}>
             {loading ? '...' : fmtPct(gainPct)}
           </p>
         </PremiumCard>
 
-        {/* KPI TERCIÁRIO — Ativos */}
+        {/* 3 — ATIVOS */}
         <PremiumCard>
-          <div className="w-8 h-1 rounded-full mb-3" style={{ background: 'var(--chart-line-mid)' }} />
-          <p className="text-xs text-text-secondary mb-1">Ativos</p>
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-[10px] font-semibold tracking-widest uppercase text-text-secondary">
+              Ativos
+            </p>
+            <span
+              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ background: 'var(--chart-line-mid, #14b8a6)22', color: 'var(--chart-line-mid, #14b8a6)' }}
+            >
+              <Target size={16} weight="duotone" />
+            </span>
+          </div>
           {loading ? (
-            <div className="h-7 w-12 rounded-lg animate-pulse bg-white/10 mb-1" />
+            <div className="h-8 w-12 rounded-lg animate-pulse bg-white/10 mb-2" />
           ) : (
-            <p className="text-xl font-bold text-text-primary">{activeInvestments.length}</p>
+            <p className="text-2xl font-bold text-text-primary">{activeInvestments.length}</p>
           )}
-          <p className="text-xs text-text-secondary mt-1">investimentos</p>
+          <p className="text-xs text-text-secondary mt-2">investimentos</p>
         </PremiumCard>
 
-        {/* KPI TERCIÁRIO — Diversificação */}
+        {/* 4 — DIVERSIFICAÇÃO */}
         <PremiumCard>
-          <div className="w-8 h-1 rounded-full mb-3" style={{ background: 'var(--accent-primary, #6366f1)' }} />
-          <p className="text-xs text-text-secondary mb-1">Tipos</p>
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-[10px] font-semibold tracking-widest uppercase text-text-secondary">
+              Tipos
+            </p>
+            <span
+              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ background: 'var(--accent-primary, #6366f1)22', color: 'var(--accent-primary, #6366f1)' }}
+            >
+              <Drop size={16} weight="duotone" />
+            </span>
+          </div>
           {loading ? (
-            <div className="h-7 w-12 rounded-lg animate-pulse bg-white/10 mb-1" />
+            <div className="h-8 w-12 rounded-lg animate-pulse bg-white/10 mb-2" />
           ) : (
-            <p className="text-xl font-bold text-text-primary">{uniqueTypes}</p>
+            <p className="text-2xl font-bold text-text-primary">{uniqueTypes}</p>
           )}
-          <p className="text-xs text-text-secondary mt-1">
+          <p className="text-xs text-text-secondary mt-2">
             {uniqueTypes === 1 ? 'classe de ativo' : 'classes de ativos'}
           </p>
         </PremiumCard>
