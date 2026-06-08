@@ -88,11 +88,10 @@ export function RefinedTooltip({
             fontWeight: 500,
             lineHeight: 1.5,
             padding: '6px 10px',
-            whiteSpace: 'nowrap',
-            pointerEvents: 'none',
+              pointerEvents: 'none',
             animation: 'fadeIn 0.15s ease both',
             maxWidth: '240px',
-            whiteSpaceCollapse: 'collapse' as React.CSSProperties['whiteSpace'],
+            whiteSpace: 'normal',
           }}
         >
           {content}

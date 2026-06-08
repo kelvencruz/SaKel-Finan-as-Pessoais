@@ -1,7 +1,7 @@
 /**
  * src/components/ui/index.ts
- * TD-020 — Componentes-base do design system Sakel
- * Todos consomem CSS vars do globals.css — compatíveis com light, dark e arcade.
+ * Barrel — design system Sakel
+ * TD-020 — atualizado sessão 45
  */
 
 export { PremiumCard }    from './PremiumCard';
@@ -11,3 +11,5 @@ export { RefinedTooltip } from './RefinedTooltip';
 export { EmptyState }     from './EmptyState';
 export { SoftAlert }      from './SoftAlert';
 export { DividerLine }    from './DividerLine';
+export { ModalShell }     from './ModalShell';
+export { PrivateValue }   from './PrivateValue';
