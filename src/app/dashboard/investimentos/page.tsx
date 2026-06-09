@@ -13,10 +13,7 @@ import {
   EmptyState,
   PrivateValue,
 } from '@/components/ui'
-
-// fmt local — usado para passar string para PrivateValue
-// MEL-017: remover após criar src/lib/format.ts (TD-026)
-const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+import { formatCurrency, formatPercent } from '@/lib/format'
 
 import {
   TrendUp,
@@ -146,8 +143,6 @@ const emptyGoalForm = { name: '', icon: 'crosshair', color: '#6366f1' }
 function safeAdd(a: number, b: number): number {
   return Math.round((a + b) * 100) / 100
 }
-
-const fmtPct = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(2)}%`
 
 // ─── Componente ──────────────────────────────────────────────────────────────
 
@@ -387,9 +382,6 @@ export default function InvestimentosPage() {
   }
 
   // ─── Cálculos — TD-022 Opção C ────────────────────────────────────────────
-  // KPI principal:   patrimônio total (current_amount somado)
-  // KPI secundário:  rendimento total + percentual (initial vs current)
-  // KPI terciário:   diversificação — implícito em byType
 
   const activeInvestments = investments.filter(i => i.is_active)
 
@@ -400,7 +392,6 @@ export default function InvestimentosPage() {
     ? Math.round((totalGain / totalInitial) * 10000) / 100
     : 0
 
-  // Diversificação: quantidade de tipos únicos com valor > 0
   const uniqueTypes = useMemo(() =>
     new Set(activeInvestments.map(i => i.type)).size
   , [investments])
@@ -457,7 +448,6 @@ export default function InvestimentosPage() {
         description="Patrimônio separado do saldo operacional"
         action={
           <div className="flex items-center gap-2">
-            {/* Privacy toggle — INC-S45-001 */}
             <button
               onClick={toggleInvestments}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
@@ -503,12 +493,7 @@ export default function InvestimentosPage() {
         </div>
       )}
 
-      {/* ── KPIs — TD-022 Opção C ──────────────────────────────────────────────
-          Padrão visual idêntico ao dashboard:
-          4 cards iguais em grid, hierarquia por tipografia e ordem — não por tamanho.
-          Label caps → valor grande → contexto pequeno + ícone colorido no canto.
-          INC-S47-001: p-4 explícito em cada card para garantir respiro interno.
-      ─────────────────────────────────────────────────────────────────────── */}
+      {/* ── KPIs ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
 
         {/* 1 — PATRIMÔNIO INVESTIDO */}
@@ -536,7 +521,7 @@ export default function InvestimentosPage() {
             />
           ) : (
             <PrivateValue
-              value={fmt(totalInvested)}
+              value={formatCurrency(totalInvested)}
               group="investments"
               className="text-2xl font-bold"
               style={{ color: 'var(--chart-line-start, #6366f1)' }}
@@ -572,13 +557,13 @@ export default function InvestimentosPage() {
             />
           ) : (
             <PrivateValue
-              value={fmt(totalGain)}
+              value={formatCurrency(totalGain)}
               group="investments"
               className={`text-2xl font-bold ${totalGain >= 0 ? 'text-success' : 'text-danger'}`}
             />
           )}
           <p className={`text-xs mt-2 font-medium ${gainPct >= 0 ? 'text-success' : 'text-danger'}`}>
-            {loading ? '...' : fmtPct(gainPct)}
+            {loading ? '...' : formatPercent(gainPct)}
           </p>
         </PremiumCard>
 
@@ -646,8 +631,8 @@ export default function InvestimentosPage() {
                       <span className="text-text-secondary font-medium">{type}</span>
                       <span className="text-text-secondary">
                         {investmentsVisible
-                          ? fmt(amount)
-                          : <PrivateValue value={fmt(amount)} group="investments" />
+                          ? formatCurrency(amount)
+                          : <PrivateValue value={formatCurrency(amount)} group="investments" />
                         }
                         {' '}· {pct.toFixed(0)}%
                       </span>
@@ -834,7 +819,7 @@ export default function InvestimentosPage() {
                       />
                     ) : (
                       <PrivateValue
-                        value={fmt(Number(inv.current_amount))}
+                        value={formatCurrency(Number(inv.current_amount))}
                         group="investments"
                         className="text-xl font-bold text-text-primary"
                       />
@@ -850,13 +835,13 @@ export default function InvestimentosPage() {
                       />
                     ) : (
                       <PrivateValue
-                        value={fmt(gain)}
+                        value={formatCurrency(gain)}
                         group="investments"
                         className={`text-sm font-semibold ${gain >= 0 ? 'text-success' : 'text-danger'}`}
                       />
                     )}
                     <p className={`text-xs ${gainPct >= 0 ? 'text-success' : 'text-danger'}`}>
-                      {fmtPct(gainPct)}
+                      {formatPercent(gainPct)}
                     </p>
                   </div>
                 </div>

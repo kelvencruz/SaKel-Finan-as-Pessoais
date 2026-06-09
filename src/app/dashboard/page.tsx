@@ -19,6 +19,7 @@ import { usePreferencesStore } from '@/stores/usePreferencesStore'
 import { PrivateValue }       from '@/components/ui/PrivateValue'
 import { AnimatedValue }      from '@/components/ui/AnimatedValue'
 import { InsightsSection }    from '@/components/dashboard/InsightsSection'
+import { formatCurrency, formatCurrencyCompact } from '@/lib/format'
 import {
   fetchDashboard,
   type HeroInterpretation,
@@ -44,9 +45,6 @@ interface ProjecaoItem {
 
 const SLICE_COLORS = ['#7C3AED', '#f97316', '#22c55e', '#f59e0b', '#3b82f6', '#ec4899']
 
-const fmt  = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const fmtK = (v: number) => v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v.toFixed(0)}`
-
 // ─── Tooltip customizado ──────────────────────────────────────────────────────
 
 function ChartTooltip({ active, payload, label }: any) {
@@ -65,7 +63,7 @@ function ChartTooltip({ active, payload, label }: any) {
       {label && <p style={{ color: 'var(--text-secondary)', marginBottom: 2 }}>{label}</p>}
       {payload.map((entry: any, i: number) => (
         <p key={i} style={{ color: 'var(--text)', fontWeight: 500 }}>
-          {entry.name ? `${entry.name}: ` : ''}{fmt(Number(entry.value))}
+          {entry.name ? `${entry.name}: ` : ''}{formatCurrency(Number(entry.value))}
         </p>
       ))}
     </div>
@@ -183,7 +181,7 @@ function DeltaBadge({ delta }: { delta: number }) {
     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
       style={{ color, background: bg }}>
       {positive ? <ArrowUp size={9} weight="bold" /> : <ArrowDown size={9} weight="bold" />}
-      {fmt(Math.abs(delta))}
+      {formatCurrency(Math.abs(delta))}
     </span>
   )
 }
@@ -288,7 +286,7 @@ export default function DashboardPage() {
   if (loadError)    return <DashboardError message={loadError} onRetry={load} />
   if (!hasAccounts) return <EmptyDashboard />
 
-  // ── Projeção — responsabilidade da UI, não do engine ─────────────────────────
+  // ── Projeção ──────────────────────────────────────────────────────────────────
 
   const projecaoItens: ProjecaoItem[] = [
     { label: 'Saldo atual em contas',      value: saldoContas,                      color: 'var(--primary)',                sign: ''  },
@@ -297,7 +295,7 @@ export default function DashboardPage() {
     { label: 'Faturas em aberto',          value: totalFaturas,                     color: 'var(--danger, #DC2626)',        sign: '−' },
   ]
 
-  // ── KPIs — ETAPA-I: labels alinhados ao manifesto — TD-016 ───────────────────
+  // ── KPIs ──────────────────────────────────────────────────────────────────────
 
   const kpis = [
     {
@@ -346,7 +344,7 @@ export default function DashboardPage() {
     },
   ]
 
-  // ── Insights visíveis — controlado por usePreferencesStore ───────────────────
+  // ── Insights visíveis ─────────────────────────────────────────────────────────
   const insightsVisible = preferences?.show_insights ?? true
 
   // ─── Render ───────────────────────────────────────────────────────────────────
@@ -383,7 +381,6 @@ export default function DashboardPage() {
         )}
 
         <div className="flex items-center gap-4 ml-auto">
-          {/* INC-S47-002 — ícones corrigidos: EyeSlash quando visível, Eye quando oculto */}
           <button
             onClick={toggleFinancial}
             className="flex items-center gap-1.5 text-xs min-h-[44px] px-2 transition-opacity hover:opacity-70"
@@ -406,7 +403,6 @@ export default function DashboardPage() {
               : <Eye      weight="duotone" size={14} />}
             Investimentos
           </button>
-          {/* ETAPA-G.1 — toggle show_insights — TD-023 — INC-S42-001 */}
           <button
             onClick={() => togglePreference('show_insights')}
             className="flex items-center gap-1.5 text-xs min-h-[44px] px-2 transition-opacity hover:opacity-70"
@@ -419,7 +415,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* KPI Cards — DASH-002 glow hover + DASH-005 cascade entrance */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-7">
         {kpis.map((kpi, idx) => {
           const isVisible = kpi.group === 'investments' ? investmentsVisible : financialVisible
@@ -448,7 +444,6 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* FIX INC-S48-001: conectar AnimatedValue/PrivateValue ao estado de privacidade */}
               {isVisible ? (
                 <AnimatedValue
                   value={kpi.value}
@@ -461,7 +456,7 @@ export default function DashboardPage() {
                 />
               ) : (
                 <PrivateValue
-                  value={fmt(kpi.value)}
+                  value={formatCurrency(kpi.value)}
                   group={kpi.group}
                   className="text-2xl font-bold tracking-tight"
                 />
@@ -478,7 +473,7 @@ export default function DashboardPage() {
         })}
       </div>
 
-      {/* InsightsSection — ETAPA-G — controlado por show_insights */}
+      {/* InsightsSection */}
       {heroData && (
         <div className="mb-5">
           <InsightsSection
@@ -527,7 +522,7 @@ export default function DashboardPage() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, var(--border))" />
                 <XAxis dataKey="mes" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} tickFormatter={fmtK} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} tickFormatter={formatCurrencyCompact} axisLine={false} tickLine={false} />
                 <Tooltip content={<ChartTooltip />} />
                 <Area
                   type="monotone" dataKey="saldo"
@@ -606,7 +601,7 @@ export default function DashboardPage() {
                 </p>
                 <p className="text-lg font-bold"
                   style={{ color: trends.currentMonthlyAporte >= 0 ? 'var(--success, #16A34A)' : 'var(--danger, #DC2626)' }}>
-                  <PrivateValue value={fmt(trends.currentMonthlyAporte)} group="financial" />
+                  <PrivateValue value={formatCurrency(trends.currentMonthlyAporte)} group="financial" />
                 </p>
                 <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
                   Receitas − Despesas este mês
@@ -617,7 +612,7 @@ export default function DashboardPage() {
                   Média de despesas
                 </p>
                 <p className="text-lg font-bold" style={{ color: 'var(--text)' }}>
-                  <PrivateValue value={fmt(trends.avgMonthlyExpense)} group="financial" />
+                  <PrivateValue value={formatCurrency(trends.avgMonthlyExpense)} group="financial" />
                 </p>
                 <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
                   Últimos 6 meses
@@ -646,7 +641,6 @@ export default function DashboardPage() {
               Projeção para os próximos 30 dias
             </p>
 
-            {/* FIX INC-S48-001: saldo previsto hero também responde ao toggle */}
             {financialVisible ? (
               <AnimatedValue
                 value={forecastSummary.projectedBalance}
@@ -657,7 +651,7 @@ export default function DashboardPage() {
               />
             ) : (
               <PrivateValue
-                value={fmt(forecastSummary.projectedBalance)}
+                value={formatCurrency(forecastSummary.projectedBalance)}
                 group="financial"
                 className="text-3xl font-bold mb-5"
               />
@@ -671,7 +665,7 @@ export default function DashboardPage() {
                   <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{item.label}</p>
                   <p className="text-[11px] font-semibold" style={{ color: item.color }}>
                     {item.sign && <span className="mr-0.5">{item.sign}</span>}
-                    <PrivateValue value={fmt(item.value)} group="financial" />
+                    <PrivateValue value={formatCurrency(item.value)} group="financial" />
                   </p>
                 </div>
               ))}
@@ -746,7 +740,7 @@ export default function DashboardPage() {
                             : 'var(--primary)',
                         }}>
                         {tx.type === 'income' ? '+' : tx.type === 'expense' ? '−' : ''}
-                        <PrivateValue value={fmt(tx.amount)} group="financial" />
+                        <PrivateValue value={formatCurrency(tx.amount)} group="financial" />
                       </p>
                       <p className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
                         {new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
@@ -794,7 +788,7 @@ export default function DashboardPage() {
                     <div className="flex flex-col items-end gap-1">
                       <InvoiceBadge days={inv.days_until_due} />
                       <p className="text-xs font-semibold" style={{ color: 'var(--primary)' }}>
-                        <PrivateValue value={fmt(inv.total_amount)} group="financial" />
+                        <PrivateValue value={formatCurrency(inv.total_amount)} group="financial" />
                       </p>
                     </div>
                   </div>
@@ -813,7 +807,6 @@ export default function DashboardPage() {
                     Patrimônio investido
                   </p>
                 </div>
-                {/* INC-S47-002 — ícone corrigido no card lateral também */}
                 <button
                   onClick={toggleInvestments}
                   className="transition-opacity hover:opacity-70"
@@ -826,7 +819,6 @@ export default function DashboardPage() {
                 </button>
               </div>
 
-              {/* FIX INC-S48-001: card lateral também responde ao toggle */}
               {investmentsVisible ? (
                 <AnimatedValue
                   value={patrimonioInvestido}
@@ -838,7 +830,7 @@ export default function DashboardPage() {
                 />
               ) : (
                 <PrivateValue
-                  value={fmt(patrimonioInvestido)}
+                  value={formatCurrency(patrimonioInvestido)}
                   group="investments"
                   className="text-xl font-bold mb-2"
                 />
